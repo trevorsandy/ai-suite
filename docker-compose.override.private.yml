@@ -7,6 +7,14 @@ services:
     ports:
       - 127.0.0.1:8080:8080
 
+  open-webui-pipelines:
+    ports:
+      - 127.0.0.1:9099:9099
+
+  open-webui-filesystem:
+    ports:
+      - 127.0.0.1:8091:8091
+
   n8n:
     ports:
       - 127.0.0.1:5678:5678
@@ -43,7 +51,7 @@ services:
 
   postgres:
     ports:
-      - 127.0.0.1:5433:5432                
+      - 127.0.0.1:5433:5432
 
   redis:
     ports:
@@ -60,7 +68,7 @@ services:
   ollama-gpu:
     ports:
       - 127.0.0.1:11434:11434
-      
+
   ollama-gpu-amd:
     ports:
       - 127.0.0.1:11434:11434

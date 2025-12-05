@@ -1,8 +1,7 @@
 .env
-volumes/
-shared/
-neo4j/
+flowise/
+open-webui/piplines/
+n8n/shared/
 shared-backup/
+volumes/
 .env.test
-searxng/settings.yml
-searxng/uwsgi*
