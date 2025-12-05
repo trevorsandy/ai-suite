@@ -14,6 +14,7 @@ volumes:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
+  open_webui_pipelines:
 
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
@@ -49,9 +50,11 @@ x-init-ollama: &init-ollama
   volumes:
     - ollama_storage:/root/.ollama
   entrypoint: /bin/sh
+  environment:
+    - OLLAMA_HOST=ollama:11434
   command:
     - "-c"
-    - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull qwen2.5:7b-instruct-q4_K_M; OLLAMA_HOST=ollama:11434 ollama pull nomic-embed-text"
+    - "sleep 3; ollama pull qwen3:8b; ollama pull llama3.2; ollama pull nomic-embed-text"
 
 services:
   flowise:
@@ -81,15 +84,31 @@ services:
     volumes:
       - open-webui:/app/backend/data
 
+  open-webui-pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    restart: unless-stopped
+    container_name: open-webui-pipelines
+    expose:
+      - 9099/tcp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - open_webui_pipelines:/app/pipelines
+    environment:
+      - PIPELINES_API_KEY=0p3n-w3bu!
+    depends_on:
+      - open-webui
+      - postgres
+
   n8n-import:
     <<: *service-n8n
     container_name: n8n-import
     entrypoint: /bin/sh
     command:
       - "-c"
-      - "n8n import:credentials --separate --input=/backup/credentials && n8n import:workflow --separate --input=/backup/workflows"
+      - "n8n import:credentials --separate --input=/data/credentials && n8n import:workflow --separate --input=/data/workflows"
     volumes:
-      - ./n8n/backup:/backup
+      - ./n8n/data:/data
 
   n8n:
     <<: *service-n8n
@@ -99,7 +118,7 @@ services:
       - 5678/tcp
     volumes:
       - n8n_storage:/home/node/.n8n
-      - ./n8n/backup:/backup
+      - ./n8n/data:/data
       - ./shared:/data/shared
     depends_on:
       n8n-import:

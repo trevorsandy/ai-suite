@@ -3,7 +3,7 @@
 start_services.py
 
 This script starts the Supabase stack first, waits for it to initialize, and then starts
-the local AI stack. Both stacks use the same Docker Compose project name ("localai")
+the AI-Suite stack. Both stacks use the same Docker Compose project name ("ai-suite")
 so they appear together in Docker Desktop.
 """
 
@@ -47,8 +47,8 @@ def prepare_supabase_env():
     shutil.copyfile(env_example_path, env_path)
 
 def stop_existing_containers(profile=None):
-    print("Stopping and removing existing containers for the unified project 'localai'...")
-    cmd = ["docker", "compose", "-p", "localai"]
+    print("Stopping and removing existing containers for the unified project 'ai-suite'...")
+    cmd = ["docker", "compose", "-p", "ai-suite"]
     if profile and profile != "none":
         cmd.extend(["--profile", profile])
     cmd.extend(["-f", "docker-compose.yml", "down"])
@@ -57,16 +57,16 @@ def stop_existing_containers(profile=None):
 def start_supabase(environment=None):
     """Start the Supabase services (using its compose file)."""
     print("Starting Supabase services...")
-    cmd = ["docker", "compose", "-p", "localai", "-f", "supabase/docker/docker-compose.yml"]
+    cmd = ["docker", "compose", "-p", "ai-suite", "-f", "supabase/docker/docker-compose.yml"]
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
     cmd.extend(["up", "-d"])
     run_command(cmd)
 
-def start_local_ai(profile=None, environment=None):
-    """Start the local AI services (using its compose file)."""
-    print("Starting local AI services...")
-    cmd = ["docker", "compose", "-p", "localai"]
+def start_ai_suite(profile=None, environment=None):
+    """Start the AI-Suite services (using its compose file)."""
+    print("Starting AI-Suite services...")
+    cmd = ["docker", "compose", "-p", "ai-suite"]
     if profile and profile != "none":
         cmd.extend(["--profile", profile])
     cmd.extend(["-f", "docker-compose.yml"])
@@ -218,7 +218,7 @@ def check_and_fix_docker_compose_for_searxng():
         print(f"Error checking/modifying docker-compose.yml for SearXNG: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Start the local AI and Supabase services.')
+    parser = argparse.ArgumentParser(description='Start the AI-Suite and Supabase services.')
     parser.add_argument('--profile', choices=['cpu', 'gpu-nvidia', 'gpu-amd', 'none'], default='cpu',
                       help='Profile to use for Docker Compose (default: cpu)')
     parser.add_argument('--environment', choices=['private', 'public'], default='private',
@@ -241,8 +241,8 @@ def main():
     print("Waiting for Supabase to initialize...")
     time.sleep(10)
 
-    # Then start the local AI services
-    start_local_ai(args.profile, args.environment)
+    # Then start the AI-Suite services
+    start_ai_suite(args.profile, args.environment)
 
 if __name__ == "__main__":
     main()
