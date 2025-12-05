@@ -1,173 +1,312 @@
-# Self-hosted AI Package
+# AI-Suite
 
-**Self-hosted AI Package** is an open, docker compose template that
-quickly bootstraps a fully featured Local AI and Low Code development
-environment including Ollama for your local LLMs, Open WebUI for an interface to chat with your N8N agents, and Supabase for your database, vector store, and authentication. 
+**AI-Suite** extends [Cole Medin's](https://github.com/coleam00) [Self-hosted
+AI Package](https://github.com/coleam00/local-ai-packaged)
+which is built on the [n8n-io](https://github.com/n8n-io) [Self-hosted
+AI Starter Kit](https://github.com/n8n-io/self-hosted-ai-starter-kit)
+intended to be an **end-to-end path from zero to working AI workflows**
+for developers and those who want to enabe a local, private AI solution.
 
-This is Cole's version with a couple of improvements and the addition of Supabase, Open WebUI, Flowise, Neo4j, Langfuse, SearXNG, and Caddy!
-Also, the local RAG AI Agent workflows from the video will be automatically in your 
-n8n instance if you use this setup instead of the base one provided by n8n!
+It provides an open, curated, pre-configured Docker Compose configuration file
+that bootstraps fully featured Local AI Agents and a Low/No Code environment on
+a self-hosted n8n platform, enabling users to focus on building solutions that
+employ robust AI workflows.
 
-**IMPORANT**: Supabase has updated a couple environment variables so you may have to add some new default values in your .env that I have in my .env.example if you have had this project up and running already and are just pulling new changes. Specifically, you need to add "POOLER_DB_POOL_SIZE=5" to your .env. This is required if you have had the package running before June 14th.
+![n8n.io - n8n](https://raw.githubusercontent.com/trevorsandy/ai-suite/main/assets/n8n-demo.gif)
 
-## Important Links
+Curated by <https://github.com/trevorsandy>.
 
-- [Local AI community](https://thinktank.ottomator.ai/c/local-ai/18) forum over in the oTTomator Think Tank
-
-- [GitHub Kanban board](https://github.com/users/coleam00/projects/2/views/1) for feature implementation and bug squashing.
-
-- [Original Local AI Starter Kit](https://github.com/n8n-io/self-hosted-ai-starter-kit) by the n8n team
-
-- Download my N8N + OpenWebUI integration [directly on the Open WebUI site.](https://openwebui.com/f/coleam/n8n_pipe/) (more instructions below)
-
-![n8n.io - Screenshot](https://raw.githubusercontent.com/n8n-io/self-hosted-ai-starter-kit/main/assets/n8n-demo.gif)
-
-Curated by <https://github.com/n8n-io> and <https://github.com/coleam00>, it combines the self-hosted n8n
-platform with a curated list of compatible AI products and components to
-quickly get started with building self-hosted AI workflows.
-
-### What’s included
+## What’s included
 
 ✅ [**Self-hosted n8n**](https://n8n.io/) - Low-code platform with over 400
-integrations and advanced AI components
-
-✅ [**Supabase**](https://supabase.com/) - Open source database as a service -
-most widely used database for AI agents
-
-✅ [**Ollama**](https://ollama.com/) - Cross-platform LLM platform to install
-and run the latest local LLMs
+integrations and advanced AI components.
 
 ✅ [**Open WebUI**](https://openwebui.com/) - ChatGPT-like interface to
-privately interact with your local models and N8N agents
+privately interact with your local models and N8N agents.
 
-✅ [**Flowise**](https://flowiseai.com/) - No/low code AI agent
-builder that pairs very well with n8n
+✅ [**Opencode**](https://opencode.ai/) - open source agent that helps you write
+code in your terminal.
+
+✅ [**Ollama**](https://ollama.com/) - Cross-platform LLM platform to install
+and run the latest LLMs.
+
+✅ [**Supabase**](https://supabase.com/) - Open source database as a service,
+most widely used database for AI agents.
+
+✅ [**Flowise**](https://flowiseai.com/) - No/low code AI agent builder that
+pairs very well with n8n.
 
 ✅ [**Qdrant**](https://qdrant.tech/) - Open source, high performance vector
-store with an comprehensive API. Even though you can use Supabase for RAG, this was
-kept unlike Postgres since it's faster than Supabase so sometimes is the better option.
+store with an comprehensive API.
 
-✅ [**Neo4j**](https://neo4j.com/) - Knowledge graph engine that powers tools like GraphRAG, LightRAG, and Graphiti 
+✅ [**PostgreSQL**](https://www.postgresql.org/) -  Workhorse of the Data
+Engineering world, backend for Langfuse.
 
-✅ [**SearXNG**](https://searxng.org/) - Open source, free internet metasearch engine which aggregates 
-results from up to 229 search services. Users are neither tracked nor profiled, hence the fit with the local AI package.
+✅ [**MCP Gateway**](https://github.com/microsoft/mcp-gateway/) - Reverse proxy
+and management layer for MCP servers.
 
-✅ [**Caddy**](https://caddyserver.com/) - Managed HTTPS/TLS for custom domains
+✅ [**Neo4j**](https://neo4j.com/) - Knowledge graph engine that powers tools
+like GraphRAG, LightRAG, and Graphiti.
 
-✅ [**Langfuse**](https://langfuse.com/) - Open source LLM engineering platform for agent observability
+✅ [**Redis (Valkey)**](https://valkey.io/) - High-performance key/value datastore,
+supports caching and message queues workloads.
+
+✅ [**SearXNG**](https://searxng.org/) - Open source internet metasearch
+engine, aggregates results from up to 229 search services.
+
+✅ [**Langfuse**](https://langfuse.com/) - Open source LLM engineering platform
+for agent observability.
+
+✅ [**MinIO**](https://www.min.io/) - High-performance, S3-compatible object
+storage solution.
+
+✅ [**ClickHouse**](https://clickhouse.com/) - Open source, database management
+system that can generate analytical data reports in real-time.
+
+✅ [**Caddy**](https://caddyserver.com/) - Managed HTTPS/TLS for custom domains.
 
 ## Prerequisites
 
 Before you begin, make sure you have the following software installed:
 
 - [Python](https://www.python.org/downloads/) - Required to run the setup script
-- [Git/GitHub Desktop](https://desktop.github.com/) - For easy repository management
-- [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) - Required to run all services
+- [Git/GitHub Desktop](https://desktop.github.com/) - For easy repository management.
+- [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) -
+  Required to setup and run all ai-suite services.
+
+   <details>
+   <summary>Docker Compose commands</summary>
+
+   If you are using a machine without the `docker compose` command available by
+   default, run these commands to install Docker compose:
+
+   ```bash
+   DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/
+   releases/latest | grep 'tag_name' | cut -d\\" -f4)
+   sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /usr/local/bin docker-compose
+   sudo chmod +x /usr/local/bin/docker-compose
+   sudo mkdir -p /usr/local/lib/docker/cli-plugins
+   sudo ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+   ```
+
+   </details>
 
 ## Installation
 
-Clone the repository and navigate to the project directory:
-```bash
-git clone -b stable https://github.com/coleam00/local-ai-packaged.git
-cd local-ai-packaged
-```
+1. Clone the repository and navigate to the project directory:
 
-Before running the services, you need to set up your environment variables for Supabase following their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
+   ```powershell
+   git clone https://github.com/trevorsandy/ai-suite.git
+   cd ai-suite
+   ```
 
-1. Make a copy of `.env.example` and rename it to `.env` in the root directory of the project
-2. Set the following required environment variables:
-   ```bash
+2. Make a copy of `.env.example` renamed to `.env` in the project directory.
+
+   ```powershell
+   cp .env.example .env # update secrets and passwords inside
+   ```
+
+3. Set the following required environment variables:
+
+   <details>
+   <summary>Credential environment variables</summary>
+
+   ```ini
    ############
-   # N8N Configuration
+   # Generating Credentials
+   # OpenSSL: Available by default on Linux/Mac via command `openssl rand -hex 32`
+   #   For Windows, use 'WSL2', 'Git Bash' terminal installed with git or from cmd
+   #   run the command: python -c "import secrets; print(secrets.token_hex(32))"
+   # 
+   # Password: Use Python command to generate 16-character strong password:
+   #   python3 -c "import secrets;import string; alphabet = string.ascii_letters + string.   digits;\
+   #               password = ''.join(secrets.choice(alphabet) for i in range(16));\
+   #               print(password)"
+   #
+   # JWT Tokens: Use https://jwtsecrets.com/#generator to generate keys and tokens
+   #   ranging from 8 to 128 characters long.
    ############
-   N8N_ENCRYPTION_KEY=
-   N8N_USER_MANAGEMENT_JWT_SECRET=
 
    ############
+   # [required] 
+   # n8n credentials - use OpenSSL for both
+   ############
+
+   # Master key used to encrypt sensitive credentials that n8n stores
+   N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key
+   # Shared secret between n8n containers and runners sidecars
+   N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key
+   # Specific JWT secret. By default, n8n generates one on start
+   N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret
+
+   ############
+   # [required]
    # Supabase Secrets
    ############
-   POSTGRES_PASSWORD=
-   JWT_SECRET=
-   ANON_KEY=
-   SERVICE_ROLE_KEY=
-   DASHBOARD_USERNAME=
-   DASHBOARD_PASSWORD=
-   POOLER_TENANT_ID=
+
+   POSTGRES_PASSWORD=your-super-secret-postgres-password
+   JWT_SECRET=your-super-secret-jwt-token-at-least-40-characters-long
+   ANON_KEY=your-super-secret-jwt-key-see-https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
+   SERVICE_ROLE_KEY=your-super-secret-jwt-key-see-https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
+   DASHBOARD_USERNAME=supabase
+   DASHBOARD_PASSWORD=your-super-secret-password
+   POOLER_TENANT_ID=your-tenant-id
 
    ############
-   # Neo4j Secrets
-   ############   
-   NEO4J_AUTH=
+   # [required]
+   # Neo4j username and password
+   ############
+
+   NEO4J_AUTH=neo4j-user/your-super-secret-password
 
    ############
+   # [required]
    # Langfuse credentials
    ############
 
-   CLICKHOUSE_PASSWORD=
-   MINIO_ROOT_PASSWORD=
-   LANGFUSE_SALT=
-   NEXTAUTH_SECRET=
-   ENCRYPTION_KEY=  
-   ```
+   CLICKHOUSE_PASSWORD=your-super-secret-password-1 
+   MINIO_ROOT_PASSWORD=your-super-secret-password-2
+   LANGFUSE_SALT=your-super-secret-key-1   # use OpenSSL
+   NEXTAUTH_SECRET=your-super-secret-key-2 # use OpenSSL
+   ENCRYPTION_KEY=your-super-secret-key-3  # use OpenSSL
 
-> [!IMPORTANT]
-> Make sure to generate secure random values for all secrets. Never use the example values in production.
-
-3. Set the following environment variables if deploying to production, otherwise leave commented:
-   ```bash
    ############
+   # [required for production]
    # Caddy Config
    ############
 
-   N8N_HOSTNAME=n8n.yourdomain.com
-   WEBUI_HOSTNAME=:openwebui.yourdomain.com
-   FLOWISE_HOSTNAME=:flowise.yourdomain.com
-   SUPABASE_HOSTNAME=:supabase.yourdomain.com
-   OLLAMA_HOSTNAME=:ollama.yourdomain.com
-   SEARXNG_HOSTNAME=searxng.yourdomain.com
-   NEO4J_HOSTNAME=neo4j.yourdomain.com
-   LETSENCRYPT_EMAIL=your-email-address
-   ```   
+   # N8N_HOST=n8n.yourdomain.com       # from version 2.0.0
+   # N8N_HOSTNAME=n8n.yourdomain.com   # versions before 2.0.0
+   # WEBUI_HOSTNAME=openwebui.yourdomain.com
+   # FLOWISE_HOSTNAME=flowise.yourdomain.com
+   # SUPABASE_HOSTNAME=supabase.yourdomain.com
+   # LANGFUSE_HOSTNAME=langfuse.yourdomain.com
+   # OLLAMA_HOSTNAME=ollama.yourdomain.com
+   # SEARXNG_HOSTNAME=searxng.yourdomain.com
+   # NEO4J_HOSTNAME=neo4j.yourdomain.com
+   # LETSENCRYPT_EMAIL=internal
+
+   ...
+
+   ############
+   # PostgreSQL
+   ############
+
+   POSTGRES_PASSWORD=your-super-secret-postgres-password
+
+   ...
+
+   ############
+   # Flowise - authentication username and password
+   ############
+
+   FLOWISE_USERNAME=ai_suite_user
+   FLOWISE_PASSWORD=your-super-secret-postgres-password 
+   ```
+
+   </details>
+
+> [!IMPORTANT]
+> Make sure to generate secure random values for all secrets. Never use the
+> example values in production.
 
 ---
 
-The project includes a `start_services.py` script that handles starting both the Supabase and local AI services. The script accepts a `--profile` flag to specify which GPU configuration to use.
+**AI-Suite** uses the `start_services.py` script for the installation command
+that handles the AI-Suite stack module selection, Ollama GPU configuration,
+starting the AI services and, when specified, starting Supabase.
 
-### For Nvidia GPU users
+The installation command accepts an optional `--profile` argument to specify
+which AI-Suite stack modules and which Ollama GPU configuration to use.
+If no GPU configuration profils is specified, the installation assumes
+Ollama is being run frim the host. Multiple profile arguments are supported.
+Example command:
 
-```bash
+```powershell
+python start_services.py --profile n8n-all open-webui-mcpo gpu-nvidia
+```
+
+`start_services.py` `--profile` arguments:
+
+| Argument            |  Module |
+|-----------------------:|------:|
+| `n8n-2.0` | Self-hosted n8n version 2.0.0|
+| `n8n` | Self-hosted n8n |
+| `opencode`   | Open Code |
+| `open-webu`   | Open WebUI |
+| `open-webui-mcpo` | Open WebUI MCPO |
+| `open-webui-pipe` | Open WebUI Pipelines |
+| `flowise` | Flowise |
+| `supabase` | Supabase |
+| `searxng` | SearXNG |
+| `langfuse` | Langfuse |
+| `neo4j` | Neo4j |
+| `caddy` | Caddy |
+| `open-webui-all` | Open-WebUI Bundle |
+| `n8n-all` | n8n Bundle |
+| `ai-all` | Full stack - all modules |
+| `cpu` | Ollama CPU |
+| `gpu-nvidia` | Ollama Nvidia GPU |
+| `gpu-amd` | Ollama AMD GPU |
+
+If you intend to install Supabase, before running `start_services.py`, setup
+the Supabase environment variables using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
+
+### For Docker OLLAMA with Nvidia GPU users
+
+```powershell
 python start_services.py --profile gpu-nvidia
 ```
 
 > [!NOTE]
 > If you have not used your Nvidia GPU with Docker before, please follow the
-> [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.md).
+> [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.mdx).
 
-### For AMD GPU users on Linux
+### For Docker OLLAMA with AMD GPU users on Linux
 
-```bash
+```powershell
 python start_services.py --profile gpu-amd
 ```
 
-### For Mac / Apple Silicon users
+### For OLLAMA on Mac /Apple Silicon or OLLAMA running in the Host
 
-If you're using a Mac with an M1 or newer processor, you can't expose your GPU to the Docker instance, unfortunately. There are two options in this case:
+If you're using a Mac with an M1 or newer processor, you can't expose your GPU
+to the Docker instance, unfortunately. There are two options in this case:
 
-1. Run the starter kit fully on CPU:
-   ```bash
+1. Run ai-suite fully on CPU:
+
+   ```powershell
    python start_services.py --profile cpu
    ```
 
-2. Run Ollama on your Mac for faster inference, and connect to that from the n8n instance:
-   ```bash
-   python start_services.py --profile none
+2. Run Ollama on your Host for faster inference, and connect to that from the
+   n8n instance:
+
+   ```powershell
+   python start_services.py --profile n8n
    ```
 
-   If you want to run Ollama on your mac, check the [Ollama homepage](https://ollama.com/) for installation instructions.
+   If you want to run Ollama on your Mac, check the [Ollama homepage](https://ollama.com/)
+   for installation instructions.
 
-#### For Mac users running OLLAMA locally
+#### For users running OLLAMA on the Host
 
-If you're running OLLAMA locally on your Mac (not in Docker), you need to modify the OLLAMA_HOST environment variable in the n8n service configuration. Update the x-n8n section in your Docker Compose file as follows:
+If you're running OLLAMA in your Docker Host (not in Docker), modify the
+OLLAMA_HOST environment variable in the n8n service configuration and update the
+x-n8n section in your .env file:
+
+```ini
+OLLAMA_HOST=host.docker.internal:11434
+#OLLAMA_HOST=ollama:11434
+
+# ... other configurations ...
+
+# When running OLLAMA in the Host and Open-WebUI in Docker:
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+#OLLAMA_BASE_URL=http://localhost:11434
+```
+
+... or youe Docker Compose file:
 
 ```yaml
 x-n8n: &service-n8n
@@ -177,31 +316,40 @@ x-n8n: &service-n8n
     - OLLAMA_HOST=host.docker.internal:11434
 ```
 
-Additionally, after you see "Editor is now accessible via: http://localhost:5678/":
-
-1. Head to http://localhost:5678/home/credentials
-2. Click on "Local Ollama service"
-3. Change the base URL to "http://host.docker.internal:11434/"
-
 ### For everyone else
 
-```bash
+```powershell
 python start_services.py --profile cpu
 ```
 
 ### The environment argument
-The **start-services.py** script offers the possibility to pass one of two options for the environment argument, **private** (default environment) and **public**:
-- **private:** you are deploying the stack in a safe environment, hence a lot of ports can be made accessible without having to worry about security
-- **public:** the stack is deployed in a public environment, which means the attack surface should be made as small as possible. All ports except for 80 and 443 are closed
 
-The stack initialized with
-```bash
-   python start_services.py --profile gpu-nvidia --environment private
-   ```
-equals the one initialized with
-```bash
-   python start_services.py --profile gpu-nvidia
-   ```
+The `start_services.py` script supports a **private** (default) and **public**
+environment argument:
+
+- **private:** you are deploying the stack in a safe environment, all AI-Suite
+ports are accessible
+- **public:** the stack is deployed in a public environment, all AI-Suite ports
+except _80_ and _443_ are closed
+
+The AI-Suite stack is initialized with...
+
+```powershell
+python start_services.py --profile gpu-nvidia --environment private
+```
+
+which is equal to being initialized with:
+
+```powershell
+python start_services.py --profile gpu-nvidia
+```
+
+`start_services.py` `--environment` arguments:
+
+| Argument            |  Scope |
+|-----------------------:|------:|
+| `private` | Private network |
+| `public` | Public network |
 
 ## Deploying to the Cloud
 
@@ -213,112 +361,1724 @@ equals the one initialized with
 
 Before running the above commands to pull the repo and install everything:
 
+> [!WARNING]
+> ufw does not shield ports published by docker, because the iptables rules
+> configured by Docker are analyzed before those configured by ufw. There is a
+> solution to change this behavior, but that is out of scope for this project.
+> Just make sure that all traffic runs through the Caddy service via port _443_.
+> Port _80_ should only be used to redirect to port _443_.
+
 1. Run the commands as root to open up the necessary ports:
-   - ufw enable
-   - ufw allow 80 && ufw allow 443
-   - ufw reload
-   ---
-   **WARNING**
 
-   ufw does not shield ports published by docker, because the iptables rules configured by docker are analyzed before those configured by ufw. There is a solution to change this behavior, but that is out of scope for this project. Just make sure that all traffic runs through the caddy service via port 443. Port 80 should only be used to redirect to port 443.
+    ```bash
+    ufw enable
+    ufw allow 80 && ufw allow 443
+    ufw reload
+    ```
 
-   ---
-2. Run the **start-services.py** script with the environment argument **public** to indicate you are going to run the package in a public environment. The script will make sure that all ports, except for 80 and 443, are closed down, e.g.
+2. Run the `start_services.py` script with the environment argument **public**
+   to indicate you are going to run the package in a public environment. The
+   script will make sure that all ports, except for _80_ and _443_, are closed
+   down, e.g.
 
-```bash
+   ```bash
    python3 start_services.py --profile gpu-nvidia --environment public
    ```
 
-3. Set up A records for your DNS provider to point your subdomains you'll set up in the .env file for Caddy
-to the IP address of your cloud instance.
+3. Set up A records for your DNS provider to point your subdomains you'll set
+   up in the .env file for Caddy to the IP address of your cloud instance.
 
    For example, A record to point n8n to [cloud instance IP] for n8n.yourdomain.com
 
+> [!NOTE]
+> If you are using a cloud machine without the "docker compose" command
+> available by default such as a Ubuntu GPU instance on DigitalOcean, run these
+> commands before running start_services.py:
 
-**NOTE**: If you are using a cloud machine without the "docker compose" command available by default, such as a Ubuntu GPU instance on DigitalOcean, run these commands before running start_services.py:
+<details>
+<summary>Docker Compose setup commands</summary>
+  
+```bash
+DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\\" -f4)
+sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+```
 
-- DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\\" -f4)
-- sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
-- sudo chmod +x /usr/local/bin/docker-compose
-- sudo mkdir -p /usr/local/lib/docker/cli-plugins
-- sudo ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+</details>
 
 ## ⚡️ Quick start and usage
 
-The main component of the self-hosted AI starter kit is a docker compose file
+The main component of the self-hosted AI-Suite is a docker compose file
 pre-configured with network and disk so there isn’t much else you need to
 install. After completing the installation steps above, follow the steps below
-to get started.
+to get started.  
 
-1. Open <http://localhost:5678/> in your browser to set up n8n. You’ll only
-   have to do this once. You are NOT creating an account with n8n in the setup here,
-   it is only a local account for your instance!
-2. Open the included workflow:
-   <http://localhost:5678/workflow/vTN9y2dLXqTiDfPT>
-3. Create credentials for every service:
-   
-   Ollama URL: http://ollama:11434
+Use the settings specified below to upate Credentials.
 
-   Postgres (through Supabase): use DB, username, and password from .env. IMPORTANT: Host is 'db'
-   Since that is the name of the service running Supabase
+- Local Ollama service: base URL <http://ollama:11434/> (n8n config), <http://localhost:11434/>
+(browser)
 
-   Qdrant URL: http://qdrant:6333 (API key can be whatever since this is running locally)
+- Local QdrantApi database: base URL <http://qdrant:6333/> (n8n config), <http://localhost:6333/>
+(browser)
 
-   Google Drive: Follow [this guide from n8n](https://docs.n8n.io/integrations/builtin/credentials/google/).
-   Don't use localhost for the redirect URI, just use another domain you have, it will still work!
-   Alternatively, you can set up [local file triggers](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.localfiletrigger/).
-4. Select **Test workflow** to start running the workflow.
-5. If this is the first time you’re running the workflow, you may need to wait
-   until Ollama finishes downloading Llama3.1. You can inspect the docker
-   console logs to check on the progress.
-6. Make sure to toggle the workflow as active and copy the "Production" webhook URL!
-7. Open <http://localhost:3000/> in your browser to set up Open WebUI.
-You’ll only have to do this once. You are NOT creating an account with Open WebUI in the 
-setup here, it is only a local account for your instance!
-8. Go to Workspace -> Functions -> Add Function -> Give name + description then paste in
-the code from `n8n_pipe.py`
+- Postgres account: use _POSTGRES_HOST_, _POSTGRES_USER_, and _POSTGRES_PASSWORD_
+  from your .env file.
 
-   The function is also [published here on Open WebUI's site](https://openwebui.com/f/coleam/n8n_pipe/).
+- Google Drive: This credential is optional. Follow [this guide from n8n](https://docs.n8n.io/integrations/builtin/credentials/google/).
 
-9. Click on the gear icon and set the n8n_url to the production URL for the webhook
-you copied in a previous step.
-10. Toggle the function on and now it will be available in your model dropdown in the top left! 
+> [!IMPORTANT]
+> For Supabase, _POSTGRES_HOST_ is 'db' since that is the name of the
+> service running Supabase.  
+<!-- -->
+> [!NOTE]
+> If you are running OLLAMA on your Host, for the credential _Local Ollama
+> service_, set the base URL to <http://host.docker.internal:11434/> and set
+> _Local QdrantApi database_ to <http://host.docker.internal:6333/>.
+>
+> Don't use _localhost_ for the redirect URI, instead, use another domain.
+> It will still work!
+> Alternatively, you can set up [local file triggers](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.localfiletrigger/).
 
-To open n8n at any time, visit <http://localhost:5678/> in your browser.
-To open Open WebUI at any time, visit <http://localhost:3000/>.
+1. Open <http://localhost:5678/> in your browser to initialize and  set up n8n.
+   You’ll only have to set your admin login credentials once. You are NOT creating
+   an account with n8n in the setup here, it is only a local account for your
+   instance!
 
-With your n8n instance, you’ll have access to over 400 integrations and a
-suite of basic and advanced AI nodes such as
+   1. Go to <http://localhost:5678/home/credentials> to configure credentials.
+   2. Click on "Local QdrantApi database" and set the base URL as specified above.
+   3. Click on "Local Ollama service" and set the base URL as specified above.
+   4. Click "Create credential", enter "Postgres" in the search field and follow
+      the subsequent dialogs to setup the _Postgres account_ as specified above.
+
+2. Open the [Demo workflow](http://localhost:5678/workflow/srOnR8PAY3u4RSwb) and
+   confirm the credentials for _Local Ollama service_ is properly configured.
+
+3. Select **Test workflow** to confirm the workflow is properly configured.  
+   If this is the first time you’re running the workflow, you may need to wait
+   until Ollama finishes downloading the specified model. You can inspect the
+   docker console logs to check on the progress.
+
+4. Toggle the _Demo workflow_ as active and treat the _RAG AI Agent_ workflows.
+
+   <details>
+   <summary>Configure additional workflows as desired:</summary>
+
+   [V1 Local RAG AI Agent](<http://localhost:5678/workflow/vTN9y2dLXqTiDfPT>)
+
+   [V2 Qdrant RAG AI Agent](<http://localhost:5678/workflow/hrnPh6dXgIbGVzIk>)
+
+   [V3 Local Agentic RAG AI Agent](<http://localhost:5678/workflow/RssROpqkXOm23GYL>)
+
+   </details>  
+
+5. Open <http://localhost:8080/> in your browser to initialize and set up Open WebUI.
+   You’ll only have to set your admin login credentials once. You are NOT creating
+   an account with Open WebUI in the setup here, it is only a local account for your
+   instance!
+
+6. Go to "Workspace -> Functions" to setup the n8n Pipeline function.
+
+   1. Click on "New Function"
+   2. Enter _n8n Pipeline_ at "Function Name" and "Function ID" will auto-populate
+      with _n8n_Pipeline_
+   3. Enter _An optimized streaming-enabled pipeline for interacting with n8n workflows_
+      in "Description"
+   4. Copy the _n8n_Pipeline - n8n.py_ code below and paste it into the edit dialog.
+
+   <details>
+   <summary>n8n_Pipeline - n8n.py</summary>  
+
+   Remember to remove indent for {quoted_content} `<summary>` blocks at lines
+   1057 and 1337 after paste.
+
+    ```python
+    """
+    title: n8n Pipeline with StreamingResponse Support
+    author: owndev
+    author_url: https://github.com/owndev/
+    project_url: https://github.com/owndev/Open-WebUI-Functions
+    funding_url: https://github.com/sponsors/owndev
+    n8n_template: https://github.com/owndev/Open-WebUI-Functions/blob/main/pipelines/n8n/Open_WebUI_Test_Agent_Streaming.json
+    version: 2.2.0
+    license: Apache License 2.0
+    description: An optimized streaming-enabled pipeline for interacting with N8N workflows, consistent response handling for both streaming and non-streaming modes, robust error handling, and simplified status management. Supports Server-Sent Events (SSE) streaming and various N8N workflow formats. Now includes configurable AI Agent tool usage display with three verbosity levels (minimal, compact, detailed) and customizable length limits for tool inputs/outputs (non-streaming mode only).
+    features:
+      - Integrates with N8N for seamless streaming communication.
+      - Uses FastAPI StreamingResponse for real-time streaming.
+      - Enables real-time interaction with N8N workflows.
+      - Provides configurable status emissions and chunk streaming.
+      - Cloudflare Access support for secure communication.
+      - Encrypted storage of sensitive API keys.
+      - Fallback support for non-streaming responses.
+      - Compatible with Open WebUI streaming architecture.
+      - Displays N8N AI Agent tool usage with configurable verbosity (non-streaming mode only).
+      - Three display modes: minimal (tool names only), compact (names + preview), detailed (full collapsible sections).
+      - Customizable length limits for tool inputs and outputs.
+      - Shows tool calls, inputs, and results from intermediateSteps in non-streaming mode (N8N limitation - streaming responses do not include intermediateSteps).
+    """
+
+    from typing import (
+        Optional,
+        Callable,
+        Awaitable,
+        Any,
+        Dict,
+        AsyncIterator,
+        Union,
+        Generator,
+        Iterator,
+    )
+    from fastapi.responses import StreamingResponse
+    from pydantic import BaseModel, Field, GetCoreSchemaHandler
+    from starlette.background import BackgroundTask
+    from cryptography.fernet import Fernet, InvalidToken
+    import aiohttp
+    import os
+    import base64
+    import hashlib
+    import logging
+    import json
+    import asyncio
+    from open_webui.env import AIOHTTP_CLIENT_TIMEOUT, SRC_LOG_LEVELS
+    from pydantic_core import core_schema
+    import time
+    import re
+
+
+    # Simplified encryption implementation with automatic handling
+    class EncryptedStr(str):
+        """A string type that automatically handles encryption/decryption"""
+
+        @classmethod
+        def _get_encryption_key(cls) -> Optional[bytes]:
+            """
+            Generate encryption key from WEBUI_SECRET_KEY if available
+            Returns None if no key is configured
+            """
+            secret = os.getenv("WEBUI_SECRET_KEY")
+            if not secret:
+                return None
+
+            hashed_key = hashlib.sha256(secret.encode()).digest()
+            return base64.urlsafe_b64encode(hashed_key)
+
+        @classmethod
+        def encrypt(cls, value: str) -> str:
+            """
+            Encrypt a string value if a key is available
+            Returns the original value if no key is available
+            """
+            if not value or value.startswith("encrypted:"):
+                return value
+
+            key = cls._get_encryption_key()
+            if not key:  # No encryption if no key
+                return value
+
+            f = Fernet(key)
+            encrypted = f.encrypt(value.encode())
+            return f"encrypted:{encrypted.decode()}"
+
+        @classmethod
+        def decrypt(cls, value: str) -> str:
+            """
+            Decrypt an encrypted string value if a key is available
+            Returns the original value if no key is available or decryption fails
+            """
+            if not value or not value.startswith("encrypted:"):
+                return value
+
+            key = cls._get_encryption_key()
+            if not key:  # No decryption if no key
+                return value[len("encrypted:") :]  # Return without prefix
+
+            try:
+                encrypted_part = value[len("encrypted:") :]
+                f = Fernet(key)
+                decrypted = f.decrypt(encrypted_part.encode())
+                return decrypted.decode()
+            except (InvalidToken, Exception):
+                return value
+
+        # Pydantic integration
+        @classmethod
+        def __get_pydantic_core_schema__(
+            cls, _source_type: Any, _handler: GetCoreSchemaHandler
+        ) -> core_schema.CoreSchema:
+            return core_schema.union_schema(
+                [
+                    core_schema.is_instance_schema(cls),
+                    core_schema.chain_schema(
+                        [
+                            core_schema.str_schema(),
+                            core_schema.no_info_plain_validator_function(
+                                lambda value: cls(cls.encrypt(value) if value else value)
+                            ),
+                        ]
+                    ),
+                ],
+                serialization=core_schema.plain_serializer_function_ser_schema(
+                    lambda instance: str(instance)
+                ),
+            )
+
+
+    # Helper functions for resource cleanup
+    async def cleanup_response(
+        response: Optional[aiohttp.ClientResponse],
+        session: Optional[aiohttp.ClientSession],
+    ) -> None:
+        """
+        Clean up the response and session objects.
+
+        Args:
+            response: The ClientResponse object to close
+            session: The ClientSession object to close
+        """
+        if response:
+            response.close()
+        if session:
+            await session.close()
+
+
+    async def stream_processor(
+        content: aiohttp.StreamReader,
+        __event_emitter__=None,
+        response: Optional[aiohttp.ClientResponse] = None,
+        session: Optional[aiohttp.ClientSession] = None,
+        logger: Optional[logging.Logger] = None,
+    ) -> AsyncIterator[str]:
+        """
+        Process streaming content from n8n and yield chunks for StreamingResponse.
+
+        Args:
+            content: The streaming content from the response
+            __event_emitter__: Optional event emitter for status updates
+            response: The response object for cleanup
+            session: The session object for cleanup
+            logger: Logger for debugging
+
+        Yields:
+            String content from the streaming response
+        """
+        try:
+            if logger:
+                logger.info("Starting stream processing...")
+
+            buffer = ""
+            # Attempt to read preserve flag later via closure if needed
+            async for chunk_bytes in content:
+                chunk_str = chunk_bytes.decode("utf-8", errors="ignore")
+                if not chunk_str:
+                    continue
+                buffer += chunk_str
+
+                # Process complete lines (retain trailing newline info)
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    had_newline = True
+                    original_line = line  # without \n
+                    if line.endswith("\r"):
+                        line = line[:-1]
+
+                    if logger:
+                        logger.debug(f"Raw line received: {repr(line)}")
+
+                    # Preserve blank lines
+                    if line == "":
+                        yield "\n"
+                        continue
+
+                    content_text = ""
+
+                    if line.startswith("data: "):
+                        data_part = line[6:]
+                        if logger:
+                            logger.debug(f"SSE data part: {repr(data_part)}")
+                        if data_part == "[DONE]":
+                            if logger:
+                                logger.debug("Received [DONE] signal")
+                            buffer = ""
+                            break
+                        try:
+                            event_data = json.loads(data_part)
+                            if logger:
+                                logger.debug(f"Parsed SSE JSON: {event_data}")
+                            for key in ("content", "text", "output", "data"):
+                                val = event_data.get(key)
+                                if isinstance(val, str) and val:
+                                    content_text = val
+                                    break
+                        except json.JSONDecodeError:
+                            content_text = data_part
+                            if logger:
+                                logger.debug(
+                                    f"Using raw data as content: {repr(content_text)}"
+                                )
+                    elif not line.startswith(":"):
+                        # Plain text (non-SSE)
+                        content_text = original_line
+                        if logger:
+                            logger.debug(f"Plain text content: {repr(content_text)}")
+
+                    if content_text:
+                        if not content_text.endswith("\n"):
+                            content_text += "\n"
+                        if logger:
+                            logger.debug(f"Yielding content: {repr(content_text)}")
+                        yield content_text
+
+            # Send completion status update when streaming is done
+            if __event_emitter__:
+                await __event_emitter__(
+                    {
+                        "type": "status",
+                        "data": {
+                            "status": "complete",
+                            "description": "N8N streaming completed successfully",
+                            "done": True,
+                        },
+                    }
+                )
+
+            if logger:
+                logger.info("Stream processing completed successfully")
+
+        except Exception as e:
+            if logger:
+                logger.error(f"Error processing stream: {e}")
+
+            # Send error status update
+            if __event_emitter__:
+                await __event_emitter__(
+                    {
+                        "type": "status",
+                        "data": {
+                            "status": "error",
+                            "description": f"N8N streaming error: {str(e)}",
+                            "done": True,
+                        },
+                    }
+                )
+            raise
+        finally:
+            # Always attempt to close response and session to avoid resource leaks
+            await cleanup_response(response, session)
+
+
+    class Pipe:
+        class Valves(BaseModel):
+            N8N_URL: str = Field(
+                default="https://<your-endpoint>/webhook/<your-webhook>",
+                description="URL for the N8N webhook",
+            )
+            N8N_BEARER_TOKEN: EncryptedStr = Field(
+                default="",
+                description="Bearer token for authenticating with the N8N webhook",
+            )
+            INPUT_FIELD: str = Field(
+                default="chatInput",
+                description="Field name for the input message in the N8N payload",
+            )
+            RESPONSE_FIELD: str = Field(
+                default="output",
+                description="Field name for the response message in the N8N payload",
+            )
+            SEND_CONVERSATION_HISTORY: bool = Field(
+                default=False,
+                description="Whether to include conversation history when sending requests to N8N",
+            )
+            TOOL_DISPLAY_VERBOSITY: str = Field(
+                default="detailed",
+                description="Verbosity level for tool usage display: 'minimal' (only tool names), 'compact' (names + short preview), 'detailed' (full info with collapsible sections)",
+            )
+            TOOL_INPUT_MAX_LENGTH: int = Field(
+                default=500,
+                description="Maximum length for tool input display (0 = unlimited). Longer inputs will be truncated.",
+            )
+            TOOL_OUTPUT_MAX_LENGTH: int = Field(
+                default=500,
+                description="Maximum length for tool output/observation display (0 = unlimited). Longer outputs will be truncated.",
+            )
+            CF_ACCESS_CLIENT_ID: EncryptedStr = Field(
+                default="",
+                description="Only if behind Cloudflare: https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/",
+            )
+            CF_ACCESS_CLIENT_SECRET: EncryptedStr = Field(
+                default="",
+                description="Only if behind Cloudflare: https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/",
+            )
+
+        def __init__(self):
+            self.name = "N8N Agent"
+            self.valves = self.Valves()
+            self.log = logging.getLogger("n8n_streaming_pipeline")
+            self.log.setLevel(SRC_LOG_LEVELS.get("OPENAI", logging.INFO))
+
+        def _format_tool_calls_section(
+            self, intermediate_steps: list, for_streaming: bool = False
+        ) -> str:
+            """
+            Creates a formatted tool calls section using collapsible details elements.
+
+            Args:
+                intermediate_steps: List of intermediate step objects from N8N response
+                for_streaming: If True, format for streaming (with escaping), else for regular response
+
+            Returns:
+                Formatted tool calls section with HTML details elements
+            """
+            if not intermediate_steps:
+                return ""
+
+            verbosity = self.valves.TOOL_DISPLAY_VERBOSITY.lower()
+            input_max_len = self.valves.TOOL_INPUT_MAX_LENGTH
+            output_max_len = self.valves.TOOL_OUTPUT_MAX_LENGTH
+
+            # Helper function to truncate text
+            def truncate_text(text: str, max_length: int) -> str:
+                if max_length <= 0 or len(text) <= max_length:
+                    return text
+                return text[:max_length] + "..."
+
+            # Minimal mode: just list tool names
+            if verbosity == "minimal":
+                tool_names = []
+                for i, step in enumerate(intermediate_steps, 1):
+                    if isinstance(step, dict):
+                        tool_name = step.get("action", {}).get("tool", "Unknown Tool")
+                        tool_names.append(f"{i}. {tool_name}")
+
+                tool_list = "\\n" if for_streaming else "\n"
+                tool_list = tool_list.join(tool_names)
+
+                if for_streaming:
+                    return f"\\n\\n<details>\\n<summary>🛠️ Tool Calls ({len(intermediate_steps)} steps)</summary>\\n\\n{tool_list}\\n\\n</details>\\n"
+                else:
+                    return f"\n\n<details>\n<summary>🛠️ Tool Calls ({len(intermediate_steps)} steps)</summary>\n\n{tool_list}\n\n</details>\n"
+
+            # Compact mode: tool names with short preview
+            if verbosity == "compact":
+                tool_summaries = []
+                for i, step in enumerate(intermediate_steps, 1):
+                    if not isinstance(step, dict):
+                        continue
+
+                    action = step.get("action", {})
+                    observation = step.get("observation", "")
+                    tool_name = action.get("tool", "Unknown Tool")
+
+                    # Get short preview of output
+                    preview = ""
+                    if observation:
+                        obs_str = str(observation)
+                        # If output_max_len is 0 (unlimited), use a reasonable default preview length for compact mode
+                        # Otherwise, use the configured limit
+                        if output_max_len > 0:
+                            preview_len = min(100, output_max_len)
+                        else:
+                            preview_len = 100  # Default preview length for compact mode when unlimited
+                        preview = truncate_text(obs_str, preview_len)
+
+                    summary = f"**{i}. {tool_name}**"
+                    if preview:
+                        summary += f" → {preview}"
+                    tool_summaries.append(summary)
+
+                summary_text = "\\n" if for_streaming else "\n"
+                summary_text = summary_text.join(tool_summaries)
+
+                if for_streaming:
+                    return f"\\n\\n<details>\\n<summary>🛠️ Tool Calls ({len(intermediate_steps)} steps)</summary>\\n\\n{summary_text}\\n\\n</details>\\n"
+                else:
+                    return f"\n\n<details>\n<summary>🛠️ Tool Calls ({len(intermediate_steps)} steps)</summary>\n\n{summary_text}\n\n</details>\n"
+
+            # Detailed mode: full collapsible sections (default)
+            tool_entries = []
+
+            for i, step in enumerate(intermediate_steps, 1):
+                if not isinstance(step, dict):
+                    continue
+
+                action = step.get("action", {})
+                observation = step.get("observation", "")
+
+                tool_name = action.get("tool", "Unknown Tool")
+                tool_input = action.get("toolInput", {})
+                tool_call_id = action.get("toolCallId", "")
+                log_message = action.get("log", "")
+
+                # Build individual tool call details
+                tool_info = []
+                tool_info.append(f"🔧 **Tool:** {tool_name}")
+
+                if tool_call_id:
+                    tool_info.append(f"🆔 **Call ID:** `{tool_call_id}`")
+
+                # Format tool input
+                if tool_input:
+                    try:
+                        if isinstance(tool_input, dict):
+                            input_json = json.dumps(tool_input, indent=2)
+
+                            # Apply max length limit
+                            if input_max_len > 0:
+                                input_json = truncate_text(input_json, input_max_len)
+
+                            if for_streaming:
+                                # Escape for streaming
+                                input_json = (
+                                    input_json.replace("\\", "\\\\")
+                                    .replace('"', '\\"')
+                                    .replace("\n", "\\n")
+                                )
+                                tool_info.append(
+                                    f"📥 **Input:**\\n```json\\n{input_json}\\n```"
+                                )
+                            else:
+                                tool_info.append(
+                                    f"📥 **Input:**\n```json\n{input_json}\n```"
+                                )
+                        else:
+                            input_str = str(tool_input)
+                            if input_max_len > 0:
+                                input_str = truncate_text(input_str, input_max_len)
+                            tool_info.append(f"📥 **Input:** `{input_str}`")
+                    except Exception:
+                        input_str = str(tool_input)
+                        if input_max_len > 0:
+                            input_str = truncate_text(input_str, input_max_len)
+                        tool_info.append(f"📥 **Input:** `{input_str}`")
+
+                # Format observation/result
+                if observation:
+                    try:
+                        # Try to parse as JSON for better formatting
+                        if isinstance(observation, str) and (
+                            observation.startswith("[") or observation.startswith("{")
+                        ):
+                            obs_json = json.loads(observation)
+                            obs_formatted = json.dumps(obs_json, indent=2)
+
+                            # Apply max length limit
+                            if output_max_len > 0:
+                                obs_formatted = truncate_text(obs_formatted, output_max_len)
+
+                            if for_streaming:
+                                obs_formatted = (
+                                    obs_formatted.replace("\\", "\\\\")
+                                    .replace('"', '\\"')
+                                    .replace("\n", "\\n")
+                                )
+                                tool_info.append(
+                                    f"📤 **Result:**\\n```json\\n{obs_formatted}\\n```"
+                                )
+                            else:
+                                tool_info.append(
+                                    f"📤 **Result:**\n```json\n{obs_formatted}\n```"
+                                )
+                        else:
+                            # Plain text observation
+                            obs_str = str(observation)
+                            # Apply configured limit (0 = unlimited, don't truncate)
+                            obs_preview = (
+                                truncate_text(obs_str, output_max_len)
+                                if output_max_len > 0
+                                else obs_str
+                            )
+
+                            if for_streaming:
+                                obs_preview = (
+                                    obs_preview.replace("\\", "\\\\")
+                                    .replace('"', '\\"')
+                                    .replace("\n", "\\n")
+                                )
+                            tool_info.append(f"📤 **Result:** {obs_preview}")
+                    except Exception:
+                        obs_str = str(observation)
+                        # Apply configured limit (0 = unlimited, don't truncate)
+                        obs_preview = (
+                            truncate_text(obs_str, output_max_len)
+                            if output_max_len > 0
+                            else obs_str
+                        )
+                        tool_info.append(f"📤 **Result:** {obs_preview}")
+
+                # Add log if available
+                if log_message:
+                    log_preview = truncate_text(log_message, 200)
+                    tool_info.append(f"📝 **Log:** {log_preview}")
+
+                # Create collapsible details for individual tool call
+                tool_info_text = "\\n" if for_streaming else "\n"
+                tool_info_text = tool_info_text.join(tool_info)
+
+                if for_streaming:
+                    tool_entry = f"<details>\\n<summary>Step {i}: {tool_name}</summary>\\n\\n{tool_info_text}\\n\\n</details>"
+                else:
+                    tool_entry = f"<details>\n<summary>Step {i}: {tool_name}</summary>\n\n{tool_info_text}\n\n</details>"
+
+                tool_entries.append(tool_entry)
+
+            # Combine all tool calls into main collapsible section
+            if for_streaming:
+                all_tools = "\\n\\n".join(tool_entries)
+                result = f"\\n\\n<details>\\n<summary>🛠️ Tool Calls ({len(tool_entries)} steps)</summary>\\n\\n{all_tools}\\n\\n</details>\\n"
+            else:
+                all_tools = "\n\n".join(tool_entries)
+                result = f"\n\n<details>\n<summary>🛠️ Tool Calls ({len(tool_entries)} steps)</summary>\n\n{all_tools}\n\n</details>\n"
+
+            return result
+
+        async def emit_simple_status(
+            self,
+            __event_emitter__: Callable[[dict], Awaitable[None]],
+            status: str,
+            message: str,
+            done: bool = False,
+        ):
+            """Simplified status emission without intervals"""
+            if __event_emitter__:
+                await __event_emitter__(
+                    {
+                        "type": "status",
+                        "data": {
+                            "status": status,
+                            "description": message,
+                            "done": done,
+                        },
+                    }
+                )
+
+        def extract_event_info(self, event_emitter):
+            if not event_emitter or not event_emitter.__closure__:
+                return None, None
+            for cell in event_emitter.__closure__:
+                if isinstance(request_info := cell.cell_contents, dict):
+                    chat_id = request_info.get("chat_id")
+                    message_id = request_info.get("message_id")
+                    return chat_id, message_id
+            return None, None
+
+        def get_headers(self) -> Dict[str, str]:
+            """
+            Constructs the headers for the API request.
+
+            Returns:
+                Dictionary containing the required headers for the API request.
+            """
+            headers = {"Content-Type": "application/json"}
+
+            # Add bearer token if available
+            bearer_token = EncryptedStr.decrypt(self.valves.N8N_BEARER_TOKEN)
+            if bearer_token:
+                headers["Authorization"] = f"Bearer {bearer_token}"
+
+            # Add Cloudflare Access headers if available
+            cf_client_id = EncryptedStr.decrypt(self.valves.CF_ACCESS_CLIENT_ID)
+            if cf_client_id:
+                headers["CF-Access-Client-Id"] = cf_client_id
+
+            cf_client_secret = EncryptedStr.decrypt(self.valves.CF_ACCESS_CLIENT_SECRET)
+            if cf_client_secret:
+                headers["CF-Access-Client-Secret"] = cf_client_secret
+
+            return headers
+
+        def parse_n8n_streaming_chunk(self, chunk_text: str) -> Optional[str]:
+            """Parse N8N streaming chunk and extract content, filtering out metadata"""
+            if not chunk_text.strip():
+                return None
+
+            try:
+                data = json.loads(chunk_text.strip())
+
+                if isinstance(data, dict):
+                    # Check if this chunk contains intermediateSteps (will be handled separately)
+                    # Note: Don't skip chunks just because they have a type field
+                    chunk_type = data.get("type", "")
+
+                    # Skip only true metadata chunks that have no content or intermediateSteps
+                    if (
+                        chunk_type in ["begin", "end", "error", "metadata"]
+                        and "intermediateSteps" not in data
+                    ):
+                        self.log.debug(f"Skipping N8N metadata chunk: {chunk_type}")
+                        return None
+
+                    # Skip metadata-only chunks (but allow intermediateSteps)
+                    if (
+                        "metadata" in data
+                        and len(data) <= 2
+                        and "intermediateSteps" not in data
+                    ):
+                        return None
+
+                    # Extract content from various possible field names
+                    content = (
+                        data.get("text")
+                        or data.get("content")
+                        or data.get("output")
+                        or data.get("message")
+                        or data.get("delta")
+                        or data.get("data")
+                        or data.get("response")
+                        or data.get("result")
+                    )
+
+                    # Handle OpenAI-style streaming format
+                    if not content and "choices" in data:
+                        choices = data.get("choices", [])
+                        if choices and isinstance(choices[0], dict):
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+
+                    if content:
+                        self.log.debug(
+                            f"Extracted content from JSON: {repr(content[:100])}"
+                        )
+                        return str(content)
+
+                    # Return non-metadata objects as strings (be more permissive)
+                    if not any(
+                        key in data
+                        for key in [
+                            "type",
+                            "metadata",
+                            "nodeId",
+                            "nodeName",
+                            "timestamp",
+                            "id",
+                        ]
+                    ):
+                        # For smaller models, return the entire object if it's simple
+                        self.log.debug(
+                            f"Returning entire object as content: {repr(str(data)[:100])}"
+                        )
+                        return str(data)
+
+            except json.JSONDecodeError:
+                # Handle plain text content - be more permissive
+                stripped = chunk_text.strip()
+                if stripped and not stripped.startswith("{"):
+                    self.log.debug(f"Returning plain text content: {repr(stripped[:100])}")
+                    return stripped
+
+            return None
+
+        def extract_content_from_mixed_stream(self, raw_text: str) -> str:
+            """Extract content from mixed stream containing both metadata and content"""
+            content_parts = []
+
+            # First try to handle concatenated JSON objects
+            if "{" in raw_text and "}" in raw_text:
+                parts = raw_text.split("}{")
+
+                for i, part in enumerate(parts):
+                    # Reconstruct valid JSON
+                    if i > 0:
+                        part = "{" + part
+                    if i < len(parts) - 1:
+                        part = part + "}"
+
+                    extracted = self.parse_n8n_streaming_chunk(part)
+                    if extracted:
+                        content_parts.append(extracted)
+
+            # If no JSON content found, treat as plain text
+            if not content_parts:
+                # Remove common streaming artifacts but preserve actual content
+                cleaned = raw_text.strip()
+                if (
+                    cleaned
+                    and not cleaned.startswith("data:")
+                    and not cleaned.startswith(":")
+                ):
+                    self.log.debug(f"Using raw text as content: {repr(cleaned[:100])}")
+                    return cleaned
+
+            return "".join(content_parts)
+
+        def dedupe_system_prompt(self, text: str) -> str:
+            """Remove duplicated content from the system prompt.
+
+            Strategies:
+            1. Detect full duplication where the prompt text is repeated twice consecutively.
+            2. Remove duplicate lines (keeping first occurrence, preserving order & spacing where possible).
+            3. Preserve blank lines but collapse consecutive duplicate non-blank lines.
+            """
+            if not text:
+                return text
+
+            original = text
+            stripped = text.strip()
+
+            # 1. Full duplication detection (exact repeat of first half == second half)
+            half = len(stripped) // 2
+            if len(stripped) % 2 == 0:
+                first_half = stripped[:half].strip()
+                second_half = stripped[half:].strip()
+                if first_half and first_half == second_half:
+                    text = first_half
+
+            # 2. Line-level dedupe
+            lines = text.splitlines()
+            seen = set()
+            deduped = []
+            for line in lines:
+                key = line.strip()
+                # Allow empty lines to pass through (formatting), but avoid repeating identical non-empty lines
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                deduped.append(line)
+
+            deduped_text = "\n".join(deduped).strip()
+
+            if deduped_text != original.strip():
+                self.log.debug("System prompt deduplicated")
+            return deduped_text
+
+        async def pipe(
+            self,
+            body: dict,
+            __user__: Optional[dict] = None,
+            __event_emitter__: Callable[[dict], Awaitable[None]] = None,
+            __event_call__: Callable[[dict], Awaitable[dict]] = None,
+        ) -> Union[str, Generator, Iterator, Dict[str, Any], StreamingResponse]:
+            """
+            Main method for sending requests to the N8N endpoint.
+
+            Args:
+                body: The request body containing messages and other parameters
+                __event_emitter__: Optional event emitter function for status updates
+
+            Returns:
+                Response from N8N API, which could be a string, dictionary or streaming response
+            """
+            self.log.setLevel(SRC_LOG_LEVELS.get("OPENAI", logging.INFO))
+
+            await self.emit_simple_status(
+                __event_emitter__, "in_progress", f"Calling {self.name} ...", False
+            )
+
+            session = None
+            n8n_response = ""
+            messages = body.get("messages", [])
+
+            # Verify a message is available
+            if messages:
+                question = messages[-1]["content"]
+                if "Prompt: " in question:
+                    question = question.split("Prompt: ")[-1]
+                try:
+                    # Extract chat_id and message_id
+                    chat_id, message_id = self.extract_event_info(__event_emitter__)
+
+                    self.log.info(f"Starting N8N workflow request for chat ID: {chat_id}")
+
+                    # Extract system prompt correctly
+                    system_prompt = ""
+                    if messages and messages[0].get("role") == "system":
+                        system_prompt = self.dedupe_system_prompt(messages[0]["content"])
+
+                    # Optionally include full conversation history (controlled by valve)
+                    conversation_history = []
+                    if self.valves.SEND_CONVERSATION_HISTORY:
+                        for msg in messages:
+                            if msg.get("role") in ["user", "assistant"]:
+                                conversation_history.append(
+                                    {"role": msg["role"], "content": msg["content"]}
+                                )
+
+                    # Prepare payload for N8N workflow (improved version)
+                    payload = {
+                        "systemPrompt": system_prompt,
+                        # Include messages only when enabled in valves for privacy/control
+                        "messages": (
+                            conversation_history
+                            if self.valves.SEND_CONVERSATION_HISTORY
+                            else []
+                        ),
+                        "currentMessage": question,  # Current user message
+                        "user_id": __user__.get("id") if __user__ else None,
+                        "user_email": __user__.get("email") if __user__ else None,
+                        "user_name": __user__.get("name") if __user__ else None,
+                        "user_role": __user__.get("role") if __user__ else None,
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                    }
+                    # Keep backward compatibility
+                    payload[self.valves.INPUT_FIELD] = question
+
+                    # Get headers for the request
+                    headers = self.get_headers()
+
+                    # Create session with no timeout like in stream-example.py
+                    session = aiohttp.ClientSession(
+                        trust_env=True,
+                        timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT),
+                    )
+
+                    self.log.debug(f"Sending request to N8N: {self.valves.N8N_URL}")
+
+                    # Send status update via event emitter if available
+                    if __event_emitter__:
+                        await __event_emitter__(
+                            {
+                                "type": "status",
+                                "data": {
+                                    "status": "in_progress",
+                                    "description": "Sending request to N8N...",
+                                    "done": False,
+                                },
+                            }
+                        )
+
+                    # Make the request
+                    request = session.post(
+                        self.valves.N8N_URL, json=payload, headers=headers
+                    )
+
+                    response = await request.__aenter__()
+                    self.log.debug(f"Response status: {response.status}")
+                    self.log.debug(f"Response headers: {dict(response.headers)}")
+
+                    if response.status == 200:
+                        # Enhanced streaming detection (n8n controls streaming)
+                        content_type = response.headers.get("Content-Type", "").lower()
+
+                        # Check for explicit streaming indicators
+                        # Note: Don't rely solely on Transfer-Encoding: chunked as regular JSON can also be chunked
+                        is_streaming = (
+                            "text/event-stream" in content_type
+                            or "application/x-ndjson" in content_type
+                            or (
+                                "application/json" in content_type
+                                and response.headers.get("Transfer-Encoding") == "chunked"
+                                and "Cache-Control" in response.headers
+                                and "no-cache"
+                                in response.headers.get("Cache-Control", "").lower()
+                            )
+                        )
+
+                        # Additional check: if content-type is text/html or application/json without streaming headers, it's likely not streaming
+                        if "text/html" in content_type:
+                            is_streaming = False
+                        elif (
+                            "application/json" in content_type
+                            and "Cache-Control" not in response.headers
+                        ):
+                            is_streaming = False
+
+                        if is_streaming:
+                            # Enhanced streaming like in stream-example.py
+                            self.log.info("Processing streaming response from N8N")
+                            n8n_response = ""
+                            buffer = ""
+                            completed_thoughts: list[str] = []
+                            intermediate_steps = []  # Collect tool calls
+
+                            try:
+                                async for chunk in response.content.iter_any():
+                                    if not chunk:
+                                        continue
+
+                                    text = chunk.decode(errors="ignore")
+                                    buffer += text
+
+                                    # Handle different streaming formats
+                                    if "{" in buffer and "}" in buffer:
+                                        # Process complete JSON objects like in stream-example.py
+                                        while True:
+                                            start_idx = buffer.find("{")
+                                            if start_idx == -1:
+                                                break
+
+                                            # Find matching closing brace
+                                            brace_count = 0
+                                            end_idx = -1
+
+                                            for i in range(start_idx, len(buffer)):
+                                                if buffer[i] == "{":
+                                                    brace_count += 1
+                                                elif buffer[i] == "}":
+                                                    brace_count -= 1
+                                                    if brace_count == 0:
+                                                        end_idx = i
+                                                        break
+
+                                            if end_idx == -1:
+                                                # Incomplete JSON, wait for more data
+                                                break
+
+                                            # Extract and process the JSON chunk
+                                            json_chunk = buffer[start_idx : end_idx + 1]
+                                            buffer = buffer[end_idx + 1 :]
+
+                                            # Try to parse the chunk as JSON to extract intermediateSteps
+                                            # This must happen BEFORE parse_n8n_streaming_chunk filters out metadata
+                                            # Future-proof: If N8N adds intermediateSteps support in streaming, this will work automatically
+                                            try:
+                                                parsed_chunk = json.loads(json_chunk)
+                                                if isinstance(parsed_chunk, dict):
+                                                    # Extract intermediateSteps if present (future-proof for when N8N supports this)
+                                                    chunk_steps = parsed_chunk.get(
+                                                        "intermediateSteps", []
+                                                    )
+                                                    if chunk_steps:
+                                                        intermediate_steps.extend(
+                                                            chunk_steps
+                                                        )
+                                                        self.log.info(
+                                                            f"✓ Found {len(chunk_steps)} intermediate steps in streaming chunk"
+                                                        )
+                                            except json.JSONDecodeError:
+                                                pass  # Continue with content parsing
+
+                                            # Parse N8N streaming chunk for content
+                                            content = self.parse_n8n_streaming_chunk(
+                                                json_chunk
+                                            )
+                                            if content:
+                                                # Normalize escaped newlines to actual newlines (like non-streaming)
+                                                content = content.replace("\\n", "\n")
+
+                                                # Just accumulate content without processing think blocks yet
+                                                n8n_response += content
+
+                                                # Emit delta without think block processing
+                                                if __event_emitter__:
+                                                    await __event_emitter__(
+                                                        {
+                                                            "type": "chat:message:delta",
+                                                            "data": {
+                                                                "role": "assistant",
+                                                                "content": content,
+                                                            },
+                                                        }
+                                                    )
+                                    else:
+                                        # Handle plain text streaming (for smaller models)
+                                        # Process line by line for plain text
+                                        while "\n" in buffer:
+                                            line, buffer = buffer.split("\n", 1)
+                                            if line.strip():  # Only process non-empty lines
+                                                self.log.debug(
+                                                    f"Processing plain text line: {repr(line[:100])}"
+                                                )
+
+                                                # Normalize content
+                                                content = line.replace("\\n", "\n")
+                                                n8n_response += content + "\n"
+
+                                                # Emit delta for plain text
+                                                if __event_emitter__:
+                                                    await __event_emitter__(
+                                                        {
+                                                            "type": "chat:message:delta",
+                                                            "data": {
+                                                                "role": "assistant",
+                                                                "content": content + "\n",
+                                                            },
+                                                        }
+                                                    )
+
+                                # Process any remaining content in buffer (CRITICAL FIX)
+                                if buffer.strip():
+                                    self.log.debug(
+                                        f"Processing remaining buffer content: {repr(buffer[:100])}"
+                                    )
+
+                                    # Try to extract from mixed content first
+                                    remaining_content = (
+                                        self.extract_content_from_mixed_stream(buffer)
+                                    )
+
+                                    # If that doesn't work, use buffer as-is
+                                    if not remaining_content:
+                                        remaining_content = buffer.strip()
+
+                                    if remaining_content:
+                                        # Normalize escaped newlines to actual newlines (like non-streaming)
+                                        remaining_content = remaining_content.replace(
+                                            "\\n", "\n"
+                                        )
+
+                                        # Accumulate final buffer content
+                                        n8n_response += remaining_content
+
+                                        # Emit final buffer delta
+                                        if __event_emitter__:
+                                            await __event_emitter__(
+                                                {
+                                                    "type": "chat:message:delta",
+                                                    "data": {
+                                                        "role": "assistant",
+                                                        "content": remaining_content,
+                                                    },
+                                                }
+                                            )
+
+                                # NOW process all think blocks in the complete response
+                                if n8n_response and "<think>" in n8n_response.lower():
+                                    # Use regex to find and replace all think blocks at once
+                                    think_pattern = re.compile(
+                                        r"<think>\s*(.*?)\s*</think>",
+                                        re.IGNORECASE | re.DOTALL,
+                                    )
+
+                                    think_counter = 0
+
+                                    def replace_think_block(match):
+                                        nonlocal think_counter
+                                        think_counter += 1
+                                        thought_content = match.group(1).strip()
+                                        if thought_content:
+                                            completed_thoughts.append(thought_content)
+
+                                            # Format each line with > for blockquote while preserving formatting
+                                            quoted_lines = []
+                                            for line in thought_content.split("\n"):
+                                                quoted_lines.append(f"> {line}")
+                                            quoted_content = "\n".join(quoted_lines)
+
+                                            # Return details block with custom thought formatting
+                                            return f"""<details>
+                                            <summary>Thought {think_counter}</summary>
+
+                                            {quoted_content}
+
+                                            </details>"""
+                                        return ""
+
+                                    # Replace all think blocks with details blocks in the complete response
+                                    n8n_response = think_pattern.sub(
+                                        replace_think_block, n8n_response
+                                    )
+
+                                # ALWAYS emit final complete message (critical for UI update)
+                                if __event_emitter__:
+                                    # Ensure we have some response to show
+                                    if not n8n_response.strip():
+                                        n8n_response = "(Empty response received from N8N)"
+                                        self.log.warning(
+                                            "Empty response received from N8N, using fallback message"
+                                        )
+
+                                    # Add tool calls section if present
+                                    if intermediate_steps:
+                                        tool_calls_section = (
+                                            self._format_tool_calls_section(
+                                                intermediate_steps, for_streaming=False
+                                            )
+                                        )
+                                        if tool_calls_section:
+                                            n8n_response += tool_calls_section
+                                            self.log.info(
+                                                f"Added {len(intermediate_steps)} tool calls to response"
+                                            )
+
+                                    await __event_emitter__(
+                                        {
+                                            "type": "chat:message",
+                                            "data": {
+                                                "role": "assistant",
+                                                "content": n8n_response,
+                                            },
+                                        }
+                                    )
+                                    if completed_thoughts:
+                                        # Clear any thinking status indicator
+                                        await __event_emitter__(
+                                            {
+                                                "type": "status",
+                                                "data": {
+                                                    "action": "thinking",
+                                                    "done": True,
+                                                    "hidden": True,
+                                                },
+                                            }
+                                        )
+
+                                self.log.info(
+                                    f"Streaming completed successfully. Total response length: {len(n8n_response)}"
+                                )
+
+                            except Exception as e:
+                                self.log.error(f"Streaming error: {e}")
+
+                                # In case of streaming errors, try to emit whatever we have
+                                if n8n_response:
+                                    self.log.info(
+                                        f"Emitting partial response due to error: {len(n8n_response)} chars"
+                                    )
+                                    if __event_emitter__:
+                                        await __event_emitter__(
+                                            {
+                                                "type": "chat:message",
+                                                "data": {
+                                                    "role": "assistant",
+                                                    "content": n8n_response,
+                                                },
+                                            }
+                                        )
+                                else:
+                                    # If no response was accumulated, provide error message
+                                    error_msg = f"Streaming error occurred: {str(e)}"
+                                    n8n_response = error_msg
+                                    if __event_emitter__:
+                                        await __event_emitter__(
+                                            {
+                                                "type": "chat:message",
+                                                "data": {
+                                                    "role": "assistant",
+                                                    "content": error_msg,
+                                                },
+                                            }
+                                        )
+                            finally:
+                                await cleanup_response(response, session)
+
+                            # Update conversation with response
+                            body["messages"].append(
+                                {"role": "assistant", "content": n8n_response}
+                            )
+                            await self.emit_simple_status(
+                                __event_emitter__, "complete", "Streaming complete", True
+                            )
+                            return n8n_response
+                        else:
+                            # Fallback to non-streaming response (robust parsing)
+                            self.log.info(
+                                "Processing regular response from N8N (non-streaming)"
+                            )
+
+                            async def read_body_safely():
+                                text_body = None
+                                json_body = None
+                                lowered = content_type.lower()
+                                try:
+                                    # Read as text first (works for all content types)
+                                    text_body = await response.text()
+
+                                    # Try to parse as JSON regardless of content-type
+                                    # (N8N might return JSON with text/html content-type)
+                                    try:
+                                        json_body = json.loads(text_body)
+                                        self.log.debug(
+                                            f"Successfully parsed response body as JSON (content-type was: {content_type})"
+                                        )
+                                    except json.JSONDecodeError:
+                                        # If it starts with [{ or { it might be JSON wrapped in something
+                                        if text_body.strip().startswith(
+                                            "[{"
+                                        ) or text_body.strip().startswith("{"):
+                                            self.log.warning(
+                                                f"Response looks like JSON but failed to parse (content-type: {content_type})"
+                                            )
+                                        else:
+                                            self.log.debug(
+                                                f"Response is not JSON, will use as plain text (content-type: {content_type})"
+                                            )
+                                except Exception as e_inner:
+                                    self.log.error(
+                                        f"Error reading response body: {e_inner}"
+                                    )
+                                return json_body, text_body
+
+                            response_json, response_text = await read_body_safely()
+                            self.log.debug(f"Parsed JSON body: {response_json}")
+                            if response_json is None and response_text:
+                                snippet = (
+                                    (response_text[:300] + "...")
+                                    if len(response_text) > 300
+                                    else response_text
+                                )
+                                self.log.debug(f"Raw text body snippet: {snippet}")
+
+                            # Extract intermediateSteps from non-streaming response
+                            intermediate_steps = []
+                            if isinstance(response_json, list):
+                                # Handle array response format
+                                self.log.debug(
+                                    f"Response is an array with {len(response_json)} items"
+                                )
+                                for item in response_json:
+                                    if (
+                                        isinstance(item, dict)
+                                        and "intermediateSteps" in item
+                                    ):
+                                        steps = item.get("intermediateSteps", [])
+                                        intermediate_steps.extend(steps)
+                                        self.log.debug(
+                                            f"Found {len(steps)} intermediate steps in array item"
+                                        )
+                            elif isinstance(response_json, dict):
+                                # Handle single object response format
+                                self.log.debug(
+                                    f"Response is a dict with keys: {list(response_json.keys())}"
+                                )
+                                intermediate_steps = response_json.get(
+                                    "intermediateSteps", []
+                                )
+                                if intermediate_steps:
+                                    self.log.debug(
+                                        f"Found intermediateSteps field with {len(intermediate_steps)} items"
+                                    )
+                            else:
+                                self.log.debug(
+                                    f"Response is not JSON (type: {type(response_json)}), cannot extract intermediateSteps"
+                                )
+
+                            if intermediate_steps:
+                                self.log.info(
+                                    f"✓ Found {len(intermediate_steps)} intermediate steps in non-streaming response"
+                                )
+                            else:
+                                self.log.debug(
+                                    "No intermediate steps found in non-streaming response"
+                                )
+
+                            def extract_message(data) -> str:
+                                if data is None:
+                                    return ""
+                                if isinstance(data, dict):
+                                    # Prefer configured field
+                                    if self.valves.RESPONSE_FIELD in data and isinstance(
+                                        data[self.valves.RESPONSE_FIELD], (str, list)
+                                    ):
+                                        val = data[self.valves.RESPONSE_FIELD]
+                                        if isinstance(val, list):
+                                            return "\n".join(str(v) for v in val if v)
+                                        return str(val)
+                                    # Common generic keys fallback
+                                    for key in (
+                                        "content",
+                                        "text",
+                                        "output",
+                                        "answer",
+                                        "message",
+                                    ):
+                                        if key in data and isinstance(
+                                            data[key], (str, list)
+                                        ):
+                                            val = data[key]
+                                            return (
+                                                "\n".join(val)
+                                                if isinstance(val, list)
+                                                else str(val)
+                                            )
+                                    # Flatten simple dict of scalars
+                                    try:
+                                        flat = []
+                                        for k, v in data.items():
+                                            if isinstance(v, (str, int, float)):
+                                                flat.append(f"{k}: {v}")
+                                        return "\n".join(flat)
+                                    except Exception:
+                                        return ""
+                                if isinstance(data, list):
+                                    # Take first meaningful element
+                                    for item in data:
+                                        m = extract_message(item)
+                                        if m:
+                                            return m
+                                    return ""
+                                if isinstance(data, (str, int, float)):
+                                    return str(data)
+                                return ""
+
+                            n8n_response = extract_message(response_json)
+                            if not n8n_response and response_text:
+                                # Use raw text fallback (strip trailing whitespace only)
+                                n8n_response = response_text.rstrip()
+
+                            if not n8n_response:
+                                n8n_response = (
+                                    "(Received empty response or unknown format from N8N)"
+                                )
+
+                            # Post-process for <think> blocks (non-streaming mode)
+                            try:
+                                if n8n_response and "<think>" in n8n_response.lower():
+                                    # First, normalize escaped newlines to actual newlines
+                                    normalized_response = n8n_response.replace("\\n", "\n")
+
+                                    # Use case-insensitive patterns to find and replace each think block
+                                    think_pattern = re.compile(
+                                        r"<think>\s*(.*?)\s*</think>",
+                                        re.IGNORECASE | re.DOTALL,
+                                    )
+
+                                    think_counter = 0
+
+                                    def replace_think_block(match):
+                                        nonlocal think_counter
+                                        think_counter += 1
+                                        thought_content = match.group(1).strip()
+
+                                        # Format each line with > for blockquote while preserving formatting
+                                        quoted_lines = []
+                                        for line in thought_content.split("\n"):
+                                            quoted_lines.append(f"> {line}")
+                                        quoted_content = "\n".join(quoted_lines)
+
+                                        return f"""<details>
+                                        <summary>Thought {think_counter}</summary>
+
+                                        {quoted_content}
+
+                                        </details>"""
+
+                                    # Replace each <think>...</think> with its own details block
+                                    n8n_response = think_pattern.sub(
+                                        replace_think_block, normalized_response
+                                    )
+                            except Exception as post_e:
+                                self.log.debug(
+                                    f"Non-streaming thinking parse failed: {post_e}"
+                                )
+
+                            # Add tool calls section if present (non-streaming mode)
+                            if intermediate_steps:
+                                tool_calls_section = self._format_tool_calls_section(
+                                    intermediate_steps, for_streaming=False
+                                )
+                                if tool_calls_section:
+                                    n8n_response += tool_calls_section
+                                    self.log.info(
+                                        f"Added {len(intermediate_steps)} tool calls to non-streaming response"
+                                    )
+
+                            # Cleanup
+                            await cleanup_response(response, session)
+                            session = None
+
+                            # Append assistant message
+                            body["messages"].append(
+                                {"role": "assistant", "content": n8n_response}
+                            )
+
+                            await self.emit_simple_status(
+                                __event_emitter__, "complete", "Complete", True
+                            )
+                            return n8n_response  # Return string like streaming branch
+
+                    else:
+                        error_text = await response.text()
+                        self.log.error(
+                            f"N8N error: Status {response.status} - {error_text}"
+                        )
+                        await cleanup_response(response, session)
+
+                        # Parse error message for better user experience
+                        user_error_msg = f"N8N Error {response.status}"
+                        try:
+                            error_json = json.loads(error_text)
+                            if "message" in error_json:
+                                user_error_msg = f"N8N Error: {error_json['message']}"
+                            if "hint" in error_json:
+                                user_error_msg += f"\n\nHint: {error_json['hint']}"
+                        except:
+                            # If not JSON, use raw text but truncate if too long
+                            if error_text:
+                                truncated = (
+                                    error_text[:200] + "..."
+                                    if len(error_text) > 200
+                                    else error_text
+                                )
+                                user_error_msg = f"N8N Error {response.status}: {truncated}"
+
+                        # Return error as chat message string
+                        await self.emit_simple_status(
+                            __event_emitter__, "error", user_error_msg, True
+                        )
+                        return user_error_msg
+
+                except Exception as e:
+                    error_msg = f"Connection or processing error: {str(e)}"
+                    self.log.exception(error_msg)
+
+                    # Clean up session if it exists
+                    if session:
+                        await session.close()
+
+                    # Return error as chat message string
+                    await self.emit_simple_status(
+                        __event_emitter__,
+                        "error",
+                        error_msg,
+                        True,
+                    )
+                    return error_msg
+
+            # If no message is available alert user
+            else:
+                error_msg = "No messages found in the request body"
+                self.log.warning(error_msg)
+                await self.emit_simple_status(
+                    __event_emitter__,
+                    "error",
+                    error_msg,
+                    True,
+                )
+                return error_msg
+    ```
+
+    </details>
+
+7. Copy the "Production" webhook URL from the workflow set in step 6.
+
+8. Click on the gear icon and set the n8n_url to the production URL for the
+webhook you copied in a previous step.
+
+9. Toggle the function on and now it will be available in your model dropdown
+in the top left.  
+
+To open n8n, visit <http://localhost:5678/> in your browser.
+To open Open WebUI, visit <http://localhost:3000/>.
+
+With n8n, you have access to over 400 integrations and a suite of basic and
+advanced AI nodes such as:
 [AI Agent](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.agent/),
 [Text classifier](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.text-classifier/),
 and [Information Extractor](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.information-extractor/)
-nodes. To keep everything local, just remember to use the Ollama node for your
-language model and Qdrant as your vector store.
+nodes.  
+
+To keep everything local, use the Ollama node for your language model and Qdrant
+as your vector store.
 
 > [!NOTE]
-> This starter kit is designed to help you get started with self-hosted AI
-> workflows. While it’s not fully optimized for production environments, it
-> combines robust components that work well together for proof-of-concept
-> projects. You can customize it to meet your specific needs
+> AI-Suite is designed to help you get started with self-hosted AI
+> workflows. While it is not fully optimized for production environments, it
+> combines robust components that work well together for personal porjects.
+> Of course, you can further customize it to meet your specific needs.
 
 ## Upgrading
 
-To update all containers to their latest versions (n8n, Open WebUI, etc.), run these commands:
+To update all containers to their latest versions (n8n, Open WebUI, etc.),
+run these commands:
 
-```bash
+```powershell
 # Stop all services
-docker compose -p localai -f docker-compose.yml --profile <your-profile> down
+docker compose -p ai-suite -f docker-compose.yml --profile <your-profile> down
 
 # Pull latest versions of all containers
-docker compose -p localai -f docker-compose.yml --profile <your-profile> pull
+docker compose -p ai-suite -f docker-compose.yml --profile <your-profile> pull
 
 # Start services again with your desired profile
-python start_services.py --profile <your-profile>
+python suite_services.py --profile <your-profile>
 ```
 
-Replace `<your-profile>` with one of: `cpu`, `gpu-nvidia`, `gpu-amd`, or `none`.
+Replace `<your-profile>` with one: `cpu`, `gpu-nvidia`, `gpu-amd`, or `none`.
 
-Note: The `start_services.py` script itself does not update containers - it only restarts them or pulls them if you are downloading these containers for the first time. To get the latest versions, you must explicitly run the commands above.
+> [!NOTE]
+> The `suite_services.py` script itself does not update containers - it only
+> restarts them or pulls them if you are downloading these containers for the
+> first time. To get the latest versions, you must explicitly run the
+## Accessing local files
+
+Some **AI-Suite** functional modules require access to a project
+workspace, a shared data folder and/or its configuration file located
+on the Docker host. These resources are mounted from the host to the
+module container in the using a Docker compose _volume_ _bind mount_.
+
+<details>
+<summary>AI-Suite Docker Compose bind mounts</summary>
+
+```yaml
+<container>:
+   - <host path>:<container path>[:<read/write access>]
+```
+
+**n8n** creates a `shared` folder located at `/data/shared` - use this
+path in nodes that interact with the host filesystem. Additional folders
+include the `n8n-files` folder located at `/home/node/.n8n-files`,
+the `projects` folder located at `/home/node/projects` and the `data`
+folder located at `/data`. The host root path is `./n8n/data`.
+
+```yaml
+n8n:
+   - ./n8n/local-files:/home/node/.n8n-files
+   - ./n8n/data:/data
+   - ${PROJECTS_PATH:-./n8n/local-files}:/home/node/projects
+
+n8n-import:
+   - ./n8n/data:/data
+```
+
+**Open-WebUI MCPO** OpenAPI configuration file.
+
+```yaml
+open-webui-mcpo:
+   - ./open-webui/mcpo/config.json:/app/config.json
+```
+
+**Open-WebUI Filesystem** local project files access.
+
+```yaml
+open-webui-filesystem:
+   - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp 
+```
+
+**Open-WebUI Pipelines** shared files access.
+
+```yaml
+open-webui-pipelines:
+   - ./open-webui/piplines:/root/.pipelines
+```
+
+**Opencode** configuration file and local project files access.
+
+```yaml
+opencode:
+   - ./opencode/opencode.jsonc:/root/.config/opencode/opencode.jsonc
+   - ${PROJECTS_PATH:-./opencode}:/root/projects
+```
+
+**Flowise** shared files access.
+
+```yaml
+flowise:
+   - ./flowise:/root/.flowise
+```
+
+**SearXNG** shared files access.
+
+```yaml
+searxng:
+   - ./searxng:/etc/searxng:rw
+```
+
+**Caddy** configuration file and addond folder access.
+
+```yaml
+caddy:
+   - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+   - ./caddy/addons:/etc/caddy/addons:ro
+```
+
+</details>
+
+### Projects path environment variable
+
+You can use the `PROJECTS_PATH` environment variable to allow **n8n**,
+**Opencode**, and **Open-WebUI MCPO** access to your project files.
+During the installation process, if the key is not already present in
+your `.env` file, the key and value are written with the value set
+to `~/projects`.
+
+### n8n Nodes that interact with the local filesystem
+
+- [MCP Client](https://docs.docker.com/ai/mcp-catalog-and-toolkit/dynamic-mcp/)
+- [MCP Client (node)](https://modelcontextprotocol.io/docs/getting-started/intro/)
+- [Read/Write Files from Disk](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.filesreadwrite/)
+- [Local File Trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.localfiletrigger/)
+- [Execute Command](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.executecommand/)
 
 ## Troubleshooting
 
@@ -326,41 +2086,43 @@ Here are solutions to common issues you might encounter:
 
 ### Supabase Issues
 
-- **Supabase Pooler Restarting**: If the supabase-pooler container keeps restarting itself, follow the instructions in [this GitHub issue](https://github.com/supabase/supabase/issues/30210#issuecomment-2456955578).
+- **Supabase Pooler Restarting**: If the supabase-pooler container keeps
+  restarting itself, follow the instructions in [this GitHub issue](https://github.com/supabase/supabase/issues/30210#issuecomment-2456955578).
 
-- **Supabase Analytics Startup Failure**: If the supabase-analytics container fails to start after changing your Postgres password, delete the folder `supabase/docker/volumes/db/data`.
+- **Supabase Analytics Startup Failure**: If the supabase-analytics container
+  fails to start after changing your Postgres password, delete the folder `supabase/docker/volumes/db/data`.
 
-- **If using Docker Desktop**: Go into the Docker settings and make sure "Expose daemon on tcp://localhost:2375 without TLS" is turned on
+- **If using Docker Desktop**: Go into the Docker settings and make sure
+  "Expose daemon on tcp://localhost:2375 without TLS" is turned on
 
-- **Supabase Service Unavailable** - Make sure you don't have an "@" character in your Postgres password! If the connection to the kong container is working (the container logs say it is receiving requests from n8n) but n8n says it cannot connect, this is generally the problem from what the community has shared. Other characters might not be allowed too, the @ symbol is just the one I know for sure!
+- **Supabase Service Unavailable** - Make sure you don't have an "@" character
+  in your Postgres password! If the connection to the kong container is working
+  (the container logs say it is receiving requests from n8n) but n8n says it
+  cannot connect, this is generally the problem from what the community has
+  shared. Other characters might not be allowed too, the @ symbol is just the
+  one I know for sure!
 
-- **SearXNG Restarting**: If the SearXNG container keeps restarting, run the command "chmod 755 searxng" within the local-ai-packaged folder so SearXNG has the permissions it needs to create the uwsgi.ini file.
+- **SearXNG Restarting**: If the SearXNG container keeps restarting, run the
+  command "chmod 755 searxng" within the ai-suite folder so SearXNG has the
+  permissions it needs to create the uwsgi.ini file.
 
-- **Files not Found in Supabase Folder** - If you get any errors around files missing in the supabase/ folder like .env, docker/docker-compose.yml, etc. this most likely means you had a "bad" pull of the Supabase GitHub repository when you ran the start_services.py script. Delete the supabase/ folder within the Local AI Package folder entirely and try again.
+- **Files not Found in Supabase Folder** - If you get any errors around files
+  missing in the supabase/ folder like .env, docker/docker-compose.yml, etc. This
+  most likely means you had a "bad" pull of the Supabase GitHub repository when
+  you ran the suite_services.py script. Delete the supabase/ folder within the
+  Local AI Package folder entirely and try again.
 
 ### GPU Support Issues
 
-- **Windows GPU Support**: If you're having trouble running Ollama with GPU support on Windows with Docker Desktop:
+- **Windows GPU Support**: If you're having trouble running Ollama with GPU
+support on Windows with Docker Desktop:
   1. Open Docker Desktop settings
-  2. Enable WSL 2 backend
-  3. See the [Docker GPU documentation](https://docs.docker.com/desktop/features/gpu/) for more details
+  2. Ensure 'Enable WSL2 backend' is enabled
+  3. See the [Docker GPU documentation](https://docs.docker.com/desktop/features/gpu/)
+     for more details
 
-- **Linux GPU Support**: If you're having trouble running Ollama with GPU support on Linux, follow the [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.md).
-
-## 👓 Recommended reading
-
-n8n is full of useful content for getting started quickly with its AI concepts
-and nodes. If you run into an issue, go to [support](#support).
-
-- [AI agents for developers: from theory to practice with n8n](https://blog.n8n.io/ai-agents/)
-- [Tutorial: Build an AI workflow in n8n](https://docs.n8n.io/advanced-ai/intro-tutorial/)
-- [Langchain Concepts in n8n](https://docs.n8n.io/advanced-ai/langchain/langchain-n8n/)
-- [Demonstration of key differences between agents and chains](https://docs.n8n.io/advanced-ai/examples/agent-chain-comparison/)
-- [What are vector databases?](https://docs.n8n.io/advanced-ai/examples/understand-vector-databases/)
-
-## 🎥 Video walkthrough
-
-- [Cole's Guide to the Local AI Starter Kit](https://youtu.be/pOsO40HSbOo)
+- **Linux GPU Support**: If you're having trouble running Ollama with GPU
+support on Linux, follow the [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.md).
 
 ## 🛍️ More AI templates
 
@@ -369,39 +2131,17 @@ gallery**](https://n8n.io/workflows/?categories=AI). From each workflow,
 select the **Use workflow** button to automatically import the workflow into
 your local n8n instance.
 
-### Learn AI key concepts
+## 👓 Recommended reading
 
-- [AI Agent Chat](https://n8n.io/workflows/1954-ai-agent-chat/)
-- [AI chat with any data source (using the n8n workflow too)](https://n8n.io/workflows/2026-ai-chat-with-any-data-source-using-the-n8n-workflow-tool/)
-- [Chat with OpenAI Assistant (by adding a memory)](https://n8n.io/workflows/2098-chat-with-openai-assistant-by-adding-a-memory/)
-- [Use an open-source LLM (via HuggingFace)](https://n8n.io/workflows/1980-use-an-open-source-llm-via-huggingface/)
-- [Chat with PDF docs using AI (quoting sources)](https://n8n.io/workflows/2165-chat-with-pdf-docs-using-ai-quoting-sources/)
-- [AI agent that can scrape webpages](https://n8n.io/workflows/2006-ai-agent-that-can-scrape-webpages/)
+Useful content for deeper understanding AI concepts.
 
-### Local AI templates
-
-- [Tax Code Assistant](https://n8n.io/workflows/2341-build-a-tax-code-assistant-with-qdrant-mistralai-and-openai/)
-- [Breakdown Documents into Study Notes with MistralAI and Qdrant](https://n8n.io/workflows/2339-breakdown-documents-into-study-notes-using-templating-mistralai-and-qdrant/)
-- [Financial Documents Assistant using Qdrant and](https://n8n.io/workflows/2335-build-a-financial-documents-assistant-using-qdrant-and-mistralai/) [ Mistral.ai](http://mistral.ai/)
-- [Recipe Recommendations with Qdrant and Mistral](https://n8n.io/workflows/2333-recipe-recommendations-with-qdrant-and-mistral/)
-
-## Tips & tricks
-
-### Accessing local files
-
-The self-hosted AI starter kit will create a shared folder (by default,
-located in the same directory) which is mounted to the n8n container and
-allows n8n to access files on disk. This folder within the n8n container is
-located at `/data/shared` -- this is the path you’ll need to use in nodes that
-interact with the local filesystem.
-
-**Nodes that interact with the local filesystem**
-
-- [Read/Write Files from Disk](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.filesreadwrite/)
-- [Local File Trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.localfiletrigger/)
-- [Execute Command](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.executecommand/)
+- [AI agents for developers: from theory to practice with n8n](https://blog.n8n.io/ai-agents/)
+- [Tutorial: Build an AI workflow in n8n](https://docs.n8n.io/advanced-ai/intro-tutorial/)
+- [Langchain Concepts in n8n](https://docs.n8n.io/advanced-ai/langchain/langchain-n8n/)
+- [Demonstration of key differences between agents and chains](https://docs.n8n.io/advanced-ai/examples/agent-chain-comparison/)
+- [What are vector databases?](https://docs.n8n.io/advanced-ai/examples/understand-vector-databases/)
 
 ## 📜 License
 
-This project (originally created by the n8n team, link at the top of the README) is licensed under the Apache License 2.0 - see the
-[LICENSE](LICENSE) file for details.
+This project (originally created by the n8n team, link at the top of the README)
+is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

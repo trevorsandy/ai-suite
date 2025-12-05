@@ -1,5 +1,5 @@
 {
-  "name": "Get Postgres Tables",
+  "name": "V4 Get Postgres Tables",
   "nodes": [
     {
       "parameters": {
@@ -116,7 +116,7 @@
       ]
     }
   },
-  "active": true,
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },

@@ -1,0 +1,8 @@
+{
+  "no-inline-html": {
+    "allowed_elements": [ "details", "summary" ]
+  },
+  "line-length": {
+    "code_blocks": false
+  }
+}
