@@ -24,6 +24,9 @@ privately interact with your local models and N8N agents
 ✅ [**Ollama**](https://ollama.com/) - Cross-platform LLM platform to install
 and run the latest local LLMs
 
+✅ [**Supabase**](https://supabase.com/) - Open source database as a service,
+most widely used database for AI agents
+
 ✅ [**Flowise**](https://flowiseai.com/) - No/low code AI agent builder that
 pairs very well with n8n
 
@@ -31,15 +34,24 @@ pairs very well with n8n
 store with an comprehensive API.
 
 ✅ [**PostgreSQL**](https://www.postgresql.org/) -  Workhorse of the Data
-Engineering world, handles large amounts of data safely.
+Engineering world, backend for Langfuse.
 
-✅ [**Supabase**](https://supabase.com/) - Open source database as a service,
-most widely used database for AI agents
+✅ [**Neo4j**](https://neo4j.com/) - Knowledge graph engine that powers tools
+like GraphRAG, LightRAG, and Graphiti.
+
+✅ [**SearXNG**](https://searxng.org/) - Open source internet metasearch engine
+, aggregates results from up to 229 search services.
+
+✅ [**Langfuse**](https://langfuse.com/) - Open source LLM engineering platform
+for agent observability
+
+✅ [**Caddy**](https://caddyserver.com/) - Managed HTTPS/TLS for custom domains.
 
 ## Prerequisites
 
 Before you begin, make sure you have the following software installed:
 
+- [Python](https://www.python.org/downloads/) - Required to run the setup script
 - [Git/GitHub Desktop](https://desktop.github.com/) - For easy repository management.
 - [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) -
 Required to setup and run all ai-suite services.
@@ -206,6 +218,85 @@ Additionally, after you see "Editor is now accessible via: <http://localhost:567
 python start_services.py --profile cpu
 ```
 
+### The environment argument
+
+The `start_services.py` script supports a **private** (default) and **public**
+environment argument:
+
+- **private:** you are deploying the stack in a safe environment, all AI-Suite
+ports are accessible
+- **public:** the stack is deployed in a public environment, all AI-Suite ports
+except _80_ and _443_ are closed
+
+The AI-Suite stack is initialized with...
+
+```bash
+python start_services.py --profile gpu-nvidia --environment private
+```
+
+which is equal to being initialized with:
+
+```bash
+python start_services.py --profile gpu-nvidia
+```
+
+## Deploying to the Cloud
+
+### Prerequisites for the below steps
+
+- Linux machine (preferably Unbuntu) with Nano, Git, and Docker installed
+
+### Extra steps
+
+Before running the above commands to pull the repo and install everything:
+
+> [!WARNING]
+> ufw does not shield ports published by docker, because the iptables rules
+> configured by Docker are analyzed before those configured by ufw. There is a
+> solution to change this behavior, but that is out of scope for this project.
+> Just make sure that all traffic runs through the Caddy service via port _443_.
+> Port _80_ should only be used to redirect to port _443_.
+
+1. Run the commands as root to open up the necessary ports:
+
+    ```bash
+    ufw enable
+    ufw allow 80 && ufw allow 443
+    ufw reload
+    ```
+
+2. Run the `start_services.py` script with the environment argument **public**
+   to indicate you are going to run the package in a public environment. The
+   script will make sure that all ports, except for _80_ and _443_, are closed
+   down, e.g.
+
+   ```bash
+   python3 start_services.py --profile gpu-nvidia --environment public
+   ```
+
+3. Set up A records for your DNS provider to point your subdomains you'll set
+   up in the .env file for Caddy to the IP address of your cloud instance.
+
+   For example, A record to point n8n to [cloud instance IP] for n8n.yourdomain.com
+
+> [!NOTE]
+> If you are using a cloud machine without the "docker compose" command
+> available by default such as a Ubuntu GPU instance on DigitalOcean, run these
+> commands before running start_services.py:
+
+<details>
+<summary>Docker Compose setup commands</summary>
+  
+```bash
+DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\\" -f4)
+sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+```
+
+</details>
+
 ## ⚡️ Quick start and usage
 
 The main component of the self-hosted AI-Suite is a docker compose file
@@ -231,7 +322,8 @@ Use the settings specified below to upate Credentials.
 <!-- -->
 > [!NOTE]
 > If you are running OLLAMA on your Host, for the credential _Local Ollama
-> service_ set the base URL to <http://host.docker.internal:11434/>.
+> service_, set the base URL to <http://host.docker.internal:11434/> and set
+> _Local QdrantApi database_ to <http://host.docker.internal:6333/>.
 >
 > Don't use _localhost_ for the redirect URI, instead, use another domain.
 > It will still work!
@@ -471,6 +563,34 @@ Replace `<your-profile>` with one: `cpu`, `gpu-nvidia`, `gpu-amd`, or `none`.
 ## Troubleshooting
 
 Here are solutions to common issues you might encounter:
+
+### Supabase Issues
+
+- **Supabase Pooler Restarting**: If the supabase-pooler container keeps
+  restarting itself, follow the instructions in [this GitHub issue](https://github.com/supabase/supabase/issues/30210#issuecomment-2456955578).
+
+- **Supabase Analytics Startup Failure**: If the supabase-analytics container
+  fails to start after changing your Postgres password, delete the folder `supabase/docker/volumes/db/data`.
+
+- **If using Docker Desktop**: Go into the Docker settings and make sure
+  "Expose daemon on tcp://localhost:2375 without TLS" is turned on
+
+- **Supabase Service Unavailable** - Make sure you don't have an "@" character
+  in your Postgres password! If the connection to the kong container is working
+  (the container logs say it is receiving requests from n8n) but n8n says it
+  cannot connect, this is generally the problem from what the community has
+  shared. Other characters might not be allowed too, the @ symbol is just the
+  one I know for sure!
+
+- **SearXNG Restarting**: If the SearXNG container keeps restarting, run the
+  command "chmod 755 searxng" within the ai-suite folder so SearXNG has the
+  permissions it needs to create the uwsgi.ini file.
+
+- **Files not Found in Supabase Folder** - If you get any errors around files
+missing in the supabase/ folder like .env, docker/docker-compose.yml, etc. This
+most likely means you had a "bad" pull of the Supabase GitHub repository when
+you ran the start_services.py script. Delete the supabase/ folder within the
+Local AI Package folder entirely and try again.
 
 ### GPU Support Issues
 

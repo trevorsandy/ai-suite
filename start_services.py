@@ -58,8 +58,8 @@ def start_supabase(environment=None):
     """Start the Supabase services (using its compose file)."""
     print("Starting Supabase services...")
     cmd = ["docker", "compose", "-p", "ai-suite", "-f", "supabase/docker/docker-compose.yml"]
-    # if environment and environment == "public":
-    #     cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
+    if environment and environment == "public":
+        cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
     cmd.extend(["up", "-d"])
     run_command(cmd)
 
@@ -70,10 +70,10 @@ def start_ai_suite(profile=None, environment=None):
     if profile and profile != "none":
         cmd.extend(["--profile", profile])
     cmd.extend(["-f", "docker-compose.yml"])
-    # if environment and environment == "private":
-    #     cmd.extend(["-f", "docker-compose.override.private.yml"])
-    # if environment and environment == "public":
-    #     cmd.extend(["-f", "docker-compose.override.public.yml"])
+    if environment and environment == "private":
+        cmd.extend(["-f", "docker-compose.override.private.yml"])
+    if environment and environment == "public":
+        cmd.extend(["-f", "docker-compose.override.public.yml"])
     cmd.extend(["up", "-d"])
     run_command(cmd)
 
