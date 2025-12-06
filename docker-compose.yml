@@ -100,6 +100,19 @@ services:
       - open-webui
       - postgres
 
+  open-webui-filesystem:
+    image: open-webui-tools/filesystem
+    container_name: open-webui-filesystem
+    networks: ['ai-local']
+    build:
+      context: ./open-webui-tools/filesystem
+    ports:
+      - 127.0.0.1:8091:8091
+    expose:
+      - 8091/tcp
+    depends_on:
+      - open-webui
+
   n8n-import:
     <<: *service-n8n
     container_name: n8n-import
