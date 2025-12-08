@@ -217,15 +217,35 @@ def check_and_fix_docker_compose_for_searxng():
     except Exception as e:
         print(f"Error checking/modifying docker-compose.yml for SearXNG: {e}")
 
+# Treat Selfhosted Supavisor Pooler Keeps Restarting.
+# See: https://github.com/supabase/supabase/issues/30210
+def convert_supabase_pooler_line_endings():
+    """converting Windows line endings to Linux/Unix/MacOS line endings."""
+    system = platform.system()
+    if system == "Windows":
+        print("Converting supavisor pooler line endings...")
+        WINDOWS_LINE_ENDING = b'\r\n'
+        UNIX_LINE_ENDING = b'\n'
+        file_path = r"supabase/docker/volumes/pooler/pooler.exs"
+        with open(file_path, 'rb') as open_file:
+            content = open_file.read()
+        # Windows ➡ Unix
+        content = content.replace(WINDOWS_LINE_ENDING, UNIX_LINE_ENDING)
+        with open(file_path, 'wb') as open_file:
+            open_file.write(content)
+
 def main():
+    profiles = ['owui', 'owui-all', 'ai-all',
+                'cpu', 'gpu-nvidia', 'gpu-amd', 'none']
     parser = argparse.ArgumentParser(description='Start the AI-Suite and Supabase services.')
-    parser.add_argument('--profile', choices=['cpu', 'gpu-nvidia', 'gpu-amd', 'none'], default='cpu',
+    parser.add_argument('--profile', choices=profiles, default=['owui', 'cpu'],
                       help='Profile to use for Docker Compose (default: cpu)')
     parser.add_argument('--environment', choices=['private', 'public'], default='private',
                       help='Environment to use for Docker Compose (default: private)')
     args = parser.parse_args()
 
     clone_supabase_repo()
+    convert_supabase_pooler_line_endings()
     prepare_supabase_env()
 
     # Generate SearXNG secret key and check docker-compose.yml
