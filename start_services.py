@@ -238,6 +238,33 @@ def convert_supabase_pooler_line_endings():
         with open(file_path, 'wb') as open_file:
             open_file.write(content)
 
+def include_supabase_docker_compose(supabase=False):
+    """Add or remove supabase supabase_docker_compose_file"""
+    supabase_docker_compose_path = "supabase/docker/docker-compose.yml"
+    if not os.path.exists(supabase_docker_compose_path):
+        print(f"Error: Supabase Docker Compose file not found at {supabase_docker_compose_path}")
+        return
+    docker_compose_path = "docker-compose.yml"
+    if not os.path.exists(docker_compose_path):
+        print(f"Error: Docker Compose file not found at {docker_compose_path}")
+        return
+
+    try:
+        with open(docker_compose_path, 'r') as file:
+            content = file.read()
+        supabase_docker_compose_include = f"include:\n  - ./{supabase_docker_compose_path}\n\n"
+        if supabase and supabase_docker_compose_include not in content:
+            print(f"Including ./{supabase_docker_compose_path} to {docker_compose_path}...")
+            with open(docker_compose_path, 'w') as file:
+                file.write(supabase_docker_compose_include + content)
+        elif not supabase and supabase_docker_compose_include in content:
+            print(f"Excluding ./{supabase_docker_compose_path} from {docker_compose_path}...")
+            modified_content = content.replace(supabase_docker_compose_include, "")
+            with open(docker_compose_path, 'w') as file:
+                file.write(modified_content)
+    except Exception as e:
+        print(f"Error processing {docker_compose_path}: {e}")
+
 def main():
     profiles = ['owui', 'owui-all', 'ai-all',
                 'cpu', 'gpu-nvidia', 'gpu-amd', 'none']
@@ -251,6 +278,9 @@ def main():
     clone_supabase_repo()
     convert_supabase_pooler_line_endings()
     prepare_supabase_env()
+
+    # Include or exclude supabase_docker_compose in docker-compose.yml
+    include_supabase_docker_compose(supabase)
 
     # Generate SearXNG secret key and check docker-compose.yml
     generate_searxng_secret_key()
