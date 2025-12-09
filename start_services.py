@@ -2,9 +2,9 @@
 """
 start_services.py
 
-This script starts the Supabase stack first, waits for it to initialize, and then starts
-the AI-Suite stack. Both stacks use the same Docker Compose project name ("ai-suite")
-so they appear together in Docker Desktop.
+This script starts the Supabase stack first - if specified, waits for it to initialize,
+and then starts the AI-Suite stack. Both stacks use the same Docker Compose services name
+("ai-suite") so they appear grouped together in Docker Desktop.
 """
 
 import os
