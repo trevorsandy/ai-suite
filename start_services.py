@@ -192,23 +192,27 @@ def check_and_fix_docker_compose_for_searxng():
                     is_first_run = True
             else:
                 print("No running SearXNG container found - assuming first run")
+                is_first_run = True
         except Exception as e:
             print(f"Error checking Docker container: {e} - assuming first run")
 
-        if is_first_run and "cap_drop: - ALL" in content:
-            print("First run detected for SearXNG. Temporarily removing 'cap_drop: - ALL' directive...")
+        cap_drop = "cap_drop:\n      - ALL\n"
+        cap_drop_comment = "   #cap_drop:\n   #  - ALL  # Temporarily commented out for first run\n"
+
+        if is_first_run and cap_drop in content:
+            print(f"First run detected for SearXNG. Temporarily commenting {cap_drop} directive...")
             # Temporarily comment out the cap_drop line
-            modified_content = content.replace("cap_drop: - ALL", "# cap_drop: - ALL  # Temporarily commented out for first run")
+            modified_content = content.replace(cap_drop, cap_drop_comment)
 
             # Write the modified content back
             with open(docker_compose_path, 'w') as file:
                 file.write(modified_content)
 
-            print("Note: After the first run completes successfully, you should re-add 'cap_drop: - ALL' to docker-compose.yml for security reasons.")
-        elif not is_first_run and "# cap_drop: - ALL  # Temporarily commented out for first run" in content:
-            print("SearXNG has been initialized. Re-enabling 'cap_drop: - ALL' directive for security...")
+            print(f"Note: After the first run completes successfully, uncomment {cap_drop} in docker-compose.yml for security.")
+        elif not is_first_run and cap_drop_comment in content:
+            print(f"SearXNG has been initialized. Uncommenting {cap_drop} directive for security...")
             # Uncomment the cap_drop line
-            modified_content = content.replace("# cap_drop: - ALL  # Temporarily commented out for first run", "cap_drop: - ALL")
+            modified_content = content.replace(cap_drop_comment, cap_drop)
 
             # Write the modified content back
             with open(docker_compose_path, 'w') as file:
