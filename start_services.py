@@ -312,7 +312,7 @@ def set_variable_in_env_file(key: str | None , value: str | None, header: str | 
             dotenv.set_key(dotenv_file, variable, value)
 
 def main():
-    profiles = ['open-webui', 'open-webui-fs', 'open-webui-pipe', 'n8n', 'flowise', 'supabase',
+    profiles = ['open-webui', 'open-webui-mcpo', 'open-webui-pipe', 'n8n', 'flowise', 'supabase',
                 'searxng', 'langfuse', 'neo4j', 'caddy', 'open-webui-all', 'n8n-all',
                 'ai-all', 'cpu', 'gpu-nvidia', 'gpu-amd', 'none']
     parser = argparse.ArgumentParser(
