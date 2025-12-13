@@ -345,6 +345,36 @@ def include_supabase_docker_compose(supabase=False):
     except Exception as e:
         print(f"Error processing {docker_compose_path}: {e}")
 
+def update_postgres_db_settings(supabase=False):
+    """Set POSTGRES_HOST in .env file and postgres volume in Docker Compose"""
+    old_host = 'POSTGRES_HOST=postgres' if supabase else 'POSTGRES_HOST=db'    
+    file_path = os.path.join(".env")
+    try:
+        with open(file_path, 'r') as file:
+            content = file.read()
+        if old_host in content:
+            new_host = 'POSTGRES_HOST=db' if supabase else 'POSTGRES_HOST=postgres'
+            print(f"Set POSTGRES_HOST in {file_path} from {old_host} to {new_host}...")
+            modified_content = content.replace(old_host, new_host)
+            with open(file_path, 'w') as file:
+                file.write(modified_content)
+    except Exception as e:
+        print(f"Error updating POSTGRES_HOST in {file_path}: {e}")
+
+    old_vol = 'postgres_data:' if supabase else 'langfuse_postgres_data:'    
+    file_path = os.path.join("docker-compose.yml")
+    try:
+        with open(file_path, 'r') as file:
+            content = file.read()
+        if old_vol in content:
+            new_vol = 'langfuse_postgres_data:' if supabase else 'postgres_data:'
+            print(f"Set Ppostgres volume in {file_path} from {old_vol} to {new_vol}...")
+            modified_content = content.replace(old_vol, new_vol)
+            with open(file_path, 'w') as file:
+                file.write(modified_content)
+    except Exception as e:
+        print(f"Error updating postgres volume in {file_path}: {e}")
+
 def set_variable_in_env_file(key: str | None , value: str | None, header: str | None):
     """Set an environment variable and optional header in .env file"""
     dotenv_file = dotenv.find_dotenv()
@@ -387,6 +417,10 @@ def main():
         args.profile.remove('supabase')
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
+
+    update_postgres_db_settings(supabase)
+
+    if supabase:
         prepare_supabase_env()
 
     # Include or exclude supabase_docker_compose in docker-compose.yml

@@ -6,7 +6,6 @@ volumes:
   open_webui_data:
   open_webui_pipelines_data:
   postgres_data:
-  langfuse_postgres_data:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
@@ -18,10 +17,10 @@ x-n8n: &service-n8n
   image: n8nio/n8n:latest
   environment:
     - DB_TYPE=postgresdb
-    - DB_POSTGRESDB_HOST=db
-    - DB_POSTGRESDB_USER=postgres
+    - DB_POSTGRESDB_HOST=${POSTGRES_HOST}
+    - DB_POSTGRESDB_USER=${POSTGRES_USER}
     - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-    - DB_POSTGRESDB_DATABASE=postgres
+    - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
     - N8N_DIAGNOSTICS_ENABLED=false
     - N8N_PERSONALIZATION_ENABLED=false
     - N8N_ENCRYPTION_KEY
@@ -155,23 +154,6 @@ services:
       - ./opencode/opencode.jsonc:/root/.config/opencode/opencode.jsonc
       - ${PROJECTS_PATH:-./opencode}:/root/projects
 
-  flowise:
-    profiles: ["flowise", "n8n-all", "ai-all"]
-    image: flowiseai/flowise
-    restart: unless-stopped
-    container_name: flowise
-    expose:
-      - 3001/tcp
-    environment:
-      - PORT=3001
-      - FLOWISE_USERNAME
-      - FLOWISE_PASSWORD
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./flowise:/root/.flowise
-    entrypoint: /bin/sh -c "sleep 3; flowise start"
-
   n8n-import:
     profiles: ["n8n", "n8n-all", "ai-all"]
     <<: *service-n8n
@@ -204,18 +186,18 @@ services:
     container_name: postgres
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ['CMD-SHELL', 'pg_isready -h ${POSTGRES_HOST} -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 3s
       timeout: 3s
       retries: 10
     expose:
       - 5432/tcp
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
-      - langfuse_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
   qdrant:
     profiles: ["n8n", "n8n-all", "ai-all"]
@@ -227,6 +209,23 @@ services:
       - 6334/tcp
     volumes:
       - qdrant_data:/qdrant/storage
+
+  flowise:
+    profiles: ["flowise", "ai-all"]
+    image: flowiseai/flowise
+    restart: unless-stopped
+    container_name: flowise
+    expose:
+      - 3001/tcp
+    environment:
+      - PORT=3001
+      - FLOWISE_USERNAME
+      - FLOWISE_PASSWORD
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./flowise:/root/.flowise
+    entrypoint: /bin/sh -c "sleep 3; flowise start"
 
   neo4j:
     profiles: ["neo4j", "ai-all"]
