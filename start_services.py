@@ -13,7 +13,7 @@ import shutil
 import time
 import argparse
 import platform
-import sys
+import dotenv
 
 def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
@@ -46,12 +46,14 @@ def prepare_supabase_env():
     print("Copying .env in root to .env in supabase/docker...")
     shutil.copyfile(env_example_path, env_path)
 
-def stop_existing_containers(profile=None):
-    print("Stopping and removing existing containers for the unified project 'ai-suite'...")
+def stop_ai_suite(profile=None):
+    """Stop the AI-Suite containers (using its compose file) for the specified profiles."""
+    print("Stopping and removing unified project 'ai-suite' containers for the specified profiles...")
     cmd = ["docker", "compose", "-p", "ai-suite"]
-    if profile and profile != "none":
-        cmd.extend(["--profile", profile])
-    cmd.extend(["-f", "docker-compose.yml", "down"])
+    if profile:
+        for option in profile:
+            cmd.extend(["--profile", option])
+    cmd.extend(["-f", "docker-compose.yml", "down", "--remove-orphans"])
     run_command(cmd)
 
 def start_supabase(environment=None):
@@ -60,21 +62,24 @@ def start_supabase(environment=None):
     cmd = ["docker", "compose", "-p", "ai-suite", "-f", "supabase/docker/docker-compose.yml"]
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
-    cmd.extend(["up", "-d"])
+    cmd.extend(["up", "-d", "--remove-orphans"])
     run_command(cmd)
 
 def start_ai_suite(profile=None, environment=None):
-    """Start the AI-Suite services (using its compose file)."""
-    print("Starting AI-Suite services...")
+    """Start the AI-Suite services (using its compose file) for the specified profiles."""
+    print("Starting unified project 'ai-suite' services for the specified profiles...")
     cmd = ["docker", "compose", "-p", "ai-suite"]
-    if profile and profile != "none":
-        cmd.extend(["--profile", profile])
+    if profile:
+        for option in profile:
+            cmd.extend(["--profile", option])
+    else:
+        cmd.extend(["--profile", 'open-webui'])
     cmd.extend(["-f", "docker-compose.yml"])
     if environment and environment == "private":
         cmd.extend(["-f", "docker-compose.override.private.yml"])
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.yml"])
-    cmd.extend(["up", "-d"])
+    cmd.extend(["up", "-d", "--remove-orphans"])
     run_command(cmd)
 
 def generate_searxng_secret_key():
@@ -241,7 +246,7 @@ def convert_supabase_pooler_line_endings():
 def include_supabase_docker_compose(supabase=False):
     """Add or remove supabase supabase_docker_compose_file"""
     supabase_docker_compose_path = "supabase/docker/docker-compose.yml"
-    if not os.path.exists(supabase_docker_compose_path):
+    if not os.path.exists(supabase_docker_compose_path) and supabase:
         print(f"Error: Supabase Docker Compose file not found at {supabase_docker_compose_path}")
         return
     docker_compose_path = "docker-compose.yml"
@@ -254,7 +259,7 @@ def include_supabase_docker_compose(supabase=False):
             content = file.read()
         supabase_docker_compose_include = f"include:\n  - ./{supabase_docker_compose_path}\n\n"
         if supabase and supabase_docker_compose_include not in content:
-            print(f"Including ./{supabase_docker_compose_path} to {docker_compose_path}...")
+            print(f"Including ./{supabase_docker_compose_path} in {docker_compose_path}...")
             with open(docker_compose_path, 'w') as file:
                 file.write(supabase_docker_compose_include + content)
         elif not supabase and supabase_docker_compose_include in content:
@@ -265,35 +270,80 @@ def include_supabase_docker_compose(supabase=False):
     except Exception as e:
         print(f"Error processing {docker_compose_path}: {e}")
 
+def set_variable_in_env_file(key: str | None , value: str | None, header: str | None):
+    """Set an environment variable and optional header in .env file"""
+    dotenv_file = dotenv.find_dotenv()
+    try:
+        with open(dotenv_file, 'r') as file:
+            lines = file.readlines()
+        for line in lines:
+            line = line.strip().split('=')
+            if len(line) > 1 and key == line[0].strip():
+                return
+    except FileNotFoundError:
+        print(f"File '{dotenv_file}' not found.")
+
+    if dotenv.load_dotenv(dotenv_file):
+        variable = " ".join(filter(None, [header, key])) if header else key
+        print(f"Set default {key} in {dotenv_file} file...")
+        if variable is not None and value is not None:
+            dotenv.set_key(dotenv_file, variable, value)
+
 def main():
-    profiles = ['owui', 'owui-all', 'ai-all',
-                'cpu', 'gpu-nvidia', 'gpu-amd', 'none']
-    parser = argparse.ArgumentParser(description='Start the AI-Suite and Supabase services.')
-    parser.add_argument('--profile', choices=profiles, default=['owui', 'cpu'],
-                      help='Profile to use for Docker Compose (default: cpu)')
+    profiles = ['open-webui', 'open-webui-fs', 'open-webui-pipe', 'n8n', 'flowise', 'supabase',
+                'searxng', 'langfuse', 'neo4j', 'caddy', 'open-webui-all', 'n8n-all',
+                'ai-all', 'cpu', 'gpu-nvidia', 'gpu-amd', 'none']
+    parser = argparse.ArgumentParser(
+        description='Start the AI-Suite and Supabase services.')
+    parser.add_argument('--profile', nargs='+', choices=profiles, default=['open-webui'],
+                        help='Profile(s) to use for Docker Compose (default: open-webui '
+                             '- Ollama is running in the Host)')
     parser.add_argument('--environment', choices=['private', 'public'], default='private',
-                      help='Environment to use for Docker Compose (default: private)')
+                        help='Environment is used by Docker Compose to expose or restrict '
+                             'communication ports (default: private)')
     args = parser.parse_args()
 
-    clone_supabase_repo()
-    convert_supabase_pooler_line_endings()
-    prepare_supabase_env()
+    if (len(args.profile) == 1 and args.profile[0] == 'none'):
+        args.profile[0] = 'open-webui'
+
+    supabase = \
+        any(profile for profile in args.profile if profile == 'supabase')
+    if supabase:
+        args.profile.remove('supabase')
+        clone_supabase_repo()
+        convert_supabase_pooler_line_endings()
+        prepare_supabase_env()
 
     # Include or exclude supabase_docker_compose in docker-compose.yml
     include_supabase_docker_compose(supabase)
 
     # Generate SearXNG secret key and check docker-compose.yml
-    generate_searxng_secret_key()
-    check_and_fix_docker_compose_for_searxng()
+    if any(profile for profile in args.profile if profile == 'searxng'):
+        generate_searxng_secret_key()
+        check_and_fix_docker_compose_for_searxng()
 
     stop_existing_containers(args.profile)
+    # Set default projects path
+    if any(profile for profile in args.profile if profile in ['opencode'] + filesystem_profiles):
+        key = "PROJECTS_PATH"
+        value = os.path.join(os.path.expanduser('~'), "projects")
+        header = " ".join(["\n############", "\n# Projects", "\n############\n\n"])
+        set_variable_in_env_file(key, value, header)
+
+    stop_ai_suite(args.profile)
 
     # Start Supabase first
-    start_supabase(args.environment)
+    if supabase:
+        start_supabase(args.environment)
+        # Give Supabase some time to initialize
+        print("Waiting for Supabase to initialize...")
+        time.sleep(10)
 
-    # Give Supabase some time to initialize
-    print("Waiting for Supabase to initialize...")
-    time.sleep(10)
+    # When arguments n8n and open-webui specified, remove open-webui
+    if any(profile for profile in args.profile if profile == 'n8n'):
+        if any(profile for profile in args.profile if profile == 'open-webui'):
+            print("Profiles n8n and open-webui detected - removing open-webui...")
+            args.profile.remove('open-webui')
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment)

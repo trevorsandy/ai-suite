@@ -2,18 +2,18 @@ include:
   - ./supabase/docker/docker-compose.yml
 
 volumes:
-  n8n_storage:
-  ollama_storage:
-  qdrant_storage:
-  open-webui:
-  caddy-data:
-  caddy-config:
-  valkey-data:
+  n8n_data:
+  ollama_data:
+  qdrant_data:
+  open_webui_data:
+  open_webui_pipelines_data:
   langfuse_postgres_data:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
-  open_webui_pipelines:
+  redis_valkey_data: 
+  caddy_data:
+  caddy_config_data:
 
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
@@ -45,51 +45,53 @@ x-ollama: &service-ollama
     - OLLAMA_KV_CACHE_TYPE=q8_0
     - OLLAMA_MAX_LOADED_MODELS=2
   volumes:
-    - ollama_storage:/root/.ollama
+    - ollama_data:/root/.ollama
 
 x-init-ollama: &init-ollama
   image: ollama/ollama:latest
   container_name: ollama-pull-llama
   volumes:
-    - ollama_storage:/root/.ollama
+    - ollama_data:/root/.ollama
   entrypoint: /bin/sh
   environment:
     - OLLAMA_HOST=ollama:11434
   command:
     - "-c"
-    - "sleep 3; ollama:11434 ollama pull qwen3:8b; ollama pull llama3.2; ollama pull nomic-embed-text"
+    - "sleep 3; ollama pull qwen3:8b; ollama pull llama3.2; ollama pull nomic-embed-text"
 
 name: ai-suite
 services:
   open-webui:
+    profiles: ["open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
     image: ghcr.io/open-webui/open-webui:main
     restart: unless-stopped
     container_name: open-webui
     expose:
       - 8080/tcp
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - host.docker.internal:host-gateway
     volumes:
-      - open-webui:/app/backend/data
+      - open_webui_data:/app/backend/data
     environment:
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-ollama:11434}
-      - CORS_ALLOW_ORIGIN=${CORS_ALLOW_ORIGIN:-'*'}
-      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-'*'}
+      - OLLAMA_BASE_URL
+      - CORS_ALLOW_ORIGIN
+      - FORWARDED_ALLOW_IPS
     env_file:
       - path: .env
         required: true
 
   open-webui-pipelines:
+    profiles: ["open-webui-pipe", "open-webui-all", "ai-all"]
     image: ghcr.io/open-webui/pipelines:main
     restart: unless-stopped
     container_name: open-webui-pipelines
     expose:
       - 9099/tcp
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - host.docker.internal:host-gateway
     volumes:
-      - open_webui_pipelines:/app/pipelines
-      - ./piplines:/root/.pipelines
+      - open_webui_pipelines_data:/app/pipelines
+      - ./open-webui/piplines:/root/.pipelines
     environment:
       - PIPELINES_API_KEY=0p3n-w3bu!
       - PIPELINES_DIR=/root/.pipelines
@@ -97,6 +99,7 @@ services:
       - open-webui
 
   open-webui-filesystem:
+    profiles: ["open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
     image: open-webui-tools/filesystem
     container_name: open-webui-filesystem
     build:
@@ -107,6 +110,7 @@ services:
       - open-webui
 
   flowise:
+    profiles: ["flowise", "n8n-all", "ai-all"]
     image: flowiseai/flowise
     restart: unless-stopped
     container_name: flowise
@@ -123,6 +127,7 @@ services:
     entrypoint: /bin/sh -c "sleep 3; flowise start"
 
   n8n-import:
+    profiles: ["n8n", "n8n-all", "ai-all"]
     <<: *service-n8n
     container_name: n8n-import
     entrypoint: /bin/sh
@@ -133,20 +138,22 @@ services:
       - ./n8n/data:/data
 
   n8n:
+    profiles: ["n8n", "n8n-all", "ai-all"]
     <<: *service-n8n
     container_name: n8n
     restart: unless-stopped
     expose:
       - 5678/tcp
     volumes:
-      - n8n_storage:/home/node/.n8n
+      - n8n_data:/home/node/.n8n
       - ./n8n/data:/data
-      - ./shared:/data/shared
+      - ./n8n/shared:/data/shared
     depends_on:
       n8n-import:
         condition: service_completed_successfully
 
   postgres:
+    profiles: ["n8n", "langfuse", "n8n-all", "ai-all"]
     image: postgres:${POSTGRES_VERSION:-18-alpine}
     container_name: postgres
     restart: unless-stopped
@@ -165,6 +172,7 @@ services:
       - langfuse_postgres_data:/var/lib/postgresql/data
 
   qdrant:
+    profiles: ["n8n", "n8n-all", "ai-all"]
     image: qdrant/qdrant
     container_name: qdrant
     restart: unless-stopped
@@ -172,9 +180,10 @@ services:
       - 6333/tcp
       - 6334/tcp
     volumes:
-      - qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
 
   neo4j:
+    profiles: ["neo4j", "ai-all"]
     image: neo4j:latest
     volumes:
         - ./neo4j/logs:/logs
@@ -186,10 +195,11 @@ services:
       - 7474/tcp
       - 7687/tcp
     environment:
-        - NEO4J_AUTH=${NEO4J_AUTH:-"neo4j/your_password"}
+        - NEO4J_AUTH=${NEO4J_AUTH:-"neo4j-user/password"}
     restart: always
 
   caddy:
+    profiles: ["caddy", "ai-all"]
     container_name: caddy
     image: docker.io/library/caddy:2-alpine
     restart: unless-stopped
@@ -204,8 +214,8 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy-addon:/etc/caddy/addons:ro
-      - caddy-data:/data:rw
-      - caddy-config:/config:rw
+      - caddy_data:/data:rw
+      - caddy_config_data:/config:rw
     environment:
       - N8N_HOSTNAME=${N8N_HOSTNAME:-":8001"}
       - WEBUI_HOSTNAME=${WEBUI_HOSTNAME:-":8002"}
@@ -227,6 +237,7 @@ services:
         max-file: "1"
 
   langfuse-worker:
+    profiles: ["langfuse", "ai-all"]
     image: langfuse/langfuse-worker:3
     restart: always
     depends_on: &langfuse-depends-on
@@ -285,6 +296,7 @@ services:
       REDIS_TLS_KEY: ${REDIS_TLS_KEY:-/certs/redis.key}
 
   langfuse-web:
+    profiles: ["langfuse", "ai-all"]
     image: langfuse/langfuse:3
     restart: always
     depends_on: *langfuse-depends-on
@@ -305,6 +317,7 @@ services:
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
 
   clickhouse:
+    profiles: ["langfuse", "ai-all"]
     image: clickhouse/clickhouse-server
     restart: always
     user: "101:101"
@@ -327,6 +340,7 @@ services:
       start_period: 1s
 
   minio:
+    profiles: ["langfuse", "ai-all"]
     image: minio/minio
     restart: always
     entrypoint: sh
@@ -348,6 +362,7 @@ services:
       start_period: 1s
 
   redis:
+    profiles: ["langfuse", "ai-all"]
     container_name: redis
     image: docker.io/valkey/valkey:8-alpine
     command: valkey-server --save 30 1 --loglevel warning
@@ -355,7 +370,7 @@ services:
     expose:
       - 6379/tcp
     volumes:
-      - valkey-data:/data
+      - redis_valkey_data:/data
     cap_drop:
       - ALL
     cap_add:
@@ -374,6 +389,7 @@ services:
       retries: 10
 
   searxng:
+    profiles: ["searxng", "ai-all"]
     container_name: searxng
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
