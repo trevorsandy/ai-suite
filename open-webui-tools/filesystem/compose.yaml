@@ -1,7 +1,0 @@
-services:
-  server:
-    build:
-      context: .
-    ports:
-      - 8091:8091
-

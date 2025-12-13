@@ -39,6 +39,28 @@ def clone_supabase_repo():
         run_command(["git", "pull"])
         os.chdir("..")
 
+def clone_open_webui_filesystem_tools_repo():
+    """Clone the Open-WebUI Filesystem Tools repository using sparse checkout if not already present."""
+    repo_path = os.path.join("open-webui", "tools", "servers")
+    if not os.path.exists(repo_path):
+        os.chdir("open-webui")
+        print("Cloning the Open-WebUI Filesystem Tools repository...")
+        run_command([
+            "git", "clone", "--filter=blob:none", "--no-checkout",
+            "https://github.com/open-webui/openapi-servers.git", "tools"
+        ])
+        os.chdir("tools")
+        run_command(["git", "sparse-checkout", "init", "--cone"])
+        run_command(["git", "sparse-checkout", "set", "servers/filesystem"])
+        run_command(["git", "checkout", "main"])
+        os.chdir("../../")
+    else:
+        repo_path = os.path.join("open-webui", "tools")
+        print("Open-WebUI Filesystem Tools repository already exists, updating...")
+        os.chdir(repo_path)
+        run_command(["git", "pull"])
+        os.chdir("../../")
+
 def prepare_supabase_env():
     """Copy .env to .env in supabase/docker."""
     env_path = os.path.join("supabase", "docker", ".env")
@@ -322,7 +344,11 @@ def main():
         generate_searxng_secret_key()
         check_and_fix_docker_compose_for_searxng()
 
-    stop_existing_containers(args.profile)
+    # Clone filesystem tool and functions repos
+    filesystem_profiles = ['open-webui', 'open-webui-all', 'n8n', 'n8n-all', 'ai-all']
+    if any(profile for profile in args.profile if profile in filesystem_profiles):
+        clone_open_webui_filesystem_tools_repo()
+
     # Set default projects path
     if any(profile for profile in args.profile if profile in ['opencode'] + filesystem_profiles):
         key = "PROJECTS_PATH"

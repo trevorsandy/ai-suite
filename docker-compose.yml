@@ -11,7 +11,7 @@ volumes:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
-  redis_valkey_data: 
+  redis_valkey_data:
   caddy_data:
   caddy_config_data:
 
@@ -80,6 +80,20 @@ services:
       - path: .env
         required: true
 
+  open-webui-filesystem:
+    profiles: ["open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
+    image: open-webui-tools/filesystem
+    restart: unless-stopped
+    container_name: open-webui-filesystem
+    build:
+      context: ./open-webui/tools/servers/filesystem
+    expose:
+      - 8091/tcp
+    depends_on:
+      - open-webui
+    volumes:
+      - ${PROJECTS_PATH:-./open-webui/shared}:/nonexistent/tmp
+
   open-webui-pipelines:
     profiles: ["open-webui-pipe", "open-webui-all", "ai-all"]
     image: ghcr.io/open-webui/pipelines:main
@@ -95,17 +109,6 @@ services:
     environment:
       - PIPELINES_API_KEY=0p3n-w3bu!
       - PIPELINES_DIR=/root/.pipelines
-    depends_on:
-      - open-webui
-
-  open-webui-filesystem:
-    profiles: ["open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
-    image: open-webui-tools/filesystem
-    container_name: open-webui-filesystem
-    build:
-      context: ./open-webui-tools/filesystem
-    expose:
-      - 8091/tcp
     depends_on:
       - open-webui
 

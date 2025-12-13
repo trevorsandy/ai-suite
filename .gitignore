@@ -1,6 +1,7 @@
 .env
 flowise/
 open-webui/piplines/
+open-webui/tools/
 n8n/shared/
 shared-backup/
 volumes/
