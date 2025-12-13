@@ -1,0 +1,29 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ollama/llama3.2",
+  "autoupdate": true,
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": {
+        "baseURL": "http://host.docker.internal:11434/v1"
+      },
+      "models": {
+        "llama3.2": {
+          "name": "Llama 3.2"
+        },
+        "qwen3:4b-q8_0": {
+          "name": "Qwen 3.4 4b q8_0"
+        }
+      }
+    }
+  },
+  "mcp": {
+    "MCP_DOCKER": {
+      "type": "remote",
+      "url": "http://host.docker.internal:8060/mcp",
+      "enabled": true
+    }
+  }  
+}
