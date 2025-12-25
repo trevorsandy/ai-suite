@@ -5,6 +5,7 @@ volumes:
   n8n_data:
   ollama_data:
   qdrant_data:
+  opencode_data:
   open_webui_data:
   open_webui_pipelines_data:
   langfuse_postgres_data:
@@ -82,7 +83,7 @@ services:
         required: true
 
   mcp-gateway:
-    profiles: ["open-webui-mcpo", "open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
+    profiles: ["open-webui-mcpo", "open-webui", "opencode", "open-webui-all", "n8n", "n8n-all", "ai-all"]
     image: docker/mcp-gateway
     container_name: mcp-gateway
     command:
@@ -131,6 +132,17 @@ services:
       - PIPELINES_DIR=/root/.pipelines
     depends_on:
       - open-webui
+
+  opencode:
+    profiles: ["opencode", "ai-all"]
+    container_name: opencode
+    image: ghcr.io/sst/opencode
+    stdin_open: true
+    tty: true
+    volumes:
+      - opencode_data:/root/.config/opencode
+      - ./opencode/opencode.jsonc:/root/.config/opencode/opencode.jsonc
+      - ${PROJECTS_PATH:-./opencode}:/root/projects
 
   flowise:
     profiles: ["flowise", "ai-all"]

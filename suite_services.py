@@ -530,7 +530,7 @@ def main():
     open_webui_utils_profiles = ['open-webui-mcpo', 'open-webui-pipe']
     open_webui_profiles = ['open-webui', 'open-webui-all']
     open_webui_all_profiles = open_webui_profiles + n8n_all_profiles
-    agent_all_profiles = open_webui_all_profiles
+    agent_all_profiles = open_webui_all_profiles + ['opencode']
     server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j', 'caddy']
     profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + ollama_profiles
     operations = ['stop', 'start', 'pause', 'unpause']
