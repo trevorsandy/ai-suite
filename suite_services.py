@@ -40,6 +40,30 @@ def clone_supabase_repo():
         run_command(["git", "pull"])
         os.chdir("..")
 
+def clone_open_webui_tools_filesystem_repo():
+    """Clone the Open-WebUI Filesystem Tools repository using sparse checkout if
+       not already present.
+    """
+    repo_path = os.path.join("open-webui", "tools", "servers")
+    if not os.path.exists(repo_path):
+        os.chdir("open-webui")
+        print("Cloning the Open-WebUI Tools Filesystem repository...")
+        run_command([
+            "git", "clone", "--filter=blob:none", "--no-checkout",
+            "https://github.com/open-webui/openapi-servers.git", "tools"
+        ])
+        os.chdir("tools")
+        run_command(["git", "sparse-checkout", "init", "--cone"])
+        run_command(["git", "sparse-checkout", "set", "servers/filesystem"])
+        run_command(["git", "checkout", "main"])
+        os.chdir("../../")
+    else:
+        repo_path = os.path.join("open-webui", "tools")
+        print("Open-WebUI Tools Filesystem repository already exists, updating...")
+        os.chdir(repo_path)
+        run_command(["git", "pull"])
+        os.chdir("../../")
+
 def prepare_supabase_env():
     """Copy .env to .env in supabase/docker."""
     env_path = os.path.join("supabase", "docker", ".env")
@@ -47,6 +71,25 @@ def prepare_supabase_env():
     print(f"Copying .env in root to {env_path}...")
     shutil.copyfile(env_source_path, env_path)
     
+def prepare_open_webui_tools_filesystem_env():
+    """Copy .env and write compose.yaml to open-webui/tools/servers/filesystem."""
+    env_path = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
+    env_source_path = os.path.join(".env")
+    print(f"Copying .env in root to {env_path}...")
+    shutil.copyfile(env_source_path, env_path)
+    docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")   
+    print(f"Writing {docker_compose_path}...")
+    with open(docker_compose_path, 'w') as f:
+        f.write("services:\n" \
+                "  open-webui-filesystem:\n" \
+                "    container_name: open-webui-filesystem\n" \
+                "    restart: unless-stopped\n" \
+                "    build:\n" \
+                "      context: .\n" \
+                "    ports:\n" \
+                "      - 8091:8091\n" \
+                "    volumes:\n" \
+                "      - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp")
 
 def stop_and_remove_ai_suite(profile=None):
     """Stop and remove AI-Suite containers (using its compose file) for the
@@ -91,6 +134,15 @@ def start_supabase(environment=None):
     """Start the Supabase services (using its compose file)."""
     print("Starting Supabase services...")
     cmd = ["docker", "compose", "-p", "ai-suite", "-f", "supabase/docker/docker-compose.yml"]
+    if environment and environment == "public":
+        cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
+    cmd.extend(["up", "-d", "--remove-orphans"])
+    run_command(cmd)
+
+def start_open_webui_tools_filesystem(environment=None):
+    """Start the Open-WebUI Tools Filesystem services (using its compose file)."""
+    print("Starting Open-WebUI Tools Filesystem services...")
+    cmd = ["docker", "compose", "-p", "ai-suite", "-f", "open-webui/tools/servers/filesystem/compose.yaml"]
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
     cmd.extend(["up", "-d", "--remove-orphans"])
@@ -413,6 +465,13 @@ def main():
         generate_searxng_secret_key()
         check_and_fix_docker_compose_for_searxng()
 
+    # Setup Open-WebUI Tools Filesystem repos
+    open_webui = \
+        any(profile for profile in args.profile if profile in client_profiles)
+    if open_webui:
+        clone_open_webui_tools_filesystem_repo()
+        prepare_open_webui_tools_filesystem_env()
+    
     stop_and_remove_ai_suite(args.profile)
 
     # Start Supabase first
@@ -421,6 +480,11 @@ def main():
         # Give Supabase some time to initialize
         print("Waiting for Supabase to initialize...")
         time.sleep(10)
+    
+    # Start Open-WebUI Tools Filesystem
+    if open_webui:
+        print("Starting Open-WebUI Tools Filesystem...")
+        start_open_webui_tools_filesystem(args.environment)
 
     # If arguments n8n and open-webui specified, remove open-webui.
     if any(profile for profile in args.profile if profile == 'n8n'):

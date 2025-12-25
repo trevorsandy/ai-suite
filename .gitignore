@@ -5,6 +5,7 @@ searxng/
 neo4j/
 caddy/
 open-webui/piplines/
+open-webui/tools/
 n8n/shared/
 shared-backup/
 volumes/
