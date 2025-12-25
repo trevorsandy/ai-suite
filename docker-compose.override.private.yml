@@ -7,13 +7,13 @@ services:
     ports:
       - 127.0.0.1:8080:8080
 
+  mcp-gateway:
+    ports:
+      - 127.0.0.1:8060:8060
+
   open-webui-pipelines:
     ports:
       - 127.0.0.1:9099:9099
-
-  open-webui-filesystem:
-    ports:
-      - 127.0.0.1:8091:8091
 
   n8n:
     ports:
