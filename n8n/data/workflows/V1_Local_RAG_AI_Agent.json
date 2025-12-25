@@ -1,5 +1,11 @@
 {
+  "updatedAt": "2025-12-16T02:17:23.550Z",
+  "createdAt": "2025-12-16T01:06:34.192Z",
+  "id": "vTN9y2dLXqTiDfPT",
   "name": "V1 Local RAG AI Agent",
+  "description": null,
+  "active": false,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {},
@@ -13,7 +19,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "iN7fO2CgatVwq73z",
+          "id": "4FboLNJGHTaSq9Um",
           "name": "Postgres account"
         }
       }
@@ -514,7 +520,6 @@
       ]
     }
   ],
-  "pinData": {},
   "connections": {
     "Postgres Chat Memory": {
       "ai_memory": [
@@ -726,15 +731,36 @@
       ]
     }
   },
-  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "19f9691c-4682-4704-81f2-33fdec9d0be2",
+  "staticData": null,
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "f722e3e1e81e942a38faa434ad0aee8699371bbff9f883b9d5c59a7c726605af"
   },
-  "id": "vTN9y2dLXqTiDfPT",
-  "tags": []
+  "pinData": {},
+  "versionId": "19f9691c-4682-4704-81f2-33fdec9d0be2",
+  "activeVersionId": null,
+  "versionCounter": 3,
+  "triggerCount": 0,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2025-12-16T01:06:34.192Z",
+      "createdAt": "2025-12-16T01:06:34.192Z",
+      "role": "workflow:owner",
+      "workflowId": "vTN9y2dLXqTiDfPT",
+      "projectId": "qPtdALBIRfZb4KhI",
+      "project": {
+        "updatedAt": "2025-12-16T01:08:43.442Z",
+        "createdAt": "2025-12-16T00:49:25.018Z",
+        "id": "qPtdALBIRfZb4KhI",
+        "name": "Trevor SANDY <trevor.sandy@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null
+      }
+    }
+  ]
 }

@@ -18,7 +18,7 @@ Curated by <https://github.com/trevorsandy>.
 
 ## What’s included
 
-✅ [**Self-hosted n8n**](https://n8n.io/) - Low-code platform with over 400
+✅ [**Self-hosted n8n**](https://n8n.io/) - Automation platform with over 400
 integrations and advanced AI components.
 
 ✅ [**Open WebUI**](https://openwebui.com/) - ChatGPT-like interface to
@@ -33,7 +33,7 @@ and run the latest LLMs.
 ✅ [**Supabase**](https://supabase.com/) - Open source database as a service,
 most widely used database for AI agents.
 
-✅ [**Flowise**](https://flowiseai.com/) - No/low code AI agent builder that
+✅ [**Flowise**](https://flowiseai.com/) - No/low-code AI agent builder that
 pairs very well with n8n.
 
 ✅ [**Qdrant**](https://qdrant.tech/) - Open source, high performance vector
@@ -72,13 +72,13 @@ Before you begin, make sure you have the following software installed:
 - [Python](https://www.python.org/downloads/) - Required to run the setup script
 - [Git/GitHub Desktop](https://desktop.github.com/) - For easy repository management.
 - [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) -
-  Required to setup and run all ai-suite services.
+  Required to setup and run all AI-Suite services.
 
    <details>
    <summary>Docker Compose commands</summary>
 
-   If you are using a machine without the `docker compose` command available by
-   default, run these commands to install Docker compose:
+   If you are using a machine without the `docker compose` application available
+   by default, run these commands to install Docker compose:
 
    ```bash
    DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/
@@ -144,7 +144,6 @@ Before you begin, make sure you have the following software installed:
    # Supabase Secrets
    ############
 
-   POSTGRES_PASSWORD=your-super-secret-postgres-password
    JWT_SECRET=your-super-secret-jwt-token-at-least-40-characters-long
    ANON_KEY=your-super-secret-jwt-key-see-https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
    SERVICE_ROLE_KEY=your-super-secret-jwt-key-see-https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
@@ -154,7 +153,21 @@ Before you begin, make sure you have the following software installed:
 
    ############
    # [required]
-   # Neo4j username and password
+   # PostgreSQL database user password
+   ############
+
+   POSTGRES_PASSWORD=your-super-secret-postgres-password
+
+   ############
+   # [required]
+   # Flowise - authentication configuration
+   ############
+
+   FLOWISE_PASSWORD=your-super-secret-flowise-password
+
+   ############
+   # [required]
+   # Neo4j - username and password combination
    ############
 
    NEO4J_AUTH=neo4j-user/your-super-secret-password
@@ -175,8 +188,7 @@ Before you begin, make sure you have the following software installed:
    # Caddy Config
    ############
 
-   # N8N_HOST=n8n.yourdomain.com       # from version 2.0.0
-   # N8N_HOSTNAME=n8n.yourdomain.com   # versions before 2.0.0
+   # N8N_HOSTNAME=n8n.yourdomain.com
    # WEBUI_HOSTNAME=openwebui.yourdomain.com
    # FLOWISE_HOSTNAME=flowise.yourdomain.com
    # SUPABASE_HOSTNAME=supabase.yourdomain.com
@@ -187,21 +199,6 @@ Before you begin, make sure you have the following software installed:
    # LETSENCRYPT_EMAIL=internal
 
    ...
-
-   ############
-   # PostgreSQL
-   ############
-
-   POSTGRES_PASSWORD=your-super-secret-postgres-password
-
-   ...
-
-   ############
-   # Flowise - authentication username and password
-   ############
-
-   FLOWISE_USERNAME=ai_suite_user
-   FLOWISE_PASSWORD=your-super-secret-postgres-password 
    ```
 
    </details>
@@ -212,50 +209,81 @@ Before you begin, make sure you have the following software installed:
 
 ---
 
-**AI-Suite** uses the `start_services.py` script for the installation command
-that handles the AI-Suite stack module selection, Ollama GPU configuration,
-starting the AI services and, when specified, starting Supabase.
+**AI-Suite** uses the `suite_services.py` script for the _installation_ command
+that handles the AI-Suite functional module selection, Ollama GPU configuration,
+and starting Supabase when specified.
 
-The installation command accepts an optional `--profile` argument to specify
-which AI-Suite stack modules and which Ollama GPU configuration to use.
-If no GPU configuration profils is specified, the installation assumes
-Ollama is being run frim the host. Multiple profile arguments are supported.
+Additionally, This script is also used for operation commands that _start_, _stop_,
+_pause_ and _unpause_ the AI-Suite services using the optional `--operation` argument.
+An Ollama check is performed when it is assumed Ollama is being run from the Docker
+Host. If Ollama is determined to be installed but not running, an attempt to launch
+the Ollama service is executed on _install_, _start_ and _unpause_.  The check
+will also attempt to _stop_ the Ollama service (in addition to stopping the
+AI-Suite services) when the _stop-ollama_ operational command is specified.
+
+Both installation and operation commands utilize the optional `--profile`
+arguments to specify which AI-Suite functional modules and which Ollama CPU/GPU
+configuration to use. When no functional profile argument is specified, the
+default functional module `open-webui` is used, Likewise, if no GPU configuration
+profile is specified, it is assumed Ollama is being run from the Docker Host.
+**Multiple profile arguments (functional modules) are supported**.
+
+---
+`suite_services.py` `--profile` arguments (functional modules):
+
+| Argument | Module |
+| -----------------------: | ------: |
+| `n8n` | n8n - automation platform |
+| `opencode` | Open Code - low-code, no-code agent |
+| `open-webui` | Open WebUI - chatbot interface |
+| `open-webui-mcpo` | Open WebUI MCPO - MCP to OpenAPI translator |
+| `open-webui-pipe` | Open WebUI Pipelines - agent tools and functions |
+| `flowise` | Flowise - complementary agent builder |
+| `supabase` | Supabase - alternative database |
+| `searxng` | SearXNG - internet metasearch |
+| `langfuse` | Langfuse - agent observability platform |
+| `neo4j` | Neo4j - knowledge graph |
+| `caddy` | Caddy - managed https/tls server |
+| `n8n-all` | n8n - complete bundle |
+| `open-webui-all` | Open-WebUI - complete bundle |
+| `ai-all` | AI-Suite full stack - all modules |
+| `cpu` | Ollama - run on CPU |
+| `gpu-nvidia` | Ollama - run on Nvidia GPU |
+| `gpu-amd` | Ollama - run on AMD GPU |
+
 Example command:
 
 ```powershell
-python start_services.py --profile n8n-all open-webui-mcpo gpu-nvidia
+python suite_services.py --profile n8n opencode gpu-nvidia
 ```
 
-`start_services.py` `--profile` arguments:
+---
 
-| Argument            |  Module |
-|-----------------------:|------:|
-| `n8n-2.0` | Self-hosted n8n version 2.0.0|
-| `n8n` | Self-hosted n8n |
-| `opencode`   | Open Code |
-| `open-webu`   | Open WebUI |
-| `open-webui-mcpo` | Open WebUI MCPO |
-| `open-webui-pipe` | Open WebUI Pipelines |
-| `flowise` | Flowise |
-| `supabase` | Supabase |
-| `searxng` | SearXNG |
-| `langfuse` | Langfuse |
-| `neo4j` | Neo4j |
-| `caddy` | Caddy |
-| `open-webui-all` | Open-WebUI Bundle |
-| `n8n-all` | n8n Bundle |
-| `ai-all` | Full stack - all modules |
-| `cpu` | Ollama CPU |
-| `gpu-nvidia` | Ollama Nvidia GPU |
-| `gpu-amd` | Ollama AMD GPU |
+`suite_services.py` ... `--operation` arguments:
 
-If you intend to install Supabase, before running `start_services.py`, setup
-the Supabase environment variables using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
+| Argument | Operation |
+| -----------------------: | ------: |
+| `start` | Start - start the previously stopped, specified profile containers |
+| `stop` | Stop - shut down the specified profile containers |
+| `stop-ollama` | Stop Ollama - perform stop plus shut down Ollama on the Host |
+| `pause` | Pause - pause the specified profile containers |
+| `unpause` | Unpause - unpause the previously paused profile containers |
+
+Example command:
+
+```powershell
+python suite_services.py --profile n8n opencode gpu-nvidia --operation stop
+```
+
+---
+
+If you intend to install Supabase, before running `suite_services.py`, setup the
+Supabase environment variables using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
 
 ### For Docker OLLAMA with Nvidia GPU users
 
 ```powershell
-python start_services.py --profile gpu-nvidia
+python suite_services.py --profile gpu-nvidia
 ```
 
 > [!NOTE]
@@ -265,7 +293,7 @@ python start_services.py --profile gpu-nvidia
 ### For Docker OLLAMA with AMD GPU users on Linux
 
 ```powershell
-python start_services.py --profile gpu-amd
+python suite_services.py --profile gpu-amd
 ```
 
 ### For OLLAMA on Mac /Apple Silicon or OLLAMA running in the Host
@@ -276,14 +304,14 @@ to the Docker instance, unfortunately. There are two options in this case:
 1. Run ai-suite fully on CPU:
 
    ```powershell
-   python start_services.py --profile cpu
+   python suite_services.py --profile cpu
    ```
 
 2. Run Ollama on your Host for faster inference, and connect to that from the
    n8n instance:
 
    ```powershell
-   python start_services.py --profile n8n
+   python suite_services.py --profile n8n
    ```
 
    If you want to run Ollama on your Mac, check the [Ollama homepage](https://ollama.com/)
@@ -319,12 +347,12 @@ x-n8n: &service-n8n
 ### For everyone else
 
 ```powershell
-python start_services.py --profile cpu
+python suite_services.py --profile cpu
 ```
 
 ### The environment argument
 
-The `start_services.py` script supports a **private** (default) and **public**
+The `suite_services.py` script supports a **private** (default) and **public**
 environment argument:
 
 - **private:** you are deploying the stack in a safe environment, all AI-Suite
@@ -332,24 +360,24 @@ ports are accessible
 - **public:** the stack is deployed in a public environment, all AI-Suite ports
 except _80_ and _443_ are closed
 
-The AI-Suite stack is initialized with...
+`suite_services.py` ... `--environment` arguments:
 
-```powershell
-python start_services.py --profile gpu-nvidia --environment private
-```
-
-which is equal to being initialized with:
-
-```powershell
-python start_services.py --profile gpu-nvidia
-```
-
-`start_services.py` `--environment` arguments:
-
-| Argument            |  Scope |
-|-----------------------:|------:|
+| Argument | Scope |
+| -----------------------: | ------: |
 | `private` | Private network |
 | `public` | Public network |
+
+The AI-Suite stack initialized with...
+
+```powershell
+python suite_services.py --profile gpu-nvidia --environment private
+```
+
+is equal to being initialized with:
+
+```powershell
+python suite_services.py --profile gpu-nvidia
+```
 
 ## Deploying to the Cloud
 
@@ -376,13 +404,13 @@ Before running the above commands to pull the repo and install everything:
     ufw reload
     ```
 
-2. Run the `start_services.py` script with the environment argument **public**
+2. Run the `suite_services.py` script with the environment argument **public**
    to indicate you are going to run the package in a public environment. The
    script will make sure that all ports, except for _80_ and _443_, are closed
    down, e.g.
 
    ```bash
-   python3 start_services.py --profile gpu-nvidia --environment public
+   python3 suite_services.py --profile gpu-nvidia --environment public
    ```
 
 3. Set up A records for your DNS provider to point your subdomains you'll set
@@ -393,7 +421,7 @@ Before running the above commands to pull the repo and install everything:
 > [!NOTE]
 > If you are using a cloud machine without the "docker compose" command
 > available by default such as a Ubuntu GPU instance on DigitalOcean, run these
-> commands before running start_services.py:
+> commands before running suite_services.py:
 
 <details>
 <summary>Docker Compose setup commands</summary>
@@ -446,11 +474,11 @@ Use the settings specified below to upate Credentials.
    an account with n8n in the setup here, it is only a local account for your
    instance!
 
-   1. Go to <http://localhost:5678/home/credentials> to configure credentials.
-   2. Click on "Local QdrantApi database" and set the base URL as specified above.
-   3. Click on "Local Ollama service" and set the base URL as specified above.
-   4. Click "Create credential", enter "Postgres" in the search field and follow
-      the subsequent dialogs to setup the _Postgres account_ as specified above.
+   - Go to <http://localhost:5678/home/credentials> to configure credentials.
+   - Click on "Local QdrantApi database" and set the base URL as specified above.
+   - Click on "Local Ollama service" and set the base URL as specified above.
+   - Click "Create credential", enter "Postgres" in the search field and follow
+     the subsequent dialogs to setup the _Postgres account_ as specified above.
 
 2. Open the [Demo workflow](http://localhost:5678/workflow/srOnR8PAY3u4RSwb) and
    confirm the credentials for _Local Ollama service_ is properly configured.
@@ -471,26 +499,28 @@ Use the settings specified below to upate Credentials.
 
    [V3 Local Agentic RAG AI Agent](<http://localhost:5678/workflow/RssROpqkXOm23GYL>)
 
+   [V4 Local_Get_Postgres_Tables](<http://localhost:5678/workflow/t15NIcuhUMXOE8DM>)
+
    </details>  
 
 5. Open <http://localhost:8080/> in your browser to initialize and set up Open WebUI.
    You’ll only have to set your admin login credentials once. You are NOT creating
-   an account with Open WebUI in the setup here, it is only a local account for your
-   instance!
+   an account with Open WebUI in the setup here, it is only a local account for
+   your instance!
 
 6. Go to "Workspace -> Functions" to setup the n8n Pipeline function.
 
-   1. Click on "New Function"
-   2. Enter _n8n Pipeline_ at "Function Name" and "Function ID" will auto-populate
-      with _n8n_Pipeline_
-   3. Enter _An optimized streaming-enabled pipeline for interacting with n8n workflows_
-      in "Description"
-   4. Copy the _n8n_Pipeline - n8n.py_ code below and paste it into the edit dialog.
+   - Click on "New Function"
+   - Enter _n8n Pipeline_ at "Function Name" and "Function ID" will auto-populate
+     with _n8n_Pipeline_
+   - Enter _An optimized streaming-enabled pipeline for interacting with n8n workflows_
+     in "Description"
+   - Copy the _n8n_Pipeline - n8n.py_ code below and paste it into the edit dialog.
 
    <details>
    <summary>n8n_Pipeline - n8n.py</summary>  
 
-   Remember to remove indent for {quoted_content} `<summary>` blocks at lines
+   **Remember!** Remove indent for {quoted_content} `<summary>` blocks at lines
    1057 and 1337 after paste.
 
     ```python

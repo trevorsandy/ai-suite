@@ -3,6 +3,7 @@ include:
 
 volumes:
   n8n_data:
+  n8n_worker_data:
   ollama_data:
   qdrant_data:
   opencode_data:
@@ -19,17 +20,66 @@ volumes:
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
   environment:
-    - DB_TYPE=postgresdb
-    - DB_POSTGRESDB_HOST=db
-    - DB_POSTGRESDB_USER=postgres
+    - NODE_ENV=${NODE_ENV}
+    - N8N_DIAGNOSTICS_ENABLED=${N8N_DIAGNOSTICS_ENABLED}
+    - N8N_VERSION_NOTIFICATIONS_ENABLED=${N8N_VERSION_NOTIFICATIONS_ENABLED}
+    - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+
+    - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+    - TZ=${GENERIC_TIMEZONE}
+
+      # MCP Client node
+    - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=${N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE}
+
+      # Postgres
+    - DB_TYPE=${DB_TYPE}
+    - DB_POSTGRESDB_HOST=${POSTGRES_HOST}
+    - DB_POSTGRESDB_PORT=${POSTGRES_PORT}
+    - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+    - DB_POSTGRESDB_USER=${POSTGRES_USER}
     - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-    - DB_POSTGRESDB_DATABASE=postgres
-    - N8N_DIAGNOSTICS_ENABLED=false
-    - N8N_PERSONALIZATION_ENABLED=false
-    - N8N_ENCRYPTION_KEY
-    - N8N_USER_MANAGEMENT_JWT_SECRET
+
+      # Queue / Redis
+    - EXECUTIONS_MODE=${EXECUTIONS_MODE}
+    - QUEUE_BULL_REDIS_HOST=${QUEUE_BULL_REDIS_HOST}
+    - QUEUE_BULL_REDIS_PORT=${QUEUE_BULL_REDIS_PORT}
+    - QUEUE_HEALTH_CHECK_ACTIVE=${QUEUE_HEALTH_CHECK_ACTIVE}
+    - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=${OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS}
+
+      # Task runners (2.0)
+    - N8N_RUNNERS_ENABLED=${N8N_RUNNERS_ENABLED}
+    - N8N_RUNNERS_MODE=${N8N_RUNNERS_MODE}
+    - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=${N8N_RUNNERS_BROKER_LISTEN_ADDRESS}
+    - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
+    #- N8N_TASK_BROKER_URL=${N8N_TASK_BROKER_URL}
+    #- N8N_COMMAND_RESPONSE_URL=${N8N_COMMAND_RESPONSE_URL}
+    #- N8N_TASK_BROKER_PORT=${N8N_TASK_BROKER_PORT}
+
+      # Security dials:
+    - N8N_BLOCK_ENV_ACCESS_IN_NODE=${N8N_BLOCK_ENV_ACCESS_IN_NODE}
+    - N8N_RESTRICT_FILE_ACCESS_TO=${N8N_RESTRICT_FILE_ACCESS_TO}
+    - N8N_GIT_NODE_DISABLE_BARE_REPOS=${N8N_GIT_NODE_DISABLE_BARE_REPOS}
+    - N8N_SKIP_AUTH_ON_OAUTH_CALLBACK=${N8N_SKIP_AUTH_ON_OAUTH_CALLBACK}
+    - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=${N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS}
+      # Remove "ExecuteCommand" and "LocalFileTrigger" nodes from exclude list
+    - NODES_EXCLUDE=${NODES_EXCLUDE}
+
+      # HTTPS via reverse proxy
+    #- N8N_HOST=${N8N_HOSTNAME:-${N8N_HOST}}
+    #- N8N_PORT=${N8N_PORT}
+    #- N8N_PROTOCOL=${N8N_PROTOCOL}
+    #- N8N_PROXY_HOPS=${N8N_PROXY_HOPS}
+
+    - OLLAMA_HOST=${OLLAMA_HOST}
     - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
-    - OLLAMA_HOST=${OLLAMA_HOST:-ollama:11434}
+  env_file:
+    - path: .env
+      required: true
+
+x-n8n-runner: &service-n8n-runner
+  image: n8nio/runners:latest
+  environment:
+    - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
   env_file:
     - path: .env
       required: true
@@ -92,7 +142,7 @@ services:
     expose:
       - 8060/tcp
     volumes:
-      - /var/run/docker.sock.raw:/var/run/docker.sock
+      - ${DOCKER_SOCKET_LOCATION}.raw:/var/run/docker.sock:ro
 
   open-webui-mcpo:
     profiles: ["open-webui-mcpo", "open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
@@ -179,13 +229,59 @@ services:
     restart: unless-stopped
     expose:
       - 5678/tcp
+      - 5679/tcp
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./n8n/local-files:/home/node/.n8n-files
       - ./n8n/data:/data
-      - ./n8n/shared:/data/shared
-    depends_on:
+      - ${PROJECTS_PATH:-./n8n/local-files}:/home/node/projects
+    depends_on: &depends-on-defaults
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
       n8n-import:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/health || exit 1 "]
+      interval: 5s
+      timeout: 5s
+      retries: 1
+      start_period: 30s
+
+  n8n-runner:
+    profiles: ["n8n", "n8n-all", "ai-all"]
+    <<: *service-n8n-runner
+    container_name: n8n-runner
+    restart: unless-stopped
+    environment:
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
+    depends_on:
+      - n8n
+
+  n8n-worker:
+    profiles: ["n8n", "n8n-all", "ai-all"]
+    <<: *service-n8n
+    container_name: n8n-worker
+    command: worker
+    expose:
+      - 5678/tcp
+    volumes:
+      - n8n_worker_data:/home/node/.n8n
+    depends_on:
+      n8n:
+        condition: service_healthy
+      <<: *depends-on-defaults
+
+  n8n-worker-runner:
+    profiles: ["n8n", "n8n-all", "ai-all"]
+    <<: *service-n8n-runner
+    container_name: n8n-worker-runner
+    restart: unless-stopped
+    environment:
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n-worker:5679
+    depends_on:
+      - n8n
 
   postgres:
     profiles: ["n8n", "langfuse", "n8n-all", "ai-all"]
@@ -402,7 +498,7 @@ services:
       start_period: 1s
 
   redis:
-    profiles: ["langfuse", "ai-all"]
+    profiles: ["n8n", "langfuse", "ai-all"]
     image: docker.io/valkey/valkey:8-alpine
     container_name: redis
     command: valkey-server --save 30 1 --loglevel warning
