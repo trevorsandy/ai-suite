@@ -1,5 +1,7 @@
 .env
 flowise/
+opencode/*
+!opencode/opencode.jsonc
 open-webui/functions/
 open-webui/piplines/
 open-webui/tools/
