@@ -36,6 +36,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 import os
 import sys
 import subprocess
+import pathlib
 import shutil
 import time
 import argparse
@@ -101,6 +102,61 @@ def clone_open_webui_tools_filesystem_repo():
         os.chdir(repo_path)
         run_command(["git", "pull"])
         os.chdir("../../")
+
+def clone_open_webui_functions_repos():
+    """Clone the Open-WebUI Functions repository using sparse checkout if not
+       already present.
+    """
+    repo_path = os.path.join("open-webui", "functions", "open-webui")
+    if not os.path.exists(repo_path):
+        os.mkdir("open-webui/functions")
+        os.chdir("open-webui/functions")
+        print("Cloning the Open-WebUI Functions repository...")
+        run_command([
+            "git", "clone", "--filter=blob:none", "--no-checkout",
+            "https://github.com/open-webui/functions.git", "open-webui"
+        ])
+        os.chdir("open-webui")
+        run_command(["git", "sparse-checkout", "init", "--cone"])
+        run_command(["git", "sparse-checkout", "set", "functions/filters", "functions/pipes/openai"])
+        run_command(["git", "checkout", "main"])
+        os.chdir("../../../")
+    else:
+        print("Open-WebUI Functions repository already exists, updating...")
+        os.chdir(repo_path)
+        run_command(["git", "pull"])
+        os.chdir("../../../")
+
+    repo_path = os.path.join("open-webui", "functions", "owndev")
+    if not os.path.exists(repo_path):
+        os.chdir("open-webui/functions")
+        print("Cloning the Open-WebUI Owndev Functions repository...")
+        run_command([
+            "git", "clone", "--filter=blob:none", "--no-checkout",
+            "https://github.com/owndev/Open-WebUI-Functions.git", "owndev"
+        ])
+        os.chdir("owndev")
+        run_command(["git", "sparse-checkout", "init", "--cone"])
+        run_command(["git", "sparse-checkout", "set", "pipelines/n8n", "filters", "docs"])
+        run_command(["git", "checkout", "main"])
+        os.chdir("../../../")
+    else:
+        print("Open-WebUI Functions repository already exists, updating...")
+        os.chdir(repo_path)
+        run_command(["git", "pull"])
+        os.chdir("../../../")
+
+    os.chdir(repo_path)
+    docs_dir = os.path.join("docs")
+    retain = ["n8n-integration.md", "n8n-tool-usage-display.md"]
+    os.chdir(docs_dir)
+    for item in os.listdir(os.getcwd()):
+        if item not in retain:
+            if pathlib.Path(item).is_file():
+                os.remove(item)
+            elif pathlib.Path(item).is_dir():
+                shutil.rmtree(item)
+    os.chdir("../../../../")
 
 def prepare_supabase_env():
     """Copy .env to .env in supabase/docker."""
@@ -593,10 +649,11 @@ def main():
         generate_searxng_secret_key()
         check_and_fix_docker_compose_for_searxng()
 
-    # Setup Open-WebUI Tools Filesystem repos
+    # Setup Open-WebUI Functions and Tools Filesystem repos
     open_webui = \
         any(profile for profile in args.profile if profile in open_webui_all_profiles)
     if open_webui:
+        clone_open_webui_functions_repos()
         clone_open_webui_tools_filesystem_repo()
         prepare_open_webui_tools_filesystem_env()
 
