@@ -4,6 +4,7 @@ supabase/
 searxng/
 neo4j/
 caddy/
+open-webui/functions/
 open-webui/piplines/
 open-webui/tools/
 n8n/shared/
