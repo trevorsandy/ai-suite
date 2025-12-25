@@ -527,7 +527,7 @@ def main():
     ollama_profiles = ['cpu', 'gpu-nvidia', 'gpu-amd']
     n8n_profiles = ["n8n", "n8n-all"]
     n8n_all_profiles = n8n_profiles + ['ai-all']
-    open_webui_utils_profiles = ['open-webui-fs', 'open-webui-pipe']
+    open_webui_utils_profiles = ['open-webui-mcpo', 'open-webui-pipe']
     open_webui_profiles = ['open-webui', 'open-webui-all']
     open_webui_all_profiles = open_webui_profiles + n8n_all_profiles
     agent_all_profiles = open_webui_all_profiles

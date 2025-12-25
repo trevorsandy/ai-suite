@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "MCP_DOCKER": {
+      "url": "http://host.docker.internal:8060/mcp",
+      "type": "streamable-http"
+    }
+  }
+}

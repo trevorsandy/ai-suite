@@ -81,6 +81,39 @@ services:
       - path: .env
         required: true
 
+  mcp-gateway:
+    profiles: ["open-webui-mcpo", "open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
+    image: docker/mcp-gateway
+    container_name: mcp-gateway
+    command:
+      - --port=8060
+      - --transport=streaming
+    expose:
+      - 8060/tcp
+    volumes:
+      - /var/run/docker.sock.raw:/var/run/docker.sock
+
+  open-webui-mcpo:
+    profiles: ["open-webui-mcpo", "open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
+    image: ghcr.io/open-webui/mcpo:main
+    restart: unless-stopped
+    container_name: open-webui-mcpo
+    expose:
+      - 8090/tcp
+    environment:
+      - MCPO_HOT_RELOAD
+    volumes:
+      - ./open-webui/mcpo/config.json:/app/config.json
+    command:
+      - "--port"
+      - "8090"
+      - "--config"
+      - "/app/config.json"
+      - "${MCPO_HOT_RELOAD}"
+    depends_on:
+      - mcp-gateway
+      - open-webui
+
   open-webui-pipelines:
     profiles: ["open-webui-pipe", "open-webui-all", "ai-all"]
     image: ghcr.io/open-webui/pipelines:main
