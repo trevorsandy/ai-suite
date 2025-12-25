@@ -432,7 +432,7 @@ def set_variable_in_env_file(env_file: str | None, key: str | None , value: str 
 def main():
     ollama_profiles = ['cpu', 'gpu-nvidia', 'gpu-amd']
     client_profiles = ['open-webui', 'open-webui-all', 'n8n', 'n8n-all', 'ai-all']
-    profiles = client_profiles + ['open-webui-fs', 'open-webui-pipe',
+    profiles = client_profiles + ['open-webui-mcpo', 'open-webui-pipe',
                'flowise', 'supabase', 'searxng', 'langfuse', 'neo4j', 'caddy'] + \
                ollama_profiles
     parser = argparse.ArgumentParser(
