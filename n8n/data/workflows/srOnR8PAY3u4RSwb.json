@@ -1,9 +1,11 @@
 {
-  "createdAt": "2024-02-23T16:58:31.616Z",
   "updatedAt": "2024-02-23T16:58:31.616Z",
+  "createdAt": "2024-02-23T16:58:31.616Z",
   "id": "srOnR8PAY3u4RSwb",
   "name": "Demo workflow",
+  "description": null,
   "active": false,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {},
@@ -82,6 +84,26 @@
   },
   "pinData": {},
   "versionId": "4e2affe6-bb1c-4ddc-92f9-dde0b7656796",
+  "activeVersionId": null,
+  "versionCounter": 3,
   "triggerCount": 0,
-  "tags": []
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2025-12-16T01:06:34.192Z",
+      "createdAt": "2025-12-16T01:06:34.192Z",
+      "role": "workflow:owner",
+      "workflowId": "srOnR8PAY3u4RSwb",
+      "projectId": "qPtdALBIRfZb4KhI",
+      "project": {
+        "updatedAt": "2025-12-16T01:08:43.442Z",
+        "createdAt": "2025-12-16T00:49:25.018Z",
+        "id": "qPtdALBIRfZb4KhI",
+        "name": "Trevor SANDY <trevor.sandy@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null
+      }
+    }
+  ]
 }

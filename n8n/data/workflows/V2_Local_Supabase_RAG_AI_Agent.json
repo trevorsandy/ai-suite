@@ -1,5 +1,11 @@
 {
+  "updatedAt": "2025-12-16T02:55:44.454Z",
+  "createdAt": "2025-12-16T01:06:34.192Z",
+  "id": "hrnPh6dXgIbGVzIk",
   "name": "V2 Supabase RAG AI Agent",
+  "description": null,
+  "active": false,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {},
@@ -9,18 +15,18 @@
       "typeVersion": 1.1,
       "position": [
         480,
-        340
+        352
       ],
       "credentials": {
         "postgres": {
-          "id": "UaTmh0frrACTMPxG",
+          "id": "4FboLNJGHTaSq9Um",
           "name": "Postgres account"
         }
       }
     },
     {
       "parameters": {
-        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "model": "qwen3:4b-q8_0",
         "options": {}
       },
       "id": "8d61de27-45d8-4d10-97cc-3c36d224f865",
@@ -28,19 +34,19 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
       "position": [
-        360,
-        340
+        368,
+        352
       ],
       "credentials": {
         "ollamaApi": {
-          "id": "GwjiKiEsG5HnTaAf",
-          "name": "Ollama account"
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
         }
       }
     },
     {
       "parameters": {
-        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "model": "qwen3:4b-q8_0",
         "options": {}
       },
       "id": "cbd5b56f-7afc-4e83-a221-6be4d348374e",
@@ -48,13 +54,13 @@
       "type": "@n8n/n8n-nodes-langchain.lmOllama",
       "typeVersion": 1,
       "position": [
-        1400,
-        280
+        1408,
+        288
       ],
       "credentials": {
         "ollamaApi": {
-          "id": "GwjiKiEsG5HnTaAf",
-          "name": "Ollama account"
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
         }
       }
     },
@@ -68,8 +74,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
       "typeVersion": 1,
       "position": [
-        1180,
-        100
+        1184,
+        112
       ]
     },
     {
@@ -83,7 +89,7 @@
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        920,
+        928,
         640
       ],
       "alwaysOutputData": true
@@ -106,7 +112,7 @@
       "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "typeVersion": 1,
       "position": [
-        1300,
+        1312,
         880
       ]
     },
@@ -120,8 +126,8 @@
       "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
       "typeVersion": 1,
       "position": [
-        1300,
-        1100
+        1312,
+        1104
       ]
     },
     {
@@ -133,13 +139,13 @@
       "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
       "typeVersion": 1,
       "position": [
-        1140,
+        1152,
         880
       ],
       "credentials": {
         "ollamaApi": {
-          "id": "GwjiKiEsG5HnTaAf",
-          "name": "Ollama account"
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
         }
       }
     },
@@ -170,7 +176,7 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        980,
+        992,
         0
       ]
     },
@@ -187,7 +193,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        540
+        544
       ]
     },
     {
@@ -199,8 +205,8 @@
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.1,
       "position": [
-        60,
-        120
+        64,
+        128
       ],
       "webhookId": "4b3b1838-d6b3-447e-9d79-d0931eddb9f8"
     },
@@ -213,8 +219,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        780,
-        120
+        784,
+        128
       ]
     },
     {
@@ -229,8 +235,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        60,
-        300
+        64,
+        304
       ],
       "webhookId": "4a839da9-b8a2-45f8-bcaf-c484f9a5912d"
     },
@@ -243,8 +249,8 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.6,
       "position": [
-        440,
-        120
+        448,
+        128
       ]
     },
     {
@@ -272,8 +278,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        260,
-        120
+        272,
+        128
       ]
     },
     {
@@ -291,7 +297,7 @@
       "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
       "typeVersion": 1,
       "position": [
-        1000,
+        1008,
         240
       ],
       "id": "9841944a-5a85-437d-a9ed-a3e7393d7a8d",
@@ -310,15 +316,15 @@
       "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
       "typeVersion": 1,
       "position": [
-        1180,
-        380
+        1184,
+        384
       ],
       "id": "24e6e703-33c2-426d-ab59-7c9cad0fded9",
       "name": "Embeddings Ollama2",
       "credentials": {
         "ollamaApi": {
-          "id": "GwjiKiEsG5HnTaAf",
-          "name": "Ollama account"
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
         }
       }
     },
@@ -338,7 +344,7 @@
       "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
       "typeVersion": 1,
       "position": [
-        1180,
+        1184,
         640
       ],
       "id": "d72c6f38-7766-4a10-9897-362539a6bcc0",
@@ -362,8 +368,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        460,
-        840
+        464,
+        848
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -376,7 +382,7 @@
     {
       "parameters": {
         "triggerOn": "folder",
-        "path": "/data/shared",
+        "path": "/home/node/projects/n8n-files",
         "events": [
           "add",
           "change"
@@ -389,8 +395,8 @@
       "type": "n8n-nodes-base.localFileTrigger",
       "typeVersion": 1,
       "position": [
-        60,
-        840
+        64,
+        848
       ],
       "id": "eba68fe1-738d-451b-a2a7-9ee2942dd727",
       "name": "Local File Trigger"
@@ -440,14 +446,13 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        280,
-        660
+        288,
+        672
       ],
       "id": "27123d6a-e27a-49a9-bd73-8a27235928ea",
       "name": "If"
     }
   ],
-  "pinData": {},
   "connections": {
     "Postgres Chat Memory": {
       "ai_memory": [
@@ -655,14 +660,35 @@
       ]
     }
   },
-  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "ea9ff68c-8fc0-40b0-aa5d-48217cda89f3",
+  "staticData": null,
   "meta": {
     "instanceId": "73cb7a3e883df514bb47e8d1b34526d30e2abb8f56cd99f10d5948a1e11b25aa"
   },
-  "id": "hrnPh6dXgIbGVzIk",
-  "tags": []
+  "pinData": {},
+  "versionId": "8e3532cb-b205-44e1-9a7d-b761d4bc4fa5",
+  "activeVersionId": null,
+  "versionCounter": 6,
+  "triggerCount": 0,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2025-12-16T01:06:34.192Z",
+      "createdAt": "2025-12-16T01:06:34.192Z",
+      "role": "workflow:owner",
+      "workflowId": "hrnPh6dXgIbGVzIk",
+      "projectId": "qPtdALBIRfZb4KhI",
+      "project": {
+        "updatedAt": "2025-12-16T01:08:43.442Z",
+        "createdAt": "2025-12-16T00:49:25.018Z",
+        "id": "qPtdALBIRfZb4KhI",
+        "name": "Trevor SANDY <trevor.sandy@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null
+      }
+    }
+  ]
 }
