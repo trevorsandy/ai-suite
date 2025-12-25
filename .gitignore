@@ -4,6 +4,8 @@ supabase/
 searxng/
 neo4j/
 caddy/
+opencode/*
+!opencode/opencode.jsonc
 open-webui/functions/
 open-webui/piplines/
 open-webui/tools/
