@@ -13,3 +13,4 @@ n8n/shared/
 shared-backup/
 volumes/
 .env.test
+ollama_launch.vbs

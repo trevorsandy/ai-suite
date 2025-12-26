@@ -22,6 +22,62 @@ def run_command(cmd, cwd=None):
     print("Running:", " ".join(cmd))
     subprocess.run(cmd, cwd=cwd, check=True)
 
+def launch_ollama_process():
+    """Launch Ollama"""
+    cmd = ollama_exe + " serve"
+    print("Running: " + cmd)
+    if system == "Windows":
+        with open('ollama_launch.vbs', 'w') as f:
+            f.write("Set WshShell = CreateObject(\"WScript.Shell\")\n" \
+                    "WshShell.Run \"" + cmd + "\", 0, False\n" \
+                    "Set WshShell = Nothing")
+        os.startfile('ollama_launch.vbs')
+    else:  # Unix-based systems (Linux, macOS)
+        os.system(cmd)
+    global attempted_launch
+    attempted_launch = True
+    print("Waiting for Ollama to initialize...")
+    time.sleep(3)    
+    check_ollama_process(None)
+
+def check_ollama_process(operation=None):
+    """Check for Ollama (on host) and attempt to launch if not running."""
+    ollama_running = False
+    ollama_proc = ollama_app.lower()
+    try:
+        if system == "Windows":
+            cmd = ["tasklist"]
+        else:  # Unix-based systems (Linux, macOS)
+            cmd = ["pgrep", "-f", ollama_proc]
+        print("Running:", " ".join(cmd))
+        check_proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        if system == "Windows":
+            ollama_running = True if ollama_proc in check_proc.stdout.lower() else False      
+        else:  # Unix-based systems (Linux, macOS)
+            ollama_running = check_proc.returncode == 0 if check_proc else False
+    except Exception as e:
+        print(f"Exception: {e} - assuming Ollama is not running.")
+
+    if ollama_running:
+        if operation and operation == 'stop-ollama':
+            print(f"Stopping Ollama process...")
+            if system == "Windows":
+                cmd = ["taskkill", "/f", "/im", ollama_proc]
+            else:  # Unix-based systems (Linux, macOS)
+                cmd = ["ps", "-C", ollama_proc, "-o", "pid=|xargs", "kill", "-9"]
+            print("Running:", " ".join(cmd))
+            os.system(" ".join(cmd))
+        else:
+            insert = "is now" if attempted_launch else "is"
+            print(f"Ollama {insert} running...")
+    else:
+        if attempted_launch:
+            print("Failed to launch Ollama - exiting...")
+            sys.exit(1)
+        else:
+            print("Ollama is not running, attempting to launch...")
+            launch_ollama_process()
+
 def clone_supabase_repo():
     """Clone the Supabase repository using sparse checkout if not already present."""
     if not os.path.exists("supabase"):
@@ -453,8 +509,10 @@ def main():
     parser.add_argument('--environment', choices=['private', 'public'], default='private',
                         help='Environment used by Docker Compose to expose or restrict '
                              'communication ports (default: private)')
-    parser.add_argument('--operation', choices=['stop', 'start', 'pause', 'unpause'],
-                        help='Operation to be performed by Docker Compose')
+    parser.add_argument('--operation', choices=['stop', 'stop-ollama', 'start', 'pause', 
+                        'unpause'],
+                        help='AI-Suite container operations along with starting and '
+                             'stopping Ollama.')
 
     args = parser.parse_args()
 
@@ -470,6 +528,31 @@ def main():
 
     # Detect default profile - no arguments specified
     default_profile = False if args.profile else True
+
+    # Check Ollama status when running Ollama in the Host
+    ollama_in_host = default_profile or (not default_profile and not \
+        any(profile for profile in args.profile if profile in ollama_profiles))
+    if ollama_in_host:
+        global ollama_app, ollama_exe, attempted_launch
+        ollama_found = False
+        attempted_launch = False
+        if system == "Windows":
+            ollama_app = 'ollama.exe'
+            ollama_exe = os.path.join(os.path.expanduser('~'), 'AppData\\Local\\Programs\\Ollama', ollama_app)
+            ollama_found = os.path.exists(ollama_exe)
+        else: # Unix-based systems (Linux, macOS)
+            ollama_app = 'ollama'
+            for ollama_path in ['/bin', '/usr/local/bin', '/usr/bin']:
+                ollama_exe = os.path.join(ollama_path, ollama_app)
+                if os.path.exists(ollama_exe):
+                    ollama_found = True
+                    break
+        if not ollama_found:
+                print(f"The {ollama_app} file was not found at {ollama_exe} - exiting...")
+                sys.exit(1)
+        check_ollama_process(args.operation)
+        if args.operation == 'stop-ollama':
+            args.operation = 'stop'
 
     # Process operation command as needed
     if args.operation:
