@@ -1959,26 +1959,53 @@ as your vector store.
 
 ## Upgrading
 
-To update all containers to their latest versions (n8n, Open WebUI, etc.),
-run these commands:
+To update AI-Suite images to their latest versions (n8n, Open WebUI, etc.),
+run the _update_ operation command argument optionally preceded by the
+specified profile arguments (functional modules).
+Alternatively, you can use the _quiet-update_ operation argument to perform 
+an update without the confirmation prompt.
 
-```powershell
-# Stop all services
-docker compose -p ai-suite -f docker-compose.yml --profile <your-profile> down
+`suite_services.py` [`--profile` arguments] `--operation` argument:
 
-# Pull latest versions of all containers
-docker compose -p ai-suite -f docker-compose.yml --profile <your-profile> pull
-
-# Start services again with your desired profile
-python suite_services.py --profile <your-profile>
-```
-
-Replace `<your-profile>` with one: `cpu`, `gpu-nvidia`, `gpu-amd`, or `none`.
+| Argument | Operation |
+| -----------: | ------: |
+| `update` | Update - stop, pull and restart specified container images |
+| `quiet-update` | Quietly Update - perform update without confirmation prompt |
 
 > [!NOTE]
-> The `suite_services.py` script itself does not update containers - it only
-> restarts them or pulls them if you are downloading these containers for the
-> first time. To get the latest versions, you must explicitly run the
+> The `suite_services.py` _update_ operation argument will stop, pull the image
+> and restart containers for the specified `--profile` arguments. However, to
+> update the entire suite, simply omit the profile arguments.
+>
+> If no profile arguments are specified, container images for all functional
+> modules plus Docker Ollama will be _pulled_ but only the `n8n` bundle, along
+> with `opencode` containers will be restarted.
+
+Example command:
+
+```powershell
+python suite_services.py --operation update
+```
+
+**Manual steps to upgrade** the AI-Suite services are as follows:
+
+```powershell
+# Stop services for specified profile arguments
+docker compose -p ai-suite -f docker-compose.yml --profile <arguments> down
+
+# Pull latest versions of container images for specified profile arguments
+docker compose -p ai-suite -f docker-compose.yml --profile <arguments> pull
+
+# Start services again for specified profile arguments
+python suite_services.py --profile <arguments>
+```
+
+Replace profile `<arguments>` with `ai-all` to update all container images
+or with your desired functional modules, e.g. `n8n`, `opencode` etc,
+including your CPU/GPU argument [`cpu` | `gpu-nvidia` | `gpu-amd`] if you
+are running Ollama in Docker.
+See the profile arguments table above for all arguments.
+
 ## Accessing local files
 
 Some **AI-Suite** functional modules require access to a project
