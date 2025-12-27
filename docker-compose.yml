@@ -281,7 +281,7 @@ services:
 
   postgres:
     profiles: ["n8n", "langfuse", "n8n-all", "ai-all"]
-    image: postgres:${POSTGRES_VERSION:-18-alpine}
+    image: postgres:${POSTGRES_VERSION:-17}
     container_name: postgres
     restart: unless-stopped
     expose:

@@ -287,7 +287,7 @@ python suite_services.py --profile gpu-nvidia
 
 > [!NOTE]
 > If you have not used your Nvidia GPU with Docker before, please follow the
-> [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.md).
+> [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.mdx).
 
 ### For Docker OLLAMA with AMD GPU users on Linux
 
@@ -2002,14 +2002,19 @@ an update without the confirmation prompt.
 | `update` | Update - stop, pull and restart specified container images |
 | `quiet-update` | Quietly Update - perform update without confirmation prompt |
 
+> [!CAUTION]
+> Named and anonymous data volumes will be deleted. Be sure to backup your data to
+> avoid data loss.
+
 > [!NOTE]
 > The `suite_services.py` _update_ operation argument will stop, pull the image
 > and restart containers for the specified `--profile` arguments. However, to
 > update the entire suite, simply omit the profile arguments.
 >
 > If no profile arguments are specified, container images for all functional
-> modules plus Docker Ollama will be _pulled_ but only the `n8n` bundle, along
-> with `opencode` containers will be restarted.
+> modules plus Docker Ollama will be _pulled_ but only the modules will be
+> _started_. Docker Ollama will not be started unless it is explicitly specified
+> as profile argument.
 
 Example command:
 

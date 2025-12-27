@@ -203,7 +203,7 @@ def prepare_open_webui_tools_filesystem_env():
                 "    volumes:\n" \
                 "      - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp")
 
-def stop_and_remove_ai_suite(profile=None):
+def stop_and_remove_ai_suite(profile=None, upgrade=False):
     """Stop and remove AI-Suite containers (using its compose file) for the
        specified profiles.
     """
@@ -214,6 +214,8 @@ def stop_and_remove_ai_suite(profile=None):
         for option in profile:
             cmd.extend(["--profile", option])
     cmd.extend(["-f", "docker-compose.yml", "down", "--remove-orphans"])
+    if upgrade:
+        cmd.extend(["--volumes"])
     run_command(cmd)
 
 def operate_ai_suite(operation=None, profile=None, environment=None):
@@ -223,7 +225,7 @@ def operate_ai_suite(operation=None, profile=None, environment=None):
     if not operation:
         operation = "stop"
 
-    with open('.operating', 'w') as f:
+    with open('.operation', 'w') as f:
         f.write(operation)
 
     if operation == 'start':
@@ -254,7 +256,7 @@ def start_supabase(environment=None, upgrade=False):
     cmd = ["docker", "compose", "-p", "ai-suite", "-f", "supabase/docker/docker-compose.yml"]
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
-    cmd.extend(["up", "-d", "--remove-orphans"])
+    cmd.extend(["up", "-d"])
     if upgrade:
         cmd.extend(["--build"])
     run_command(cmd)
@@ -265,7 +267,7 @@ def start_open_webui_tools_filesystem(environment=None, upgrade=False):
     cmd = ["docker", "compose", "-p", "ai-suite", "-f", "open-webui/tools/servers/filesystem/compose.yaml"]
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
-    cmd.extend(["up", "-d", "--remove-orphans"])
+    cmd.extend(["up", "-d"])
     if upgrade:
         cmd.extend(["--build"])
     run_command(cmd)
@@ -368,10 +370,6 @@ def check_and_fix_docker_compose_for_searxng():
         return
 
     try:
-        # Read the docker-compose.yml file
-        with open(docker_compose_path, 'r') as f:
-            content = f.read()
-
         # Default to first run
         is_first_run = True
 
@@ -407,27 +405,44 @@ def check_and_fix_docker_compose_for_searxng():
         except Exception as e:
             print(f"Error checking Docker container: {e} - assuming first run")
 
-        cap_drop = "cap_drop:\n      - ALL\n"
-        cap_drop_comment = "   #cap_drop:\n   #  - ALL  # Temporarily commented out for first run\n"
-
-        if is_first_run and cap_drop in content:
-            print(f"First run detected for SearXNG. Temporarily commenting {cap_drop} directive...")
-            # Temporarily comment out the cap_drop line
-            modified_content = content.replace(cap_drop, cap_drop_comment)
-
-            # Write the modified content back
-            with open(docker_compose_path, 'w') as f:
-                f.write(modified_content)
-
-            print(f"Note: After the first run completes successfully, uncomment {cap_drop} in docker-compose.yml for security.")
-        elif not is_first_run and cap_drop_comment in content:
-            print(f"SearXNG has been initialized. Uncommenting {cap_drop} directive for security...")
+        # Temporarily comment out the cap_drop line on first run
+        if is_first_run:           
+            print("First run detected for SearXNG. Temporarily commenting 'cap_drop:' directive...")
+            with open(docker_compose_path, 'r+') as f:
+                commented = False
+                searxng_found = False            
+                lines = f.readlines()
+                f.seek(0)
+                f.truncate()
+                for line in lines:
+                    if not commented:
+                        compare = line.strip()
+                        if compare == 'searxng:':
+                            searxng_found = True
+                        if searxng_found:
+                            if compare == 'cap_drop:':
+                                line = "   #cap_drop:\n"
+                            if compare == '- ALL':
+                                line = "   #  - ALL  # Temporarily commented out for first run\n"
+                                commented = True
+                                print("SearXNG Cap Drop ALL commented...")
+                    f.write(line)
+            print("Note: After the first run completes successfully, uncomment 'cap_drop:' in docker-compose.yml for security.")
+        else:
+            # Read the docker-compose.yml file
+            with open(docker_compose_path, 'r') as f:
+                content = f.read()
+            
             # Uncomment the cap_drop line
-            modified_content = content.replace(cap_drop_comment, cap_drop)
+            cap_drop_comment = "   #cap_drop:\n   #  - ALL  # Temporarily commented out for first run\n"
+            if cap_drop_comment in content:
+                print(f"SearXNG has been initialized. Uncommenting 'cap_drop:' directive for security...")
+                cap_drop = "cap_drop:\n      - ALL\n"
+                modified_content = content.replace(cap_drop_comment, cap_drop)
 
-            # Write the modified content back
-            with open(docker_compose_path, 'w') as f:
-                f.write(modified_content)
+                # Write the modified content back
+                with open(docker_compose_path, 'w') as f:
+                    f.write(modified_content)
 
     except Exception as e:
         print(f"Error checking/modifying docker-compose.yml for SearXNG: {e}")
@@ -448,66 +463,63 @@ def convert_supabase_pooler_line_endings():
         with open(file_path, 'wb') as f:
             f.write(content)
 
-def include_supabase_docker_compose(supabase=False):
-    """Add or remove supabase supabase_docker_compose_file"""
-    supabase_docker_compose_path = "supabase/docker/docker-compose.yml"
-    if not os.path.exists(supabase_docker_compose_path) and supabase:
-        print(f"Error: Supabase Docker Compose file not found at {supabase_docker_compose_path}")
+def docker_compose_include(supabase=False, filesystem=False):
+    """Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml"""
+    compose_path = "docker-compose.yml"
+    supabase_path = "supabase/docker/docker-compose.yml"
+    filesystem_path = "open-webui/tools/servers/filesystem/compose.yaml"
+    if not os.path.exists(compose_path):
+        print(f"Error: File '{compose_path}' not found.")
         return
-    docker_compose_path = "docker-compose.yml"
-    if not os.path.exists(docker_compose_path):
-        print(f"Error: Docker Compose file not found at {docker_compose_path}")
-        return
-
+    if supabase and not os.path.exists(supabase_path):
+        print(f"Error: File '{supabase_path}' not found.")
+        return    
+    if filesystem and not os.path.exists(filesystem_path):
+        print(f"Error: File '{filesystem_path}' not found.")
+        return   
+    include = supabase or filesystem
+    compose_include = "include:\n"
+    supabase_include = f"  - ./{supabase_path}\n"
+    filesystem_include = f"  - ./{filesystem_path}\n"
+    
     try:
-        with open(docker_compose_path, 'r') as f:
+        with open(compose_path, 'r') as f:
             content = f.read()
-        supabase_docker_compose_include = f"include:\n  - ./{supabase_docker_compose_path}\n\n"
-        if supabase and supabase_docker_compose_include not in content:
-            print(f"Including ./{supabase_docker_compose_path} in {docker_compose_path}...")
-            with open(docker_compose_path, 'w') as f:
-                f.write(supabase_docker_compose_include + content)
-        elif not supabase and supabase_docker_compose_include in content:
-            print(f"Excluding ./{supabase_docker_compose_path} from {docker_compose_path}...")
-            modified_content = content.replace(supabase_docker_compose_include, "")
-            with open(docker_compose_path, 'w') as f:
-                f.write(modified_content)
-    except Exception as e:
-        print(f"Error processing {docker_compose_path}: {e}")
+        
+        if include:
+            content = "\n" + content
 
-def update_postgres_db_settings(env_file: str | None, supabase=False):
-    """Set POSTGRES_HOST in .env file and postgres volume in Docker Compose"""
-    old_host = 'POSTGRES_HOST=postgres' if supabase else 'POSTGRES_HOST=db'
-    if env_file is None:
-        env_file = os.path.join(".env")
-    try:
-        with open(env_file, 'r') as f:
-            content = f.read()
-        if old_host in content:
-            new_host = 'POSTGRES_HOST=db' if supabase else 'POSTGRES_HOST=postgres'
-            print(f"Set POSTGRES_HOST in {env_file} from {old_host} to {new_host}...")
-            modified_content = content.replace(old_host, new_host)
-            with open(env_file, 'w') as f:
-                f.write(modified_content)
-    except Exception as e:
-        print(f"Error updating POSTGRES_HOST in {env_file}: {e}")
+        if supabase and supabase_include not in content:
+            print(f"Adding ./{supabase_path} in {compose_path}...")
+            content = supabase_include + content
+        elif not supabase and supabase_include in content:
+            print(f"Removing ./{supabase_path} from {compose_path}...")
+            content = content.replace(supabase_include, "")
 
-    old_vol = 'postgres_data:' if supabase else 'langfuse_postgres_data:'
-    env_file = os.path.join("docker-compose.yml")
-    try:
-        with open(env_file, 'r') as f:
-            content = f.read()
-        if old_vol in content:
-            new_vol = 'langfuse_postgres_data:' if supabase else 'postgres_data:'
-            print(f"Set Ppostgres volume in {env_file} from {old_vol} to {new_vol}...")
-            modified_content = content.replace(old_vol, new_vol)
-            with open(env_file, 'w') as f:
-                f.write(modified_content)
-    except Exception as e:
-        print(f"Error updating postgres volume in {env_file}: {e}")
+        if filesystem and filesystem_include not in content:
+            print(f"Adding ./{filesystem_path} in {compose_path}...")
+            content = filesystem_include + content
+        elif not filesystem and filesystem_include in content:
+            print(f"Removing ./{filesystem_path} from {compose_path}...")
+            content = content.replace(filesystem_include, "")
 
-def set_variable_in_env_file(env_file: str | None, key: str | None , value: str | None, header: str | None):
+        if include and compose_include not in content:
+            print(f"Adding ./{compose_include} to {compose_path}...")
+            content = compose_include + content
+        elif not include and compose_include in content:
+            print(f"Removing ./{compose_include} from {compose_path}...")
+            content = content.replace(compose_include + "\n", "")
+
+        with open(compose_path, 'w') as f:
+            f.write(content)       
+    except Exception as e:
+        print(f"Error processing {compose_path}: {e}")
+
+def set_variable_in_env_file(env_file=None, key=None , value=None, header=None):
     """Set an environment variable and optional header in .env file"""
+    if not key or not value:
+        print("Error: A valid .env key or value was not specified.")
+        return
     if env_file is None:
         env_file = os.path.join(".env")
     try:
@@ -521,10 +533,50 @@ def set_variable_in_env_file(env_file: str | None, key: str | None , value: str 
         print(f"File '{env_file}' not found.")
 
     if dotenv.load_dotenv(env_file):
-        variable = "".join(filter(None, [header, key])) if header else key
-        print(f"Set default {key} in {env_file} file...")
-        if variable is not None and value is not None:
-            dotenv.set_key(env_file, variable, value)
+        print(f"Set '{key}' to '{value}' in {env_file}...")
+        variable = "".join([header, key]) if header else key
+        dotenv.set_key(env_file, variable, value)
+
+def update_n8n_db_settings(env_file=None, supabase=False):
+    """Set POSTGRES_HOST in .env file and n8n database depends_on and 
+       postgres volume in Docker Compose file.
+    """
+    key = 'POSTGRES_HOST'
+    value = 'db' if supabase else 'postgres'
+    set_variable_in_env_file(env_file, key, value, None)
+
+    old_vol = 'postgres_data:' if supabase else 'langfuse_postgres_data:'
+    compose_file = os.path.join("docker-compose.yml")
+    try:
+        with open(compose_file, 'r') as f:
+            content = f.read()
+        if old_vol in content:
+            new_vol = 'langfuse_postgres_data:' if supabase else 'postgres_data:'
+            print(f"Set Postgres volume: '{old_vol}' to '{new_vol}' in {compose_file}...")
+            modified_content = content.replace(old_vol, new_vol)
+            with open(compose_file, 'w') as f:
+                f.write(modified_content)
+        with open(compose_file, 'r+') as f:
+            modified = False
+            n8n_found = False
+            old_db = 'postgres:' if supabase else 'db:'
+            new_db = 'db:' if supabase else 'postgres:'
+            lines = f.readlines()
+            f.seek(0)
+            f.truncate()
+            for line in lines:
+                if not modified:
+                    compare = line.strip()
+                    if compare == 'n8n:':
+                        n8n_found = True
+                    if n8n_found:
+                        if compare == old_db:
+                            line = f"      {new_db}\n"
+                            modified = True
+                            print(f"N8N database depends_on set to {new_db}...")
+                f.write(line)
+    except Exception as e:
+        print(f"Error updating postgres settings in {compose_file}: {e}")
 
 def main():
     ollama_profiles = ['cpu', 'gpu-nvidia', 'gpu-amd']
@@ -572,11 +624,6 @@ def main():
     # Detect default profile - no arguments specified
     default_profile = False if args.profile else True
 
-    # Check for upgrade operation argument
-    upgrade = True if args.operation and (
-                      args.operation == 'update' or 
-                      args.operation == 'quiet-update') else False
-
     # Check Ollama status when running Ollama in the Host
     ollama_in_host = default_profile or (not default_profile and not \
         any(profile for profile in args.profile if profile in ollama_profiles))
@@ -596,18 +643,19 @@ def main():
                     ollama_found = True
                     break
         if not ollama_found:
-                print(f"The {ollama_app} file was not found at {ollama_exe} - exiting...")
-                sys.exit(1)
+            print(f"The {ollama_app} file was not found at {ollama_exe} - exiting...")
+            sys.exit(1)
         check_ollama_process(args.operation)
-        if args.operation == 'stop-ollama':
-            args.operation = 'stop'
 
-    # Process operation command as needed
+    # Process operation argument
+    upgrade = False
     if args.operation:
         status = None
-        if os.path.exists('.operating'):
-            with open('.operating', 'r') as f:
-                status = f.readline() 
+        if os.path.exists('.operation'):
+            with open('.operation', 'r') as f:
+                status = f.readline()
+        if args.operation == 'stop-ollama':
+            args.operation = 'stop' 
         if args.operation == status:
             if status == 'stop':
                 insert = 'Stopped'
@@ -618,26 +666,38 @@ def main():
         elif args.operation == 'unpause' and not status == 'pause':
             print(f"AI-Suite cannot unpause as it is not paused - exiting...")
             sys.exit(0)
-        if upgrade:
+        if default_profile:
+            args.profile = ['ai-all']
+        if args.operation == 'update' or \
+            args.operation == 'quiet-update':
+            upgrade = True
             if args.operation == 'update':
-                user_confirm = input("AI-Suite update can impact its integrity "
-                                     "[type 'Got-It' to continue]: \n")
+                user_confirm = input(
+                    "Performing an AI-Suite update can impact its integrity.\n"
+                    "Named and anonymous data volumes will be deleted.\n"
+                    "[Type 'Got-It' to continue]: \n")
                 if len(user_confirm) == 0 or user_confirm.lower() != 'got-it':
-                    print(f"AI-Suite update was not confirmed - exiting...")
+                    print(f"Received [{user_confirm}].") if user_confirm else None 
+                    print("AI-Suite update was not confirmed - exiting...")
                     sys.exit(0)
             args.operation = 'pull'
             if default_profile:
-                print(f"Updating all container images including Ollama...")
-                args.profile = ['ai-all', 'cpu']
-            stop_and_remove_ai_suite(args.profile)         
+                print("Updating all container images including Ollama...")
+                args.profile.extend(["cpu"])
+            else:
+                print(f"Updating container images for {args.profile}...")
+            stop_and_remove_ai_suite(args.profile, True)         
         operate_ai_suite(args.operation, args.profile, args.environment)
         if not upgrade:
             sys.exit(0)
-    os.remove('.operating') if os.path.exists('.operating') else None
+    os.remove('.operation') if os.path.exists('.operation') else None
     
     # Manually set default profile argument
     if default_profile:
-        args.profile = ['open-webui']
+        if upgrade:
+            args.profile.remove('cpu') if 'cpu' in args.profile else None
+        else:
+            args.profile = ['open-webui']
 
     env_file = os.path.join(".env")
 
@@ -649,38 +709,45 @@ def main():
         set_variable_in_env_file(env_file, key, value, header)
     
     # Setup Supabase
-    supabase = \
-        any(profile for profile in args.profile if profile == 'supabase')
-    if supabase or upgrade:
-        if not upgrade:
+    if any(profile for profile in args.profile if profile == 'supabase'):
+        if not any(profile for profile in args.profile if profile in ["n8n", "n8n-all", "ai-all"]):
+            print("Supabase argument requires 'n8n' or 'ai-all' - removing 'supabase'...")
             args.profile.remove('supabase')
+    supabase = \
+        any(profile for profile in args.profile if profile in ['supabase', 'ai-all'])
+    if supabase:
+        args.profile.remove('supabase') if 'supabase' in args.profile else None
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
 
-    update_postgres_db_settings(env_file, supabase)
+    if any(profile for profile in args.profile if profile in ["n8n", "n8n-all", "ai-all"]):
+        update_n8n_db_settings(env_file, supabase)
 
     if supabase:
         prepare_supabase_env()
-
-    # Include or exclude supabase_docker_compose in docker-compose.yml
-    include_supabase_docker_compose(supabase)
+    elif 'langfuse' in args.profile:
+        print("LangFuse requires Supabase - profile argument 'langfuse' removed...'")
+        args.profile.remove('langfuse')
 
     # Generate SearXNG secret key and check docker-compose.yml
-    if any(profile for profile in args.profile if profile == 'searxng'):
+    if any(profile for profile in args.profile if profile in ['searxng', 'ai-all']):  
         generate_searxng_secret_key()
         check_and_fix_docker_compose_for_searxng()
 
     # Setup Open-WebUI Functions and Tools Filesystem repos
     open_webui = \
         any(profile for profile in args.profile if profile in client_profiles)
-    if open_webui or upgrade:
+    if open_webui:
         clone_open_webui_functions_repos()
         clone_open_webui_tools_filesystem_repo()
         prepare_open_webui_tools_filesystem_env()
     
+    # Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml
+    docker_compose_include(supabase, open_webui)
+
     # Stop and remove containers
     if not upgrade:
-        stop_and_remove_ai_suite(args.profile)
+        stop_and_remove_ai_suite(args.profile, False)
 
     # Start Supabase first
     if supabase:
@@ -693,14 +760,15 @@ def main():
     if open_webui:
         print("Starting Open-WebUI Tools Filesystem...")
         start_open_webui_tools_filesystem(args.environment, upgrade)
+        time.sleep(1)
 
-    # If arguments n8n and open-webui specified, remove open-webui.
+    # If profile arguments n8n and open-webui specified, remove open-webui.
     if any(profile for profile in args.profile if profile == 'n8n'):
         if any(profile for profile in args.profile if profile == 'open-webui'):
             print("Profiles 'n8n' and 'open-webui' detected - removing 'open-webui'...")
             args.profile.remove('open-webui')
     
-    # If more than one Ollama profile specified, use first profile
+    # If more than one Ollama CPU/GPU argument specified, use first argument
     if any(profile for profile in args.profile if profile in ollama_profiles):
         first_profile = False
         for ollama_profile in ollama_profiles:
@@ -714,7 +782,7 @@ def main():
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, volume_prune=True)
 
-    with open('.operating', 'w') as f:
+    with open('.operation', 'w') as f:
         f.write('start')
 
 if __name__ == "__main__":
