@@ -78,12 +78,58 @@ def clone_supabase_repo():
         run_command(["git", "pull"])
         os.chdir("..")
 
+def clone_open_webui_tools_filesystem_repo():
+    """Clone the Open-WebUI Filesystem Tools repository using sparse checkout if
+       not already present.
+    """
+    repo_path = os.path.join("open-webui", "tools", "servers")
+    if not os.path.exists(repo_path):
+        os.chdir("open-webui")
+        print("Cloning the Open-WebUI Tools Filesystem repository...")
+        run_command([
+            "git", "clone", "--filter=blob:none", "--no-checkout",
+            "https://github.com/open-webui/openapi-servers.git", "tools"
+        ])
+        os.chdir("tools")
+        run_command(["git", "sparse-checkout", "init", "--cone"])
+        run_command(["git", "sparse-checkout", "set", "servers/filesystem"])
+        run_command(["git", "checkout", "main"])
+        os.chdir("../../")
+    else:
+        repo_path = os.path.join("open-webui", "tools")
+        print("Open-WebUI Tools Filesystem repository already exists, updating...")
+        os.chdir(repo_path)
+        run_command(["git", "pull"])
+        os.chdir("../../")
+
 def prepare_supabase_env():
     """Copy .env to .env in supabase/docker."""
     env_path = os.path.join("supabase", "docker", ".env")
     env_source_path = os.path.join(".env")
     print(f"Copying .env in {name} root to {env_path}...")
     shutil.copyfile(env_source_path, env_path)
+
+def prepare_open_webui_tools_filesystem_env():
+    """Copy .env and write compose.yaml to open-webui/tools/servers/filesystem."""
+    env_path = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
+    env_source_path = os.path.join(".env")
+    print(f"Copying .env in {name} root to {env_path}...")
+    shutil.copyfile(env_source_path, env_path)
+    docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")
+    print(f"Writing {docker_compose_path}...")
+    with open(docker_compose_path, 'w') as f:
+        f.write(textwrap.dedent("""\
+                services:
+                  open-webui-filesystem:
+                    container_name: open-webui-filesystem
+                    restart: unless-stopped
+                    build:
+                      context: .
+                    ports:
+                      - 8091:8091
+                    volumes:
+                      - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp
+                """))
 
 def destroy_ai_suite(profile=None):
     """Stop and remove AI-Suite containers and volumes (using its compose file)
@@ -128,6 +174,15 @@ def start_supabase(environment=None):
     """Start the Supabase services (using its compose file)."""
     print("Starting Supabase services...")
     cmd = ["docker", "compose", "-p", "ai-suite", "-f", "supabase/docker/docker-compose.yml"]
+    if environment and environment == "public":
+        cmd.extend(["-f", "docker-compose.override.public.yml"])
+    cmd.extend(["up", "-d"])
+    run_command(cmd)
+
+def start_open_webui_tools_filesystem(environment=None):
+    """Start the Open-WebUI Tools Filesystem services (using its compose file)."""
+    print("Starting Open-WebUI Tools Filesystem services...")
+    cmd = ["docker", "compose", "-p", "ai-suite", "-f", "open-webui/tools/servers/filesystem/compose.yaml"]
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.yml"])
     cmd.extend(["up", "-d"])
@@ -323,21 +378,27 @@ def convert_supabase_pooler_line_endings():
         with open(file_path, 'wb') as f:
             f.write(content)
 
-def docker_compose_include(supabase=False):
-    """Add or remove Supabase include compose.yml in docker-compose.yml"""
+def docker_compose_include(supabase=False, filesystem=False):
+    """Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml"""
     compose_file = "docker-compose.yml"
     supabase_compose_file = "supabase/docker/docker-compose.yml"
+    filesystem_compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     if not os.path.exists(compose_file):
         print(f"Error: Docker Compose file '{compose_file}' not found - include skipped...")
         return
     if supabase and not os.path.exists(supabase_compose_file):
         print(f"Warning: Include file '{supabase_compose_file}' not found.")
         supabase = False
+    if filesystem and not os.path.exists(filesystem_compose_file):
+        print(f"Warning: Include file '{filesystem_compose_file}' not found.")
+        filesystem = False
     supabase_ins = "add" if supabase else "remove"
-    print(f"Perform {supabase_ins} Supabase 'include:' in {compose_file}...")
-    include = supabase
+    filesystem_ins = "add" if filesystem else "remove"
+    print(f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem 'include:' in {compose_file}...")
+    include = supabase or filesystem
     compose_include = "include:\n"
     supabase_include = f"  - ./{supabase_compose_file}\n"
+    filesystem_include = f"  - ./{filesystem_compose_file}\n"
 
     try:
         with open(compose_file, 'r') as f:
@@ -358,6 +419,13 @@ def docker_compose_include(supabase=False):
         elif not supabase and supabase_include in content:
             print(f"Removing include file ./{supabase_compose_file}...")
             content = content.replace(supabase_include, "")
+
+        if filesystem and filesystem_include not in content:
+            print(f"Adding include file ./{filesystem_compose_file}...")
+            content = filesystem_include + content
+        elif not filesystem and filesystem_include in content:
+            print(f"Removing include file ./{filesystem_compose_file}...")
+            content = content.replace(filesystem_include, "")
 
         if include and not compose_include in content:
             content = compose_include + content
@@ -525,8 +593,15 @@ def main():
         generate_searxng_secret_key()
         check_and_fix_docker_compose_for_searxng()
 
-    # Add or remove Supabase include compose.yml in docker-compose.yml
-    docker_compose_include(supabase)
+    # Setup Open-WebUI Tools Filesystem repos
+    open_webui = \
+        any(profile for profile in args.profile if profile in open_webui_all_profiles)
+    if open_webui:
+        clone_open_webui_tools_filesystem_repo()
+        prepare_open_webui_tools_filesystem_env()
+
+    # Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml
+    docker_compose_include(supabase, open_webui)
 
     # Stop and remove AI-Suite containers
     destroy_ai_suite(args.profile)
@@ -537,6 +612,11 @@ def main():
         # Give Supabase some time to initialize
         print("""Waiting for Supabase to initialize...""")
         time.sleep(10)
+
+    # Start Open-WebUI Tools Filesystem
+    if open_webui:
+        start_open_webui_tools_filesystem(args.environment)
+        time.sleep(1)
 
     # Check if open-webui-mcpo specified with required profile arguments, else remove open-webui-mcpo
     if any(profile for profile in args.profile if profile == 'open-webui-mcpo'):
