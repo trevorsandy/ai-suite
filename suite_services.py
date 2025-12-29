@@ -602,7 +602,49 @@ def set_variable_in_env_file(env_file=None, key=None , value=None, header=None):
         variable = "".join([header, key]) if header else key
         dotenv.set_key(env_file, variable, value)
 
-def main()
+def update_n8n_database_settings(env_file=None, supabase=False):
+    """Set POSTGRES_HOST in .env file and n8n database depends_on and
+       postgres volume in Docker Compose file.
+    """
+    key = "POSTGRES_HOST"
+    value = "db" if supabase else "postgres"
+    set_variable_in_env_file(env_file, key, value, None)
+
+    old_vol = "postgres_data" if supabase else "langfuse_postgres_data"
+    compose_file = os.path.join("docker-compose.yml")
+    try:
+        with open(compose_file, 'r') as f:
+            content = f.read()
+        regex = r"\b{}\b\:".format(old_vol)
+        if re.search(regex, content):
+            new_vol = "langfuse_postgres_data:" if supabase else "postgres_data:"
+            print(f"Set Postgres volume: from '{old_vol}' to '{new_vol}' in {compose_file}...")
+            modified_content = re.sub(r"\b{}\b\:".format(old_vol), new_vol, content)
+            with open(compose_file, 'w') as f:
+                f.write(modified_content)
+
+        with open(compose_file, 'r+') as f:
+            updated = False
+            n8n_found = False
+            old_db = "postgres:" if supabase else "db:"
+            new_db = f"{value}:"
+            lines = f.readlines()
+            f.seek(0)
+            f.truncate()
+            for line in lines:
+                if not updated:
+                    if line == '  n8n:\n':
+                        n8n_found = True
+                    if n8n_found:
+                        if line == f'      {old_db}\n':
+                            line = f"      {new_db}\n"
+                            updated = True
+                            print(f"Set n8n database depends_on: from '{old_db}' " \
+                                  f"to '{new_db}' in {compose_file}...")
+                f.write(line)
+    except Exception as e:
+        print(f"Exception: Update n8n database settings in {compose_file}: {e}")
+
 def main():
     # Name and version information
     global name
@@ -781,6 +823,11 @@ def main():
         args.profile.remove('supabase') if 'supabase' in args.profile else None
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
+
+    if any(profile for profile in args.profile if profile in n8n_all_profiles):
+        update_n8n_database_settings(env_file, supabase)
+
+    if supabase:
         prepare_supabase_env()
     elif 'langfuse' in args.profile:
         print("""Profile argument 'langfuse' requires Supabase - removing 'langfuse'...'""")
