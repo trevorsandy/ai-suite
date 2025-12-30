@@ -650,6 +650,7 @@ def main():
     # Name and version information
     global name
     name = info.get("name", "ai-suite")
+    file = info.get("file", "placeholder.py")
     version = info.get("version", (-1, -1, -1))
     print(f"""{name} version: {".".join(map(str, version))}""")
 
@@ -666,36 +667,36 @@ def main():
     operations = ['stop', 'stop-ollama', 'start', 'pause', 'unpause', 'update', 'quiet-update']
     environments = ['private', 'public']
     parser = argparse.ArgumentParser(
-        prog=f'{info.get("file")}',
+        prog=f'{file}',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent(f'''\
             {info.get("description")}
 
-            With this script, you can install, start, stop, pause or upgrade {name}
+            With {file}, you can install, start, stop, pause or upgrade {name}
             with specified profile arguments (functional modules) and environment.
             ___________________________
 
             Syntax:
 
-            python {info.get("file")} [--profiles <arguments...>] [--environment <argument>] [--operation <argument>]
+            python {file} [--profiles <arguments...>] [--environment <argument>] [--operation <argument>]
 
             Example commands:
 
             - Install profile arguments n8n and opencode...
               ...with Ollama running in the Host:
-              >python {info.get("file")} --profile n8n opencode
+              >python {file} --profile n8n opencode
 
               ...with Ollama runing in Docker using CPU:
-              >python {info.get("file")} --profile n8n opencode cpu
+              >python {file} --profile n8n opencode cpu
 
               ...using GPU and in public (production) environment:
-              >python {info.get("file")} --profile n8n opencode --environment public
+              >python {file} --profile n8n opencode --environment public
 
             - Perform stop (start, pause, unpause) suite operation:
-              >python {info.get("file")} --profile n8n opencode cpu --operation stop
+              >python {file} --profile n8n opencode cpu --operation stop
 
             - Perform suite operation to upgrade all modules and restart:
-              >python {info.get("file")} --operation update
+              >python {file} --operation update
             '''),
         epilog=textwrap.dedent(f'''\
             - Author: {info.get("author")}
