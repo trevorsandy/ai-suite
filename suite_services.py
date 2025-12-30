@@ -815,7 +815,7 @@ def main():
     # Setup Supabase
     if any(profile for profile in args.profile if profile == 'supabase'):
         if not any(profile for profile in args.profile if profile in n8n_all_profiles):
-            print("""Profile argument 'supabase' requires argument in {n8n_all_profiles}
+            print(f"""Profile argument 'supabase' requires argument in {n8n_all_profiles}
                      - removing 'supabase'...""")
             args.profile.remove('supabase')
     supabase = \
