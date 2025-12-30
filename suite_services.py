@@ -70,10 +70,10 @@ def run_command(cmd, cwd=None):
 def launch_ollama_process():
     """Launch Ollama"""
     cmd = " ".join([ollama_exe, "serve"])
-    path = tempfile.gettempdir()
-    ollama_launch = os.path.join(path, "ollama_launch.vbs")
-    print("Running:", " ".join([cmd, "from", ollama_launch]))
     if system == "Windows":
+        path = tempfile.gettempdir()
+        ollama_launch = os.path.join(path, "ollama_launch.vbs")
+        print("Running:", " ".join([cmd, "from", ollama_launch]))
         with open(ollama_launch, 'w') as f:
             f.write(textwrap.dedent(f"""\
                 ' Generated from {info.get("file")} on: {datetime.datetime.now().ctime()}
@@ -83,6 +83,7 @@ def launch_ollama_process():
                 """))
         os.startfile(ollama_launch)
     else:  # Unix-based systems (Linux, macOS)
+        print("Running:", cmd)
         os.system(cmd)
     global attempted_launch
     attempted_launch = True
