@@ -24,7 +24,7 @@ integrations and advanced AI components.
 ✅ [**Open WebUI**](https://openwebui.com/) - ChatGPT-like interface to
 privately interact with your local models and N8N agents.
 
-✅ [**Opencode**](https://opencode.ai/) - open source agent that helps you write
+✅ [**OpenCode**](https://opencode.ai/) - open source agent that helps you write
 code in your terminal.
 
 ✅ [**Ollama**](https://ollama.com/) - Cross-platform LLM platform to install
@@ -234,7 +234,7 @@ profile is specified, it is assumed Ollama is being run from the Docker Host.
 | Argument | Module |
 | -----------------------: | ------: |
 | `n8n` | n8n - automation platform |
-| `opencode` | Open Code - low-code, no-code agent |
+| `opencode` | OpenCode - low-code, no-code agent |
 | `open-webui` | Open WebUI - chatbot interface |
 | `open-webui-mcpo` | Open WebUI MCPO - MCP to OpenAPI translator |
 | `open-webui-pipe` | Open WebUI Pipelines - agent tools and functions |
@@ -245,7 +245,7 @@ profile is specified, it is assumed Ollama is being run from the Docker Host.
 | `neo4j` | Neo4j - knowledge graph |
 | `caddy` | Caddy - managed https/tls server |
 | `n8n-all` | n8n - complete bundle |
-| `open-webui-all` | Open-WebUI - complete bundle |
+| `open-webui-all` | Open WebUI - complete bundle |
 | `ai-all` | AI-Suite full stack - all modules |
 | `cpu` | Ollama - run on CPU |
 | `gpu-nvidia` | Ollama - run on Nvidia GPU |
@@ -329,7 +329,7 @@ OLLAMA_HOST=host.docker.internal:11434
 
 # ... other configurations ...
 
-# When running OLLAMA in the Host and Open-WebUI in Docker:
+# When running OLLAMA in the Host and Open WebUI in Docker:
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 #OLLAMA_BASE_URL=http://localhost:11434
 ```
@@ -390,7 +390,7 @@ python suite_services.py --profile gpu-nvidia
 Before running the above commands to pull the repo and install everything:
 
 > [!WARNING]
-> ufw does not shield ports published by docker, because the iptables rules
+> ufw does not shield ports published by Docker, because the iptables rules
 > configured by Docker are analyzed before those configured by ufw. There is a
 > solution to change this behavior, but that is out of scope for this project.
 > Just make sure that all traffic runs through the Caddy service via port _443_.
@@ -438,12 +438,13 @@ sudo ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docke
 
 ## ⚡️ Quick start and usage
 
-The main component of the self-hosted AI-Suite is a docker compose file
-pre-configured with network and disk so there isn’t much else you need to
+All components of the self-hosted AI-Suite, except if running Ollama from your
+host, is installed through `suite_services.py` and managed through a Docker Compose
+file pre-configured with network and disk so there isn’t much else you need to
 install. After completing the installation steps above, follow the steps below
-to get started.  
+to get started. First, start with **n8n**.
 
-Use the settings specified below to upate Credentials.
+Use the following settings to confirm or upate n8n Credentials.
 
 - Local Ollama service: base URL <http://ollama:11434/> (n8n config), <http://localhost:11434/>
 (browser)
@@ -475,10 +476,11 @@ Use the settings specified below to upate Credentials.
    instance!
 
    - Go to <http://localhost:5678/home/credentials> to configure credentials.
-   - Click on "Local QdrantApi database" and set the base URL as specified above.
-   - Click on "Local Ollama service" and set the base URL as specified above.
-   - Click "Create credential", enter "Postgres" in the search field and follow
-     the subsequent dialogs to setup the _Postgres account_ as specified above.
+   - Click on **Local QdrantApi database** and set the base URL as specified above.
+   - Click on **Local Ollama service** and set the base URL as specified above.
+   - Click on **Create credential**, enter _Postgres_ in the search field and
+     follow the subsequent dialogs to setup the _Postgres account_ as specified
+     above.
 
 2. Open the [Demo workflow](http://localhost:5678/workflow/srOnR8PAY3u4RSwb) and
    confirm the credentials for _Local Ollama service_ is properly configured.
@@ -491,7 +493,7 @@ Use the settings specified below to upate Credentials.
 4. Toggle the _Demo workflow_ as active and treat the _RAG AI Agent_ workflows.
 
    <details>
-   <summary>Configure additional workflows as desired:</summary>
+   <summary>Configure additional n8n workflows as desired:</summary>
 
    [V1 Local RAG AI Agent](<http://localhost:5678/workflow/vTN9y2dLXqTiDfPT>)
 
@@ -503,22 +505,26 @@ Use the settings specified below to upate Credentials.
 
    </details>  
 
-5. Open <http://localhost:8080/> in your browser to initialize and set up Open WebUI.
-   You’ll only have to set your admin login credentials once. You are NOT creating
-   an account with Open WebUI in the setup here, it is only a local account for
-   your instance!
+5. Next, configure **Open WebUI**. Open <http://localhost:8080/> in your browser
+   to initialize and set up Open WebUI. You’ll only have to set your admin login
+   credentials once. You are NOT creating an account with Open WebUI in the setup
+   here, it is only a local account for your instance!
 
-6. Go to "Workspace -> Functions" to setup the n8n Pipeline function.
+6. Go to **Workspace → Functions** to setup the n8n Pipes (Pipeline) function.
+   This function will enable integration with n8n as an entry in your model dropdown
+   list.
 
-   - Click on "New Function"
-   - Enter _n8n Pipeline_ at "Function Name" and "Function ID" will auto-populate
+   - Click on **New Function**
+   - Enter _n8n Pipeline_ at **Function Name** and **Function ID** will auto-populate
      with _n8n_Pipeline_
    - Enter _An optimized streaming-enabled pipeline for interacting with n8n workflows_
-     in "Description"
-   - Copy the _n8n_Pipeline - n8n.py_ code below and paste it into the edit dialog.
+     in **Description**
+   - Copy the _n8n_Pipeline function_ code in _details_ below (or the latest
+     downloaded to `./open-webui/functions/owndev/pipelines/n8n/n8n.py`) and paste
+     it into the edit dialog.
 
    <details>
-   <summary>n8n_Pipeline - n8n.py</summary>  
+   <summary>n8n_Pipeline function</summary>  
 
    **Remember!** Remove indent for {quoted_content} `<summary>` blocks at lines
    1057 and 1337 after paste.
@@ -2126,13 +2132,16 @@ caddy:
 
 </details>
 
-### Projects path environment variable
+### PROJECTS_PATH environment variable
 
 You can use the `PROJECTS_PATH` environment variable to allow **n8n**,
 **Opencode**, and **Open-WebUI MCPO** access to your project files.
 During the installation process, if the key is not already present in
 your `.env` file, the key and value are written with the value set
 to `~/projects`.
+
+`PROJECTS_PATH` forms a volume bind mount to container paths for the containers
+described above - e.g., the OpenCode container path mount is `/root/projects`.
 
 ### n8n Nodes that interact with the local filesystem
 
@@ -2177,14 +2186,15 @@ Here are solutions to common issues you might encounter:
 ### GPU Support Issues
 
 - **Windows GPU Support**: If you're having trouble running Ollama with GPU
-support on Windows with Docker Desktop:
+  support on Windows with Docker Desktop:
+
   1. Open Docker Desktop settings
   2. Ensure 'Enable WSL2 backend' is enabled
   3. See the [Docker GPU documentation](https://docs.docker.com/desktop/features/gpu/)
      for more details
 
 - **Linux GPU Support**: If you're having trouble running Ollama with GPU
-support on Linux, follow the [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.md).
+  support on Linux, follow the [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.md).
 
 ## 🛍️ More AI templates
 
