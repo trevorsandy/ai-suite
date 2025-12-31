@@ -278,6 +278,8 @@ def prepare_open_webui_tools_filesystem_env():
                       - host.docker.internal:host-gateway
                     volumes:
                       - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp
+                    environment:
+                      - PROJECTS_PATH
                 """))
 
 def destroy_ai_suite(profile=None, upgrade=False):

@@ -190,6 +190,8 @@ services:
       - opencode_data:/root/.config/opencode
       - ./opencode/opencode.jsonc:/root/.config/opencode/opencode.jsonc
       - ${PROJECTS_PATH:-./opencode}:/root/projects
+    environment:
+      - PROJECTS_PATH
 
   flowise:
     profiles: ["flowise", "ai-all"]

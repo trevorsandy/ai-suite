@@ -6,6 +6,7 @@ neo4j/
 caddy/
 opencode/*
 !opencode/opencode.jsonc
+!opencode/run_opencode_docker.py
 open-webui/functions/
 open-webui/piplines/
 open-webui/tools/

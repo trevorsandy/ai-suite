@@ -1977,6 +1977,9 @@ Use the following settings to confirm or upate n8n Credentials.
 
 To open **n8n**, visit <http://localhost:5678/> from your browser.
 To open **Open WebUI**, visit <http://localhost:3000/> from your browser.
+To open **OpenCode** run `./opencode/run_opencode_docker.py` from a new terminal.
+
+## Additional Configuration
 
 With n8n, you have access to over 400 integrations and a suite of basic and
 advanced AI nodes such as:
@@ -2131,11 +2134,47 @@ as your vector store.
 
 ### Open Code
 
-- **opencode.jsonc**.
+- **run_opencode_docker.py**
+
+  - Copy `./opencode/run_opencode_docker.py` to or run it from your current work
+    project.
+
+- **opencode.jsonc**
 
   - Using the config file at [./opencode/opencode.jsonc](./opencode/opencode.jsonc)
   - Set additional configuration settings as desired.
 
+- **PROJECT_PATH environment variable**
+
+  - Set the `PROJECT_PATH` env variable to your working project directory before
+    running OpenCode if you wish to set the work path to your current project but
+    you will _NOT_ launch OpenCode from the root of your working project.
+    If the `PROJECT_PATH` var is not defined, the currend working directory from
+    which OpenCode was launched is assumed.
+
+- **project_path argument**
+
+  - You can also pass a _project_path_ argument to `./opencode/run_opencode_docker.py`
+    with `-p`, `--project_path` so an example command would be:
+
+    ```powershell
+    python run_opencode_docker.py --project_path 'opencode'
+    ```
+
+> [!NOTE]
+> It is recommended that your working project directory be within and relative to
+> the path set for `PROJECTS_PATH` in the AI-Suite .env file - see
+> **PROJECTS_PATH environment variable** described below.
+>
+> **Important**: The format of the `PROJECT_PATH` entry must be the portion of
+> your project path that is relative to the entry specified in `PROJECTS_PATH`.
+> For example, if the _full path_ to your project is `~/projects/ai-suite/opencode`
+> , your `PROJECT_PATH` entry must be `ai-suite/opencode`, if your `PROJECTS_PATH`
+> entry is `~/projects`.
+>
+> When set, `PROJECT_PATH` is appended to the OpenCode container bind mounted
+> path `/root/projects` and the resulting path is set as _work_dir_ to form the
+> OpenCode Docker exec command's _workdir=work_dir_ keyword argument.
 
 ## Upgrading
 
