@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update December 30, 2025
+Last Update December 31, 2025
 Copyright (c) 2025 by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
 functional module selection, Ollama CPU/GPU configuration, and starting Supabase and
-Open-WebUI Filesystem when specified.
+Open WebUI Filesystem when specified.
 
 If specified, the Supabase stack is started first. The script waits for it to initialize,
 then starts open-webui filesystem tool - if specified, and then starts the AI-Suite stack.
@@ -81,7 +81,7 @@ info = {
 
 def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
-    print("Running:", " ".join(cmd))
+    print("Running command:", " ".join(cmd))
     subprocess.run(cmd, cwd=cwd, check=True)
 
 def launch_ollama_process():
@@ -119,7 +119,7 @@ def check_ollama_process(operation=None):
             cmd = ["tasklist"]
         else:  # Unix-based systems (Linux, macOS)
             cmd = ["pgrep", "-f", ollama_proc]
-        print("Running:", " ".join(cmd))
+        print("Running command:", " ".join(cmd))
         check_proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
         if system == "Windows":
             ollama_running = True if ollama_proc in check_proc.stdout.lower() else False
@@ -132,23 +132,23 @@ def check_ollama_process(operation=None):
 
     if ollama_running:
         if stop_ollama:
-            print("Stopping Ollama process...")
+            print("Stopping Ollama process on host...")
             if system == "Windows":
                 cmd = ["taskkill", "/f", "/im", ollama_proc]
             else:  # Unix-based systems (Linux, macOS)
                 cmd = ["ps", "-C", ollama_proc, "-o", "pid=|xargs", "kill", "-9"]
-            print("Running:", " ".join(cmd))
+            print("Running command:", " ".join(cmd))
             os.system(" ".join(cmd))
         else:
             insert = "is now" if attempted_launch else "is"
-            print(f"Ollama {insert} running...")
+            print(f"Ollama on host {insert} running...")
     else:
         if attempted_launch:
-            print("Failed to launch Ollama - exiting...")
+            print("Failed to launch Ollama on host - exiting...")
             sys.exit(1)
         print("Ollama is not running...")
         if not stop_ollama:
-            print("Attempting to launch Ollama...")
+            print("Attempting to launch Ollama on host...")
             launch_ollama_process()
 
 def clone_supabase_repo():
@@ -171,13 +171,13 @@ def clone_supabase_repo():
         os.chdir("..")
 
 def clone_open_webui_tools_filesystem_repo():
-    """Clone the Open-WebUI Filesystem Tools repository using sparse checkout if
+    """Clone the Open WebUI Tools Filesystem repository using sparse checkout if
        not already present.
     """
     repo_path = os.path.join("open-webui", "tools", "servers")
     if not os.path.exists(repo_path):
         os.chdir("open-webui")
-        print("Cloning the Open-WebUI Tools Filesystem repository...")
+        print("Cloning the Open WebUI Tools Filesystem repository...")
         run_command([
             "git", "clone", "--filter=blob:none", "--no-checkout",
             "https://github.com/open-webui/openapi-servers.git", "tools"
@@ -189,20 +189,20 @@ def clone_open_webui_tools_filesystem_repo():
         os.chdir("../../")
     else:
         repo_path = os.path.join("open-webui", "tools")
-        print("Open-WebUI Tools Filesystem repository already exists, updating...")
+        print("Open WebUI Tools Filesystem repository already exists, updating...")
         os.chdir(repo_path)
         run_command(["git", "pull"])
         os.chdir("../../")
 
 def clone_open_webui_functions_repos():
-    """Clone the Open-WebUI Functions repository using sparse checkout if not
+    """Clone the Open WebUI Functions repository using sparse checkout if not
        already present.
     """
     repo_path = os.path.join("open-webui", "functions", "open-webui")
     if not os.path.exists(repo_path):
         os.mkdir("open-webui/functions")
         os.chdir("open-webui/functions")
-        print("Cloning the Open-WebUI Functions repository...")
+        print("Cloning the Open WebUI Functions repository...")
         run_command([
             "git", "clone", "--filter=blob:none", "--no-checkout",
             "https://github.com/open-webui/functions.git", "open-webui"
@@ -213,7 +213,7 @@ def clone_open_webui_functions_repos():
         run_command(["git", "checkout", "main"])
         os.chdir("../../../")
     else:
-        print("Open-WebUI Functions repository already exists, updating...")
+        print("Open WebUI Functions repository already exists, updating...")
         os.chdir(repo_path)
         run_command(["git", "pull"])
         os.chdir("../../../")
@@ -221,7 +221,7 @@ def clone_open_webui_functions_repos():
     repo_path = os.path.join("open-webui", "functions", "owndev")
     if not os.path.exists(repo_path):
         os.chdir("open-webui/functions")
-        print("Cloning the Open-WebUI Owndev Functions repository...")
+        print("Cloning the Open WebUI Owndev Functions repository...")
         run_command([
             "git", "clone", "--filter=blob:none", "--no-checkout",
             "https://github.com/owndev/Open-WebUI-Functions.git", "owndev"
@@ -232,7 +232,7 @@ def clone_open_webui_functions_repos():
         run_command(["git", "checkout", "main"])
         os.chdir("../../../")
     else:
-        print("Open-WebUI Functions repository already exists, updating...")
+        print("Open WebUI Functions repository already exists, updating...")
         os.chdir(repo_path)
         run_command(["git", "pull"])
         os.chdir("../../../")
@@ -341,8 +341,8 @@ def start_supabase(environment=None, upgrade=False):
     run_command(cmd)
 
 def start_open_webui_tools_filesystem(environment=None, upgrade=False):
-    """Start the Open-WebUI Tools Filesystem services (using its compose file)."""
-    print("Starting Open-WebUI Tools Filesystem services...")
+    """Start the Open WebUI Tools Filesystem services (using its compose file)."""
+    print("Starting Open WebUI Tools Filesystem services...")
     cmd = ["docker", "compose", "-p", "ai-suite", "-f", "open-webui/tools/servers/filesystem/compose.yaml"]
     if environment and environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.yml"])
@@ -800,10 +800,11 @@ def main():
             args.operation == 'quiet-update':
             upgrade = True
             if args.operation == 'update':
-                user_confirm = input(
-                   f"""Performing an {name} update can impact its integrity.\n
-                       Named and anonymous data volumes will be deleted.\n
-                       [Type 'Got-It' to continue]: \n""")
+                user_confirm = input(textwrap.dedent(f"""\
+                    Performing an {name} update can impact its integrity.
+                    Named and anonymous data volumes will be deleted.
+                    [Type 'Got-It' to continue]: 
+                    """))
                 if len(user_confirm) == 0 or user_confirm.lower() != 'got-it':
                     print(f"""Received [{user_confirm}].""") if user_confirm else None
                     print(f"""{name} update was not confirmed - exiting...""")
@@ -841,7 +842,7 @@ def main():
     if any(profile for profile in args.profile if profile == 'supabase'):
         if not any(profile for profile in args.profile if profile in n8n_all_profiles):
             print(f"""Profile argument 'supabase' requires argument in {n8n_all_profiles}
-                     - removing 'supabase'...""")
+                      - removing 'supabase'...""")
             args.profile.remove('supabase')
     supabase = \
         any(profile for profile in args.profile if profile in ['supabase', 'ai-all'])
@@ -864,7 +865,7 @@ def main():
         generate_searxng_secret_key()
         check_and_fix_docker_compose_for_searxng()
 
-    # Setup Open-WebUI Functions and Tools Filesystem repos
+    # Setup Open WebUI Functions and Tools Filesystem repos
     open_webui = \
         any(profile for profile in args.profile if profile in open_webui_all_profiles)
     if open_webui:
@@ -886,7 +887,7 @@ def main():
         print("""Waiting for Supabase to initialize...""")
         time.sleep(10)
 
-    # Start Open-WebUI Tools Filesystem
+    # Start Open WebUI Tools Filesystem
     if open_webui:
         start_open_webui_tools_filesystem(args.environment, upgrade)
         time.sleep(1)
