@@ -68,11 +68,15 @@ import re
 info = {
     "name": "AI-Suite",
     "version": (0, 1, 0),
+    "title": "AI-Suite installation and operation",
     "file": os.path.basename(__file__),
-    "description": "A dockerized bundle of AI agents in a no-code, workflow environment",
+    "description": "A dockerized suite of AI agents in a no-code, workflow, LLM environment",
     "author": "Trevor SANDY <trevor.sandy@gmail.com>",
+    "author_url": "https://github.com/trevorsandy/",
     "repository": "https://github.com/trevorsandy/ai-suite",
-    "issues": "https://github.com/trevorsandy/ai-suite/issues"
+    "issues": "https://github.com/trevorsandy/ai-suite/issues",
+    "license": "Apache License 2.0",
+    "copyright": "Copyright (c) 2025-present by Trevor SANDY"
     }
 
 def run_command(cmd, cwd=None):
@@ -664,7 +668,7 @@ def update_n8n_database_settings(env_file=None, supabase=False):
 def main():
     # Name and version information
     global name
-    name = info.get("name", "ai-suite")
+    name = info.get("name", "placeholder")
     file = info.get("file", "placeholder.py")
     version = info.get("version", (-1, -1, -1))
     print(f"""{name} version: {".".join(map(str, version))}""")
@@ -714,9 +718,14 @@ def main():
               >python {file} --operation update
             '''),
         epilog=textwrap.dedent(f'''\
+            - Title: {info.get("title")}
+            - File: {info.get("file")}
             - Author: {info.get("author")}
+            - Author URL: {info.get("author_url")}
             - Repository: {info.get("repository")}
             - Report Issues: {info.get("issues")}
+            - License: {info.get("license")}
+            - Copyright: {info.get("copyright")}
             '''))
     parser.add_argument('-p', '--profile', type=str, nargs='+', choices=profiles,
                         help='Docker Compose Profile arguments for functional modules and Ollama'
