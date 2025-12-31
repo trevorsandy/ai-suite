@@ -81,12 +81,13 @@ def run_command(cmd, cwd=None):
     subprocess.run(cmd, cwd=cwd, check=True)
 
 def launch_ollama_process():
-    """Launch Ollama"""
+    """Launch Ollama inference server on host"""
     cmd = " ".join([ollama_exe, "serve"])
+    print("Running command:", cmd)
     if system == "Windows":
         path = tempfile.gettempdir()
         ollama_launch = os.path.join(path, "ollama_launch.vbs")
-        print("Running:", " ".join([cmd, "from", ollama_launch]))
+        print("Command script:", ollama_launch)
         with open(ollama_launch, 'w') as f:
             f.write(textwrap.dedent(f"""\
                 ' Generated from {info.get("file")} on: {datetime.datetime.now().ctime()}
@@ -96,20 +97,19 @@ def launch_ollama_process():
                 """))
         os.startfile(ollama_launch)
     else:  # Unix-based systems (Linux, macOS)
-        print("Running:", cmd)
         os.system(cmd)
     global attempted_launch
     attempted_launch = True
-    print("Waiting for Ollama to initialize...")
+    print("Waiting for Ollama on host to initialize...")
     time.sleep(4)
     check_ollama_process(None)
 
 def check_ollama_process(operation=None):
     """Check for Ollama (on host) and attempt to launch if not running."""
+    if not attempted_launch:
+        print("Checking for Ollama process on host...")
     ollama_running = False
     ollama_proc = ollama_app.lower()
-    if not attempted_launch:
-        print("Checking for Ollama process...")
     try:
         if system == "Windows":
             cmd = ["tasklist"]
