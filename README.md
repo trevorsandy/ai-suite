@@ -1967,16 +1967,16 @@ Use the following settings to confirm or upate n8n Credentials.
 
     </details>
 
-7. Copy the "Production" webhook URL from the workflow set in step 6.
+7. Copy the webhook URL from the _n8n_Pipeline_ function set in step 6.
 
-8. Click on the gear icon and set the n8n_url to the production URL for the
-webhook you copied in a previous step.
+8. Click on the gear icon and set the n8n_url to the webhook URL you copied
+   in a previous step.
 
 9. Toggle the function on and now it will be available in your model dropdown
-in the top left.  
+   in the top left.  
 
-To open n8n, visit <http://localhost:5678/> in your browser.
-To open Open WebUI, visit <http://localhost:3000/>.
+To open **n8n**, visit <http://localhost:5678/> from your browser.
+To open **Open WebUI**, visit <http://localhost:3000/> from your browser.
 
 With n8n, you have access to over 400 integrations and a suite of basic and
 advanced AI nodes such as:
@@ -1993,6 +1993,149 @@ as your vector store.
 > workflows. While it is not fully optimized for production environments, it
 > combines robust components that work well together for personal porjects.
 > Of course, you can further customize it to meet your specific needs.
+
+### n8n
+
+- **MCP Client**
+  - Configure MCP Client credentials.
+
+    - In **Nodes panel**, search for `MCP`.
+    - Select `MCP Client`.
+    - Set _MCP Endpoint URL_: `http://host.docker.internal:8060`.
+
+- **MCP Client (node)**
+
+  - Install community nodes - You may need to restart container.
+
+    - Go to **Settings → Community nodes**
+    - Use npm _Package Name_: _n8n-nodes-mcp_.
+    - Install node.
+
+  - Configure MCP Client (node) credentials.
+
+    - In **Nodes panel**, search for `MCP`.
+    - Select `MCP Client (node)`.
+    - In the node settings, select _Connection Type_: `HTTP Streamable`.
+    - Create new credentials of type _MCP Client (HTTP Streamable) API_.
+    - Set _HTTP Streamable URL_: `http://host.docker.internal:3001/stream`.
+    - Add any required headers for authentication.
+
+### Open WebUI
+
+- **MCPO**
+
+  - Your MCP tool is available at <http://host.docker.internal:8090>.
+  - Test it live at <http://host.docker.internal:8090/docs>.
+  - Using the config file [./open-webui/mcpo/config.json](./open-webui/mcpo/config.json),
+    set additional configuration settings as desired.
+  - As we are using the config file _config.json_, each tool will be accessible
+    under its own unique route, e.g. <http://host.docker.internal:8090/MCP_DOCKER>.
+
+- **Functions**
+
+  <details>
+  <summary>Locally available functions</summary>
+
+  Pipes:
+  
+  - n8n
+
+    ```sh
+    ./open-webui/functions/owndev/pipelines/n8n/
+    ```
+  
+  - Anthropic
+
+    ```sh
+    ./open-webui/functions/open-webui/functions/pipes/anthropic/
+    ```
+  
+  - Open AI
+
+    ```sh
+    ./open-webui/functions/open-webui/functions/pipes/openai/
+    ```
+
+  Filters:
+
+  - Various filters
+
+    ```sh
+    ./open-webui/functions/owndev/filters/
+    ```
+  
+  - Agent hotswap
+
+    ```sh
+    ./open-webui/functions/open-webui/functions/filters/agent_hotswap/
+    ```
+  
+  - Context clip
+
+    ```sh
+    ./open-webui/functions/open-webui/functions/filters/context_clip/
+    ```
+  
+  - Dynamic vision router
+
+    ```sh
+    ./open-webui/functions/open-webui/functions/filters/dynamic_vision_router/
+    ```
+  
+  - Max turns
+
+    ```sh
+    ./open-webui/functions/open-webui/functions/filters/max_turns/
+    ```
+  
+  - Moderation
+
+    ```sh
+    ./open-webui/functions/open-webui/functions/filters/moderation/
+    ```
+  
+  - Summarizer
+
+    ```sh
+    ./open-webui/functions/open-webui/functions/filters/summarizer/
+    ```
+
+  </details>
+
+  - Manual Configuration.
+
+    - Navigate to the _locally available functions_ folder containing your desired
+      function `.py` file.
+    - Copy the complete code from the function file (e.g. main.py)
+    - Add as a new Function in **OpenWebUI → Admin Panel → Functions**
+    - Configure function-specific settings as needed - follow function README for
+      details.
+    - Enable the Function (also be sure to enable to Agent Swapper Icon in chat)
+
+- **Filesystem** (Server Tool)
+
+  - Your Filesystem server is available at <http://host.docker.internal:8091/docs>.
+
+- **Pipelines**
+
+  - Connect to Open WebUI.
+
+    - Navigate to the **Settings → Connections → OpenAI API** section in Open WebUI.
+    - Set the _API URL_ to `http:\\host.docker.internal:9099` and the _API key_
+      to `0p3n-w3bu!`. Your pipelines should now be active.
+
+  - Manage Configurations.
+
+    - In the _admin panel_, go to **Admin Settings → Pipelines tab**.
+    - Select your desired pipeline and modify the valve values directly from WebUI.
+
+### Open Code
+
+- **opencode.jsonc**.
+
+  - Using the config file at [./opencode/opencode.jsonc](./opencode/opencode.jsonc)
+  - Set additional configuration settings as desired.
+
 
 ## Upgrading
 
@@ -2053,7 +2196,7 @@ See the profile arguments table above for all arguments.
 Some **AI-Suite** functional modules require access to a project
 workspace, a shared data folder and/or its configuration file located
 on the Docker host. These resources are mounted from the host to the
-module container in the using a Docker compose _volume_ _bind mount_.
+module container the using a Docker Compose _volume_ _bind mount_.
 
 <details>
 <summary>AI-Suite Docker Compose bind mounts</summary>
@@ -2079,28 +2222,28 @@ n8n-import:
    - ./n8n/data:/data
 ```
 
-**Open-WebUI MCPO** OpenAPI configuration file.
+**Open WebUI MCPO** OpenAPI configuration file.
 
 ```yaml
 open-webui-mcpo:
    - ./open-webui/mcpo/config.json:/app/config.json
 ```
 
-**Open-WebUI Filesystem** local project files access.
+**Open WebUI Filesystem** local project files access.
 
 ```yaml
 open-webui-filesystem:
    - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp 
 ```
 
-**Open-WebUI Pipelines** shared files access.
+**Open WebUI Pipelines** shared files access.
 
 ```yaml
 open-webui-pipelines:
    - ./open-webui/piplines:/root/.pipelines
 ```
 
-**Opencode** configuration file and local project files access.
+**OpenCode** configuration file and local project files access.
 
 ```yaml
 opencode:
@@ -2135,10 +2278,11 @@ caddy:
 ### PROJECTS_PATH environment variable
 
 You can use the `PROJECTS_PATH` environment variable to allow **n8n**,
-**Opencode**, and **Open-WebUI MCPO** access to your project files.
+**OpenCode**, and **Open WebUI Filesystem** access to your project files.
 During the installation process, if the key is not already present in
 your `.env` file, the key and value are written with the value set
-to `~/projects`.
+to `~/projects`. You can override this behaviour by manually setting your
+desired path in the .env file.
 
 `PROJECTS_PATH` forms a volume bind mount to container paths for the containers
 described above - e.g., the OpenCode container path mount is `/root/projects`.
@@ -2211,7 +2355,6 @@ Useful content for deeper understanding AI concepts.
 - [Tutorial: Build an AI workflow in n8n](https://docs.n8n.io/advanced-ai/intro-tutorial/)
 - [Langchain Concepts in n8n](https://docs.n8n.io/advanced-ai/langchain/langchain-n8n/)
 - [Demonstration of key differences between agents and chains](https://docs.n8n.io/advanced-ai/examples/agent-chain-comparison/)
-- [What are vector databases?](https://docs.n8n.io/advanced-ai/examples/understand-vector-databases/)
 
 ## 📜 License
 
