@@ -270,6 +270,8 @@ def prepare_open_webui_tools_filesystem_env():
                       context: .
                     ports:
                       - 8091:8091
+                    extra_hosts:
+                      - host.docker.internal:host-gateway
                     volumes:
                       - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp
                 """))
