@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update December 31, 2025
+Last Update January 01, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -503,6 +503,7 @@ def check_and_fix_docker_compose_for_searxng():
                             if compare == '- ALL':
                                 line = "   #  - ALL  # Temporarily commented out for first run\n"
                                 commented = True
+                                searxng_found = False
                                 print("SearXNG 'cap_drop:' directive temporarily commented...")
                     f.write(line)
             print("Note: After the first run completes successfully, uncomment 'cap_drop:' in docker-compose.yml for security.")
@@ -655,10 +656,14 @@ def update_n8n_database_settings(env_file=None, supabase=False):
                 if not updated:
                     if line == '  n8n:\n':
                         n8n_found = True
+                    if line == '  n8n-runner:\n':
+                        updated = True
+                        n8n_found = False
                     if n8n_found:
                         if line == f'      {old_db}\n':
                             line = f"      {new_db}\n"
                             updated = True
+                            n8n_found = False
                             print(f"Set n8n database depends_on: from '{old_db}' " \
                                   f"to '{new_db}' in {compose_file}...")
                 f.write(line)
