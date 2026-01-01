@@ -2,7 +2,7 @@
 """
 Trevor SANDY
 Last Update December 31, 2025
-Copyright (c) 2025 by Trevor SANDY
+Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
 functional module selection, Ollama CPU/GPU configuration, and starting Supabase and
