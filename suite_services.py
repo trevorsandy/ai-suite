@@ -282,20 +282,23 @@ def prepare_open_webui_tools_filesystem_env():
                       - PROJECTS_PATH
                 """))
 
-def destroy_ai_suite(profile=None, upgrade=False):
+def destroy_ai_suite(profile=None, build=False, install=False):
     """Stop and remove AI-Suite containers and volumes (using its compose file)
-      for the specified profile arguments.
+       for the specified profile arguments.
     """
-    print(f"Destroying {name} containers for profile arguments: {profile}...")
+    insert = "and volumes for" if install else "for"
+    print(f"Destroying {name} containers {insert} profile arguments: {profile}...")
     cmd = ["docker", "compose", "-p", "ai-suite"]
     if profile:
         for argument in profile:
             cmd.extend(["--profile", argument])
     cmd.extend(["-f", "docker-compose.yml", "down"])
-    if upgrade:
-        cmd.extend(["--volumes", "--remove-orphans"])
+    if build:
+        cmd.extend(["--remove-orphans"])
+        if install:
+            cmd.extend(["--volumes"])
     run_command(cmd)
-    if upgrade:
+    if build and install:
         cmd = ["docker", "volume", "prune", "--force"]
         run_command(cmd)
 
@@ -351,29 +354,29 @@ def operate_ai_suite(operation=None, profile=None, environment=None):
         cmd = ["docker", "image", "prune", "--force"]
         run_command(cmd)
 
-def start_supabase(environment=None, upgrade=False):
+def start_built_container(compose_file=None, environment=None, build=False):
+    """Start the built container services (using its compose file)."""
+    cmd = ["docker", "compose", "-p", "ai-suite", "-f", compose_file]
+    if environment == "public":
+        cmd.extend(["-f", "docker-compose.override.public.yml"])
+    cmd.extend(["up", "-d"])
+    if build:
+        cmd.extend(["--build"])
+    run_command(cmd)
+
+def start_supabase(environment=None, build=False):
     """Start the Supabase services (using its compose file)."""
     print("Starting Supabase services...")
-    cmd = ["docker", "compose", "-p", "ai-suite", "-f", "supabase/docker/docker-compose.yml"]
-    if environment and environment == "public":
-        cmd.extend(["-f", "docker-compose.override.public.yml"])
-    cmd.extend(["up", "-d"])
-    if upgrade:
-        cmd.extend(["--build"])
-    run_command(cmd)
+    compose_file = "supabase/docker/docker-compose.yml"
+    start_built_container(compose_file, environment, build)
 
-def start_open_webui_tools_filesystem(environment=None, upgrade=False):
+def start_open_webui_tools_filesystem(environment=None, build=False):
     """Start the Open WebUI Tools Filesystem services (using its compose file)."""
     print("Starting Open WebUI Tools Filesystem services...")
-    cmd = ["docker", "compose", "-p", "ai-suite", "-f", "open-webui/tools/servers/filesystem/compose.yaml"]
-    if environment and environment == "public":
-        cmd.extend(["-f", "docker-compose.override.public.yml"])
-    cmd.extend(["up", "-d"])
-    if upgrade:
-        cmd.extend(["--build"])
-    run_command(cmd)
+    compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
+    start_built_container(compose_file, environment, build)
 
-def start_ai_suite(profile=None, environment=None):
+def start_ai_suite(profile=None, environment=None, build=False):
     """Start the AI-Suite services (using its compose file) for the specified
        profile arguments and environment argument.
     """
@@ -385,11 +388,13 @@ def start_ai_suite(profile=None, environment=None):
     else:
         cmd.extend(["--profile", 'open-webui'])
     cmd.extend(["-f", "docker-compose.yml"])
-    if environment and environment == "private":
+    if environment == "private":
         cmd.extend(["-f", "docker-compose.override.private.yml"])
-    if environment and environment == "public":
+    if environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.yml"])
-    cmd.extend(["up", "-d", "--remove-orphans"])
+    cmd.extend(["up", "-d"])
+    if build:
+        cmd.extend(["--remove-orphans"])
     run_command(cmd)
 
 def generate_searxng_secret_key():
@@ -711,7 +716,7 @@ def main():
     agent_all_profiles = open_webui_all_profiles + ['opencode']
     server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j', 'caddy']
     profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + ollama_profiles
-    operations = ['stop', 'stop-ollama', 'start', 'pause', 'unpause', 'update', 'quiet-update']
+    operations = ['stop', 'stop-ollama', 'start', 'pause', 'unpause', 'update', 'install']
     environments = ['private', 'public']
     parser = argparse.ArgumentParser(
         prog=f'{file}',
@@ -719,7 +724,7 @@ def main():
         description=textwrap.dedent(f'''\
             {info.get("description")}
 
-            With {file}, you can install, start, stop, pause or upgrade {name}
+            With {file}, you can install, start, stop, pause or update {name}
             with specified profile arguments (functional modules) and environment.
             ___________________________
 
@@ -742,7 +747,7 @@ def main():
             - Perform stop (start, pause, unpause) suite operation:
               >python {file} --profile n8n opencode cpu --operation stop
 
-            - Perform suite operation to upgrade all modules and restart:
+            - Perform suite operation to update all modules and restart:
               >python {file} --operation update
             '''),
         epilog=textwrap.dedent(f'''\
@@ -804,7 +809,7 @@ def main():
         check_ollama_process(args.operation)
 
     # Process operation argument
-    upgrade = False
+    build = False
     if args.operation:
         status = None
         if os.path.exists('.operation'):
@@ -824,9 +829,9 @@ def main():
             sys.exit(0)
         if default_profile:
             args.profile = ['ai-all']
-        if args.operation == 'update' or \
-            args.operation == 'quiet-update':
-            upgrade = True
+        if args.operation == 'update' or args.operation == 'install':
+            build = True            
+            install = args.operation == 'install'
             if args.operation == 'update':
                 user_confirm = input(textwrap.dedent(f"""\
                     Performing an {name} update can impact its integrity.
@@ -838,21 +843,22 @@ def main():
                     print(f"""{name} update was not confirmed - exiting...""")
                     sys.exit(0)
             args.operation = 'pull'
+            insert = "Installing" if install == 'install' else "Updating"
             if default_profile:
-                print("""Updating all container images including Ollama...""")
+                print(f"""{insert} all container images including Ollama...""")
                 args.profile.extend(["cpu"])
             else:
-                print(f"""Updating container images for {args.profile}...""")
+                print(f"""{insert} container images for {args.profile}...""")
             docker_compose_include(True, True)
-            destroy_ai_suite(args.profile, True)
+            destroy_ai_suite(args.profile, build, install)
         operate_ai_suite(args.operation, args.profile, args.environment)
-        if not upgrade:
+        if not build:
             sys.exit(0)
     os.remove('.operation') if os.path.exists('.operation') else None
 
     # Manually set default profile argument
     if default_profile:
-        if upgrade:
+        if build:
             args.profile.remove('cpu') if 'cpu' in args.profile else None
         else:
             args.profile = ['open-webui']
@@ -905,19 +911,19 @@ def main():
     docker_compose_include(supabase, open_webui)
 
     # Stop and remove AI-Suite containers
-    if not upgrade:
-        destroy_ai_suite(args.profile, False)
+    if not build:
+        destroy_ai_suite(args.profile, False, False)
 
     # Start Supabase first
     if supabase:
-        start_supabase(args.environment, upgrade)
+        start_supabase(args.environment, build)
         # Give Supabase some time to initialize
         print("""Waiting for Supabase to initialize...""")
         time.sleep(10)
 
     # Start Open WebUI Tools Filesystem
     if open_webui:
-        start_open_webui_tools_filesystem(args.environment, upgrade)
+        start_open_webui_tools_filesystem(args.environment, build)
         time.sleep(1)
 
     # Check if open-webui-mcpo specified with required profile arguments, else remove open-webui-mcpo
@@ -952,7 +958,7 @@ def main():
                 args.profile.remove(ollama_profile)
 
     # Then start the AI-Suite services
-    start_ai_suite(args.profile, args.environment)
+    start_ai_suite(args.profile, args.environment, build)
 
     with open('.operation', 'w') as f:
         f.write('start')
