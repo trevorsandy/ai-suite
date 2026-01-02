@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update January 01, 2026
+Last Update January 02, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -309,8 +309,21 @@ def operate_ai_suite(operation=None, profile=None, environment=None):
     with open('.operation', 'w') as f:
         f.write(operation)
 
+    supabase =False
+    open_webui = False
+    if profile and operation != 'pull':
+        supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
+        open_webui = any(p for p in profile if p in open_webui_all_profiles)    
+    
     if operation == 'start':
-        start_ai_suite(profile, environment)
+        if supabase:
+            start_supabase(environment, False)
+            print("""Waiting for Supabase to initialize...""")
+            time.sleep(10)
+        if open_webui:
+            start_open_webui_tools_filesystem(environment, False)
+            time.sleep(1)
+        start_ai_suite(profile, environment, False)
         return
 
     if operation == 'stop':
@@ -321,7 +334,14 @@ def operate_ai_suite(operation=None, profile=None, environment=None):
         insert = "Pausing" if operation == 'pause' else None
     container = "images" if operation == 'pull' else "containers"
     print(f"{insert} '{name}' {container} for profile arguments: {profile}...")
-    cmd = ["docker", "compose", "-p", "ai-suite"]
+    base = ["docker", "compose", "-p", "ai-suite"]
+    if supabase:
+        cmd = base + ["-f", "supabase/docker/docker-compose.yml", operation]
+        run_command(cmd)
+    if open_webui:
+        cmd = base + ["-f", "open-webui/tools/servers/filesystem/compose.yaml", operation]
+        run_command(cmd)
+    cmd = base
     if profile:
         for argument in profile:
             cmd.extend(["--profile", argument])
@@ -681,6 +701,7 @@ def main():
     print(f"""{name} version: {".".join(map(str, version))}""")
 
     # Profile, environment and operation arguments
+    global open_webui_all_profiles
     ollama_profiles = ['cpu', 'gpu-nvidia', 'gpu-amd']
     n8n_profiles = ["n8n", "n8n-all"]
     n8n_all_profiles = n8n_profiles + ['ai-all']
