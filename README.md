@@ -2178,19 +2178,19 @@ as your vector store.
 
 ## Upgrading
 
-To update AI-Suite images to their latest versions (n8n, Open WebUI, etc.),
-run the _update_ operation command argument optionally preceded by the specified
-profile arguments (functional modules).
-Alternatively, you can use the _quiet-update_ operation argument to perform an
-update without the confirmation prompt. Using _quiet-update_, AI-Suite will assume
-you are proceeding as if no previous installation exists.
+To update AI-Suite images to their latest versions (n8n, Open WebUI, etc.), run
+the _update_ operation command argument optionally preceded by the specified profile
+arguments (functional modules).
+Alternatively, you run the install_ operation argument to perform an update without
+the confirmation prompt. Using _install_, AI-Suite will assume you are proceeding
+as if performing a new installation - i.e. no previous installation exists.
 
 `suite_services.py` [`--profile` arguments] `--operation` argument:
 
 | Argument | Operation |
 | -----------: | ------: |
 | `update` | Update - stop, pull and restart specified container images |
-| `quiet-update` | Quietly Update - perform update without confirmation prompt |
+| `install` | New install - proceed as if performing a new installation |
 
 > [!CAUTION]
 > Named and anonymous data volumes will be deleted. Be sure to backup your data
@@ -2213,10 +2213,10 @@ Example command to full update:
 python suite_services.py --operation update
 ```
 
-Example command for full update with Docker Ollama running on CPU:
+Example command for full (new) install with Docker Ollama running on CPU:
 
 ```powershell
-python suite_services.py --profile ai-all cpu --operation update
+python suite_services.py --profile ai-all cpu --operation install
 ```
 
 **Manual steps to upgrade** the AI-Suite services are as follows:

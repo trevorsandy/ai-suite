@@ -14,7 +14,7 @@ All stacks use the same Docker Compose services project name ("ai-suite") so the
 grouped together in Docker Desktop.
 
 This script is also used for operation commands that start, stop, stop-ollama,
-pause, unpause, update and quiet-update the AI-Suite services using the optional
+pause, unpause, update and install the AI-Suite services using the optional
 --operation argument. An Ollama check is performed when it is assumed Ollama is
 running from the Docker Host. If Ollama is determined to be installed but not running,
 an attempt to launch the Ollama service is executed on install, start and unpause.
