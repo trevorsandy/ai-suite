@@ -67,7 +67,7 @@ import re
 
 info = {
     "name": "AI-Suite",
-    "version": (0, 1, 0),
+    "version": (0, 3, 0),
     "title": "AI-Suite installation and operation",
     "file": os.path.basename(__file__),
     "description": "A dockerized suite of AI agents in a no-code, workflow, LLM environment",
