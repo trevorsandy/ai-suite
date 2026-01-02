@@ -58,7 +58,8 @@ def container_env_var(env_var):
         return ""
 
 def container_work_dir(project_path):
-    """:return: current work path converted to container bind mounted child path """
+    """:return: current work path converted to container bind mounted work path """
+    print("Perform project path to container work path conversion...")
     if project_path is None:
         project_path = os.environ.get('PROJECT_PATH')
     if project_path is None:
@@ -74,7 +75,7 @@ def container_work_dir(project_path):
             print(f"Warning: project path does not start with container projects path...")
     else:
         print(f"Warning: container projects path not defined...")
-    print(f"Posix work path: {work_path}")
+    print(f"Project path: {project_path}, work path: {work_path}")
     return work_path
 
 def main():
