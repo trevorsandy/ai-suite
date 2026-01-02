@@ -249,19 +249,27 @@ def clone_open_webui_functions_repos():
                 shutil.rmtree(item)
     os.chdir("../../../../")
 
+def copy_dot_env_file(env_file=None):
+    """Copy .env to .env in target compose file destination."""
+    if env_file is not None:
+        env_source_file = os.path.join(".env")
+        print(f"Copying .env in {name} root to {env_file}...")
+        shutil.copyfile(env_source_file, env_file)
+
 def prepare_supabase_env():
     """Copy .env to .env in supabase/docker."""
-    env_path = os.path.join("supabase", "docker", ".env")
-    env_source_path = os.path.join(".env")
-    print(f"Copying .env in {name} root to {env_path}...")
-    shutil.copyfile(env_source_path, env_path)
+    env_file = os.path.join("supabase", "docker", ".env")
+    copy_dot_env_file(env_file)
+    header = " ".join(["\n############", "\n# Docker Compose", "\n############\n\n"])
+    set_variable_in_env_file(env_file, 'COMPOSE_IGNORE_ORPHANS', 'true', header)
 
 def prepare_open_webui_tools_filesystem_env():
     """Copy .env and write compose.yaml to open-webui/tools/servers/filesystem."""
-    env_path = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
-    env_source_path = os.path.join(".env")
-    print(f"Copying .env in {name} root to {env_path}...")
-    shutil.copyfile(env_source_path, env_path)
+    env_file = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
+    copy_dot_env_file(env_file)
+    header = " ".join(["\n############", "\n# Docker Compose", "\n############\n\n"])
+    set_variable_in_env_file(env_file, 'COMPOSE_IGNORE_ORPHANS', 'true', header)
+
     docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")
     print(f"Writing {docker_compose_path}...")
     with open(docker_compose_path, 'w') as f:
@@ -646,8 +654,13 @@ def set_variable_in_env_file(env_file=None, key=None , value=None, header=None):
         print(f"Exception: File '{env_file}' not found.")
 
     if dotenv.load_dotenv(env_file):
+        variable = key
+        if header is not None:
+            with open(env_file, 'r') as f:
+                content = f.read()
+            if not header in content:
+                variable = "".join([header, key])
         print(f"Set '{key}' to '{value}' in {env_file}...")
-        variable = "".join([header, key]) if header else key
         dotenv.set_key(env_file, variable, value)
 
 def update_n8n_database_settings(env_file=None, supabase=False):
