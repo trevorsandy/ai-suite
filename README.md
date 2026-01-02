@@ -2179,10 +2179,11 @@ as your vector store.
 ## Upgrading
 
 To update AI-Suite images to their latest versions (n8n, Open WebUI, etc.),
-run the _update_ operation command argument optionally preceded by the
-specified profile arguments (functional modules).
+run the _update_ operation command argument optionally preceded by the specified
+profile arguments (functional modules).
 Alternatively, you can use the _quiet-update_ operation argument to perform an
-update without the confirmation prompt.
+update without the confirmation prompt. Using _quiet-update_, AI-Suite will assume
+you are proceeding as if no previous installation exists.
 
 `suite_services.py` [`--profile` arguments] `--operation` argument:
 
@@ -2193,7 +2194,7 @@ update without the confirmation prompt.
 
 > [!CAUTION]
 > Named and anonymous data volumes will be deleted. Be sure to backup your data
-> to avoid data loss.
+> to avoid data loss if your intent is to _update_ an existing installation.
 <!-- -->
 > [!NOTE]
 > The `suite_services.py` _update_ operation argument will stop, pull the image
@@ -2201,41 +2202,68 @@ update without the confirmation prompt.
 > update the entire suite, simply omit the profile arguments.
 >
 > If no profile arguments are specified, container images for all functional
-> modules plus Docker Ollama will be _pulled_ but only the modules will be
-> _started_. Docker Ollama will not be started unless it is explicitly specified
-> as profile argument.
+> modules plus Docker Ollama will be _pulled_ but only functional module
+> containers (n8n, Open WebUI, OpenCode etc.) will be _started_. Docker Ollama
+> containers will not be started unless they are explicitly specified as a
+> profile argument.
 
-Example command:
+Example command to full update:
 
 ```powershell
 python suite_services.py --operation update
 ```
 
+Example command for full update with Docker Ollama running on CPU:
+
+```powershell
+python suite_services.py --profile ai-all cpu --operation update
+```
+
 **Manual steps to upgrade** the AI-Suite services are as follows:
 
 ```powershell
-# Stop services for specified profile arguments
-docker compose -p ai-suite -f docker-compose.yml --profile <arguments> down
+# Stop services for running containers
+docker compose -p ai-suite -f docker-compose.yml --profile <arguments> down --volumes
+
+# Update images built locally (Supabase, Open WebUI Filesystem) as required
+# First, pull the Supabase GitHub repository
+cd ai-suite/supabase
+git pull
+
+# Next, perform the Supabase Docker Compose build
+# Note: If in public environment, add '-f ../docker-compose.override.public.yml'
+docker compose -p ai-suite -f docker/docker-compose.yml up -d --build --remove-orphans
+
+# Next, pull the Open WebUI Tools Fileserver repository
+cd ../open-webui/tools
+git pull
+
+# Next, perform the, Fileserver Docker Compose build
+# Note: If in public environment, add '-f ../../../../docker-compose.override.public.yml'
+docker compose -p ai-suite -f servers/filesystem/compose.yaml up -d --build --remove-orphans
+
+# Return to AI-Suite root directory
+cd ../../
 
 # Pull latest versions of container images for specified profile arguments
 docker compose -p ai-suite -f docker-compose.yml --profile <arguments> pull
 
 # Start services again for specified profile arguments
-python suite_services.py --profile <arguments>
+# Note: If in public environment, replace 'docker-compose.override.private.yml' with 'docker-compose.override.public.yml'
+docker compose -p ai-suite -f docker-compose.yml -f docker-compose.override.private.yml --profile <arguments> up -d --build --remove-orphans
 ```
 
-Replace profile `<arguments>` with `ai-all` to update all container images
-or with your desired functional modules, e.g. `n8n`, `opencode` etc,
-including your CPU/GPU argument [`cpu` | `gpu-nvidia` | `gpu-amd`] if you
-are running Ollama in Docker.
+Replace profile `<arguments>` with `ai-all` to update all container images or with
+your desired functional modules, e.g. `n8n`, `opencode` etc, plus your CPU/GPU
+argument [`cpu` | `gpu-nvidia` | `gpu-amd`] if you are running Ollama in Docker.
 See the profile arguments table above for all arguments.
 
 ## Accessing local files
 
-Some **AI-Suite** functional modules require access to a project
-workspace, a shared data folder and/or its configuration file located
-on the Docker host. These resources are mounted from the host to the
-module container the using a Docker Compose _volume_ _bind mount_.
+Some **AI-Suite** functional modules require access to a project workspace, a
+shared data folder and/or its configuration file located on the Docker host.
+These resources are mounted from the host to the module container the using a
+Docker Compose _volume_ _bind mount_.
 
 <details>
 <summary>AI-Suite Docker Compose bind mounts</summary>
@@ -2245,11 +2273,11 @@ module container the using a Docker Compose _volume_ _bind mount_.
    - <host path>:<container path>[:<read/write access>]
 ```
 
-**n8n** creates a `shared` folder located at `/data/shared` - use this
-path in nodes that interact with the host filesystem. Additional folders
-include the `n8n-files` folder located at `/home/node/.n8n-files`,
-the `projects` folder located at `/home/node/projects` and the `data`
-folder located at `/data`. The host root path is `./n8n/data`.
+**n8n** creates a `shared` folder located at `/data/shared` - use this path in
+nodes that interact with the host filesystem. Additional folders include the
+`n8n-files` folder located at `/home/node/.n8n-files`, the `projects` folder
+located at `/home/node/projects` and the `data` folder located at `/data`.
+The host root path is `./n8n/data`.
 
 ```yaml
 n8n:
