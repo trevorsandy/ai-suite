@@ -2201,6 +2201,13 @@ as your vector store.
 > path `/root/projects` and the resulting path is set as _work_dir_ to form the
 > OpenCode Docker exec command's _workdir=work_dir_ keyword argument.
 
+### Ollama - running on host
+
+- **OLLAMA_PATH environment variable**
+
+  - If Ollama is installed in a non-standard location, you can add `OLLAMA_PATH`
+    with its absolute path (including the Ollama file) to the _.env_ file.
+
 ## Upgrading
 
 To update AI-Suite images to their latest versions (n8n, Open WebUI, etc.), run

@@ -148,8 +148,17 @@ def check_ollama_process(operation=None):
             sys.exit(1)
         print("Ollama is not running...")
         if not stop_ollama:
-            print("Attempting to launch Ollama on host...")
-            launch_ollama_process()
+            if ollama_found:
+                print("Attempting to launch Ollama on host...")
+                launch_ollama_process()
+            else:
+                print(textwrap.dedent(f"""\
+                    Error: The {ollama_app} file was not found at {ollama_exe}.
+                    If Ollama is installed in a non-standard location, you can set the OLLAMA_PATH
+                    environment variable with its full path (including the Ollama file) to .env and
+                    re-run this file - exiting...
+                    """))
+                sys.exit(1)
 
 def clone_supabase_repo():
     """Clone the Supabase repository using sparse checkout if not already present."""
@@ -738,8 +747,8 @@ def main():
         description=textwrap.dedent(f'''\
             {info.get("description")}
 
-            With {file}, you can install, start, stop, pause or update {name}
-            with specified profile arguments (functional modules) and environment.
+            With {file}, you can install, start, stop, pause, update or install
+            {name} with specified profile arguments (functional modules) and environment.
             ___________________________
 
             Syntax:
@@ -763,6 +772,9 @@ def main():
 
             - Perform suite operation to update all modules and restart:
               >python {file} --operation update
+
+            - Perform suite operation to install all functional modules and start:
+              >python {file} --operation install
             '''),
         epilog=textwrap.dedent(f'''\
             - Title: {info.get("title")}
@@ -786,6 +798,8 @@ def main():
 
     args = parser.parse_args()
 
+    env_file = os.path.join(".env")
+
     # Detect platform
     global system
     system = platform.system()
@@ -803,7 +817,7 @@ def main():
     ollama_in_host = default_profile or not \
         any(profile for profile in args.profile if profile in ollama_profiles)
     if ollama_in_host:
-        global ollama_app, ollama_exe, attempted_launch
+        global ollama_found, ollama_app, ollama_exe, attempted_launch
         ollama_found = False
         attempted_launch = False
         if system == "Windows":
@@ -818,8 +832,13 @@ def main():
                     ollama_found = True
                     break
         if not ollama_found:
-            print(f"""The {ollama_app} file was not found at {ollama_exe} - exiting...""")
-            sys.exit(1)
+            ollama_path = dotenv.get_key(env_file, 'OLLAMA_PATH')
+            if ollama_path is None:
+                ollama_path = os.environ.get('OLLAMA_PATH')
+            if ollama_path is not None:
+                ollama_exe = os.path.normpath(ollama_path)
+                ollama_app = os.path.basename(ollama_exe)
+                ollama_found = os.path.exists(ollama_exe)
         check_ollama_process(args.operation)
 
     # Process operation argument
@@ -876,8 +895,6 @@ def main():
             args.profile.remove('cpu') if 'cpu' in args.profile else None
         else:
             args.profile = ['open-webui']
-
-    env_file = os.path.join(".env")
 
     # Set default projects path in .env file
     if any(profile for profile in args.profile if profile in agent_all_profiles):
