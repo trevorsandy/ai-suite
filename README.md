@@ -2251,42 +2251,95 @@ Example command for full (new) install with Docker Ollama running on CPU:
 python suite_services.py --profile ai-all cpu --operation install
 ```
 
-**Manual steps to upgrade** the AI-Suite services are as follows:
+### Manual steps to upgrade
 
-```powershell
-# Stop services for running containers
-docker compose -p ai-suite -f docker-compose.yml --profile <arguments> down --volumes
+- <details>
+  <summary>Stop services for running containers</summary>
 
-# Update images built locally (Supabase, Open WebUI Filesystem) as required
-# First, pull the Supabase GitHub repository
-cd ai-suite/supabase
-git pull
+  ```powershell
+  # Before starting the update, stop services for running containers
+  docker compose -p ai-suite -f docker-compose.yml --profile <arguments> down --volumes
+  ```
 
-# Next, perform the Supabase Docker Compose build
-# Note: If in public environment, add '-f ../docker-compose.override.public.yml'
-docker compose -p ai-suite -f docker/docker-compose.yml up -d --build --remove-orphans
+  </details>
 
-# Next, pull the Open WebUI Tools Fileserver repository
-cd ../open-webui/tools
-git pull
+- <details>
+  <summary>Update images built locally (Supabase, Open WebUI Filesystem)</summary>
 
-# Next, perform the, Fileserver Docker Compose build
-# Note: If in public environment, add '-f ../../../../docker-compose.override.public.yml'
-docker compose -p ai-suite -f servers/filesystem/compose.yaml up -d --build --remove-orphans
+  ```powershell
+  # First, pull the Supabase GitHub repository
+  cd ai-suite/supabase
+  git pull
+  ```
 
-# Return to AI-Suite root directory
-cd ../../
+  </details>
 
-# Pull latest versions of container images for specified profile arguments
-docker compose -p ai-suite -f docker-compose.yml --profile <arguments> pull
+- <details>
+  <summary>Perform the Supabase Docker Compose build</summary>
 
-# Start services again for specified profile arguments
-# Note: If in public environment, replace 'docker-compose.override.private.yml' with 'docker-compose.override.public.yml'
-docker compose -p ai-suite -f docker-compose.yml -f docker-compose.override.private.yml --profile <arguments> up -d --build --remove-orphans
-```
+  ```powershell
+  # Next, perform the Supabase Docker Compose build
+  # Note: If in public environment, add '-f ../docker-compose.override.public.yml'
+  docker compose -p ai-suite -f docker/docker-compose.yml up -d --build --remove-orphans
+  ```
 
-Replace profile `<arguments>` with `ai-all` to update all container images or with
-your desired functional modules, e.g. `n8n`, `opencode` etc, plus your CPU/GPU
+  </details>
+
+- <details>
+  <summary>Pull the Open WebUI Tools Fileserver repository</summary>
+
+  ```powershell
+  # Next, pull the Open WebUI Tools Fileserver
+  cd ../open-webui/tools
+  git pull
+  ```
+
+  </details>
+
+- <details>
+  <summary>Perform the, Fileserver Docker Compose build</summary>
+
+  ```powershell
+  # Next, perform the, Fileserver Docker Compose build
+  # Note: If in public environment, add '-f ../../../../docker-compose.override.public.yml'
+  docker compose -p ai-suite -f servers/filesystem/compose.yaml up -d --build --remove-orphans
+  ```
+
+  </details>
+
+- <details>
+  <summary>Return to AI-Suite root directory</summary>
+
+  ```powershell
+  # Return to AI-Suite root directory
+  cd ../../
+  ```
+
+  </details>
+
+- <details>
+  <summary>Pull latest versions of container images</summary>
+
+  ```powershell
+  # Pull latest versions of container images for specified profile arguments
+  docker compose -p ai-suite -f docker-compose.yml --profile <arguments> pull
+  ```
+
+  </details>
+
+- <details>
+  <summary>Start services again for specified profile arguments</summary>
+
+  ```powershell
+  # Start services again for specified profile arguments
+  # Note: If in public environment, replace 'docker-compose.override.private.yml' with 'docker-compose.override.public.yml'
+  docker compose -p ai-suite -f docker-compose.yml -f docker-compose.override.private.yml --profile <arguments> up -d --build --remove-orphans
+  ```
+
+  </details>
+
+Replace profile `<arguments>` with `ai-all` to update all container images or
+with your desired functional modules, e.g. `n8n`, `opencode` etc, plus your CPU/GPU
 argument [`cpu` | `gpu-nvidia` | `gpu-amd`] if you are running Ollama in Docker.
 See the profile arguments table above for all arguments.
 
