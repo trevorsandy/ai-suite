@@ -128,7 +128,7 @@ def check_ollama_process(operation=None):
     except Exception as e:
         print(f"Exception: Ollama process: {e} - assuming Ollama is not running.")
 
-    stop_ollama = operation and operation == 'stop-ollama'
+    stop_ollama = operation == 'stop-ollama'
 
     if ollama_running:
         if stop_ollama:
@@ -320,7 +320,7 @@ def operate_ai_suite(operation=None, profile=None, environment=None):
     with open('.operation', 'w') as f:
         f.write(operation)
 
-    supabase =False
+    supabase = False
     open_webui = False
     if profile and operation != 'pull':
         supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
@@ -363,7 +363,7 @@ def operate_ai_suite(operation=None, profile=None, environment=None):
         run_command(cmd)
 
 def start_built_container(compose_file=None, environment=None, build=False):
-    """Start the built container services (using its compose file)."""
+    """Start the locally built container services (using its compose file)."""
     cmd = ["docker", "compose", "-p", "ai-suite", "-f", compose_file]
     if environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.yml"])
@@ -593,7 +593,8 @@ def docker_compose_include(supabase=False, filesystem=False):
         filesystem = False
     supabase_ins = "add" if supabase else "remove"
     filesystem_ins = "add" if filesystem else "remove"
-    print(f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem 'include:' in {compose_file}...")
+    print(f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem "
+          f"'include:' in {compose_file}...")
     include = supabase or filesystem
     compose_include = "include:\n"
     supabase_include = f"  - ./{supabase_compose_file}\n"
@@ -704,14 +705,14 @@ def update_n8n_database_settings(env_file=None, supabase=False):
                             line = f"      {new_db}\n"
                             updated = True
                             n8n_found = False
-                            print(f"Set n8n database depends_on: from '{old_db}' " \
+                            print(f"Set n8n database depends_on: from '{old_db}' "
                                   f"to '{new_db}' in {compose_file}...")
                 f.write(line)
     except Exception as e:
         print(f"Exception: Update n8n database settings in {compose_file}: {e}")
 
 def main():
-    # Name and version information
+    # Name, file and version information
     global name
     name = info.get("name", "placeholder")
     file = info.get("file", "placeholder.py")
