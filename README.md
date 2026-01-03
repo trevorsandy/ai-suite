@@ -2251,7 +2251,10 @@ Example command for full (new) install with Docker Ollama running on CPU:
 python suite_services.py --profile ai-all cpu --operation install
 ```
 
-**Manual steps to upgrade** the AI-Suite services are as follows:
+### Manual steps to upgrade
+
+<details>
+<summary>Manual steps to upgrade the AI-Suite services</summary>
 
 ```powershell
 # Stop services for running containers
@@ -2285,10 +2288,12 @@ docker compose -p ai-suite -f docker-compose.yml --profile <arguments> pull
 docker compose -p ai-suite -f docker-compose.yml -f docker-compose.override.private.yml --profile <arguments> up -d --build --remove-orphans
 ```
 
-Replace profile `<arguments>` with `ai-all` to update all container images or with
-your desired functional modules, e.g. `n8n`, `opencode` etc, plus your CPU/GPU
+Replace profile `<arguments>` with `ai-all` to update all container images or
+with your desired functional modules, e.g. `n8n`, `opencode` etc, plus your CPU/GPU
 argument [`cpu` | `gpu-nvidia` | `gpu-amd`] if you are running Ollama in Docker.
 See the profile arguments table above for all arguments.
+
+</details>
 
 ## Accessing local files
 
