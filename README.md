@@ -222,6 +222,18 @@ Before you begin, make sure you have the following software installed:
    # LETSENCRYPT_EMAIL=internal
 
    ...
+
+   ############
+   # Logs - Configuration for Analytics
+   # Please refer to https://supabase.com/docs/reference/self-hosting-analytics/introduction
+   ############
+
+   # Change vector.toml sinks to reflect this change
+   # these cannot be the same value
+   LOGFLARE_PUBLIC_ACCESS_TOKEN=your-super-secret-and-long-logflare-key-public
+   LOGFLARE_PRIVATE_ACCESS_TOKEN=your-super-secret-and-long-logflare-key-private
+
+   ...
    ```
 
    </details>
@@ -251,10 +263,14 @@ default functional module `open-webui` is used, Likewise, if no GPU configuratio
 profile is specified, it is assumed Ollama is being run from the Docker Host.
 **Multiple profile arguments (functional modules) are supported**.
 
----
-`suite_services.py` `--profile` arguments (functional modules):
+The `--environment` command allows the installation to be defined as _private_
+(default) or _public_. A public install restricts the communication ports exposed
+to the network.
 
-| Argument | Module |
+---
+`suite_services.py` `--profile` functional module arguments
+
+| Argument | Functional Module |
 | -----------------------: | ------: |
 | `n8n` | n8n - automation platform |
 | `opencode` | OpenCode - low-code, no-code agent |
@@ -578,6 +594,24 @@ as your vector store.
 > combines robust components that work well together for personal porjects.
 > Of course, you can further customize it to meet your specific needs.
 
+### PROJECTS_PATH environment variable
+
+You can use the `PROJECTS_PATH` environment variable to allow **n8n**,
+**OpenCode**, and **Open WebUI Filesystem** access to your project files.
+During the installation process, if the key is not already present (or has no
+value) in your `.env` file, the key and value are written to the working
+environment variables with the value set to `~/projects`. You can override this
+behaviour by manually setting your desired path for this key in the .env file.
+
+`PROJECTS_PATH` forms a volume _bind mount_ to container paths for the functional
+modules described above:
+
+| Module | Container | Bind Mount |
+| ---------: | -----------: | ------: |
+| n8n | n8n | `/home/node/projects` |
+| OpenCode | opencode | `/root/projects` |
+| Open WebUI Tool Filesystem | open-webui-filesystem | `/nonexistent/tmp` |
+
 ### n8n
 
 - **MCP Client**
@@ -770,7 +804,7 @@ as your vector store.
 > [!NOTE]
 > It is recommended that your working project directory be within and relative to
 > the path set for `PROJECTS_PATH` in the AI-Suite .env file - see
-> **PROJECTS_PATH environment variable** described below.
+> **PROJECTS_PATH environment variable** section described above.
 >
 > **Important**: The format of the `PROJECT_PATH` entry must be the portion of
 > your project path that is relative to the entry specified in `PROJECTS_PATH`.
@@ -1007,18 +1041,6 @@ caddy:
 ```
 
 </details>
-
-### PROJECTS_PATH environment variable
-
-You can use the `PROJECTS_PATH` environment variable to allow **n8n**,
-**OpenCode**, and **Open WebUI Filesystem** access to your project files.
-During the installation process, if the key is not already present in
-your `.env` file, the key and value are written with the value set
-to `~/projects`. You can override this behaviour by manually setting your
-desired path in the .env file.
-
-`PROJECTS_PATH` forms a volume bind mount to container paths for the containers
-described above - e.g., the OpenCode container path mount is `/root/projects`.
 
 ### n8n Nodes that interact with the local filesystem
 

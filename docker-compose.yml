@@ -88,10 +88,10 @@ x-ollama: &service-ollama
   expose:
     - 11434/tcp
   environment:
-    - OLLAMA_CONTEXT_LENGTH=8192
-    - OLLAMA_FLASH_ATTENTION=1
-    - OLLAMA_KV_CACHE_TYPE=q8_0
-    - OLLAMA_MAX_LOADED_MODELS=2
+    - OLLAMA_CONTEXT_LENGTH
+    - OLLAMA_FLASH_ATTENTION
+    - OLLAMA_KV_CACHE_TYPE
+    - OLLAMA_MAX_LOADED_MODELS
   volumes:
     - ollama_data:/root/.ollama
 
@@ -102,10 +102,10 @@ x-init-ollama: &init-ollama
     - ollama_data:/root/.ollama
   entrypoint: /bin/sh
   environment:
-    - OLLAMA_HOST=ollama:11434
+    - OLLAMA_HOST
   command:
     - "-c"
-    - "sleep 3; ollama pull qwen3:8b; ollama pull llama3.2; ollama pull nomic-embed-text"
+    - "sleep 3; ollama pull ${OLLAMA_DEFAULT_MODEL}; ollama pull ${OLLAMA_SUPPLEMENT_MODEL}; ollama pull ${OLLAMA_EMBEDDING_MODEL}"
 
 name: ai-suite
 
@@ -216,8 +216,17 @@ services:
     container_name: n8n-import
     entrypoint: /bin/sh
     command:
-      - "-c"
-      - "n8n import:credentials --separate --input=/data/credentials && n8n import:workflow --separate --input=/data/workflows"
+    - "-c"
+    - |
+      if [ -z "$(n8n list:workflow --onlyId)" ]; then
+        n8n import:credentials --separate --input=/data/credentials && \
+        n8n import:workflow --separate --input=/data/workflows
+      else
+        echo "Workflows already loaded, skipping import"
+      fi
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./n8n/data:/data
 
@@ -234,6 +243,12 @@ services:
       - ./n8n/local-files:/home/node/.n8n-files
       - ./n8n/data:/data
       - ${PROJECTS_PATH:-./n8n/local-files}:/home/node/projects
+    deploy:
+      resources:
+        limits:
+          memory: ${N8N_MEMORY_LIMIT}
+        reservations:
+          memory: ${N8N_RESERVE_MEMORY}
     depends_on: &depends-on-defaults
       redis:
         condition: service_healthy

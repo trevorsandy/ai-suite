@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update January 02, 2026
+Last Update January 09, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -67,7 +67,7 @@ import re
 
 info = {
     "name": "AI-Suite",
-    "version": (0, 3, 0),
+    "version": (0, 4, 0),
     "title": "AI-Suite installation and operation",
     "file": os.path.basename(__file__),
     "description": "A dockerized suite of AI agents in a no-code, workflow, LLM environment",
@@ -82,7 +82,13 @@ info = {
 def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
     print("Running command:", " ".join(cmd))
-    subprocess.run(cmd, cwd=cwd, check=True)
+    try:
+        completed = subprocess.run(cmd, cwd=cwd, check=True)
+        if completed.returncode != 0:
+            print(f"Command Error: {completed.stderr}")
+    except Exception as e:
+        print(f"Command Exception: {e}.")
+
 
 def launch_ollama_process():
     """Launch Ollama inference server on host"""
@@ -269,15 +275,13 @@ def prepare_supabase_env():
     """Copy .env to .env in supabase/docker."""
     env_file = os.path.join("supabase", "docker", ".env")
     copy_dot_env_file(env_file)
-    header = " ".join(["\n############", "\n# Docker Compose", "\n############\n\n"])
-    set_variable_in_env_file(env_file, 'COMPOSE_IGNORE_ORPHANS', 'true', header)
+    set_variable_in_env_file(env_file, 'COMPOSE_IGNORE_ORPHANS', 'true', None)
 
 def prepare_open_webui_tools_filesystem_env():
     """Copy .env and write compose.yaml to open-webui/tools/servers/filesystem."""
     env_file = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
     copy_dot_env_file(env_file)
-    header = " ".join(["\n############", "\n# Docker Compose", "\n############\n\n"])
-    set_variable_in_env_file(env_file, 'COMPOSE_IGNORE_ORPHANS', 'true', header)
+    set_variable_in_env_file(env_file, 'COMPOSE_IGNORE_ORPHANS', 'true', None)
 
     docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")
     print(f"Writing {docker_compose_path}...")
@@ -299,7 +303,7 @@ def prepare_open_webui_tools_filesystem_env():
                       - PROJECTS_PATH
                 """))
 
-def destroy_ai_suite(profile=None, build=False, install=False):
+def destroy_ai_suite(profile, build, install):
     """Stop and remove AI-Suite containers and volumes (using its compose file)
        for the specified profile arguments.
     """
@@ -319,7 +323,7 @@ def destroy_ai_suite(profile=None, build=False, install=False):
         cmd = ["docker", "volume", "prune", "--force"]
         run_command(cmd)
 
-def operate_ai_suite(operation=None, profile=None, environment=None):
+def operate_ai_suite(operation, profile, environment, env_vars):
     """Start, stop, pause or pull the AI-Suite containers (using its compose file)
        for the specified profile arguments and environment argument.
     """
@@ -333,9 +337,9 @@ def operate_ai_suite(operation=None, profile=None, environment=None):
     open_webui = False
     if profile and operation != 'pull':
         supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
-        open_webui = any(p for p in profile if p in open_webui_all_profiles)    
-    
-    if operation == 'start':
+        open_webui = any(p for p in profile if p in open_webui_all_profiles)
+
+    if operation == 'start' and environment:
         if supabase:
             start_supabase(environment, False)
             print("""Waiting for Supabase to initialize...""")
@@ -586,6 +590,74 @@ def convert_supabase_pooler_line_endings():
         with open(file_path, 'wb') as f:
             f.write(content)
 
+def normalize_path(path):
+    """Normalize path for current platform"""
+    if path.startswith('~'):
+        path = os.path.expanduser(path)   
+    # Convert to absolute path
+    path = os.path.abspath(path)   
+    return path
+
+def check_prerequisites():
+    """Check if required tools are installed"""
+    required_tools = ['docker', 'git']
+    missing_tools = []    
+    for tool in required_tools:
+        if shutil.which(tool) is None:
+            missing_tools.append(tool)   
+    if missing_tools:
+        print(f"Missing required tools: {', '.join(missing_tools)}")
+        print("Please install them before continuing.")
+        return False
+    try:
+        subprocess.run(["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        print("Docker is not running. Please start Docker Desktop.")
+        return False    
+    return True
+
+def load_env_file(env_file=None):
+    """Load environment variables from .env file"""
+    if env_file is None:
+        env_file = os.path.join(".env")
+    if not os.path.exists(env_file):
+        print(f".env file not found. Creating from template...")
+        shutil.copy('.env.example', '.env')
+        print("Created .env file from template.")
+        print("⚠️ IMPORTANT: Please edit .env file with secure passwords and keys - exiting...")
+        return {}
+    else:
+        with open(env_file, 'r') as f:
+            env_content = f.read()
+        default_secrets = [
+            'N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key',
+            'N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key',
+            'N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret',
+            'POSTGRES_PASSWORD=your-super-secret-postgres-password',
+            'JWT_SECRET=your-super-secret-jwt-token-with-at-least-40-characters-long',
+            'DASHBOARD_PASSWORD=your-super-secret-password-1',
+            'FLOWISE_PASSWORD=your-super-secret-postgres-password',
+            'NEO4J_AUTH=neo4j/your-super-secret-password-2',
+            'CLICKHOUSE_PASSWORD=your-super-secret-password-3',
+            'MINIO_ROOT_PASSWORD=your-super-secret-password-4',
+            'LANGFUSE_SALT=your-super-secret-key-1',
+            'NEXTAUTH_SECRET=your-super-secret-key-2',
+            'ENCRYPTION_KEY=your-super-secret-key-3']
+        unset_secrets = []
+        for secret in default_secrets:
+            if secret in env_content:
+                unset_secrets.append(secret)   
+        if unset_secrets:
+            print("ERROR: YOUR .env FILE CONTAINS DEFAULT VALUES THAT NEED TO BE CHANGED!")
+            for secret in unset_secrets:
+                print(f"⚠️ CHANGE THIS VALUE! ⚠️: {secret}")
+            print("Exiting...")
+            return {}
+    # Load variables into environment
+    dotenv.load_dotenv(env_file)
+
+    return dotenv.dotenv_values(env_file)
+
 def docker_compose_include(supabase=False, filesystem=False):
     """Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml"""
     compose_file = "docker-compose.yml"
@@ -651,27 +723,22 @@ def set_variable_in_env_file(env_file=None, key=None , value=None, header=None):
     if not key or not value:
         print("Error: A valid .env key or value was not specified.")
         return
+
     if env_file is None:
         env_file = os.path.join(".env")
-    try:
-        with open(env_file, 'r') as f:
-            lines = f.readlines()
-        for line in lines:
-            line = line.strip().split('=')
-            if len(line) > 1 and key == line[0].strip():
-                return
-    except FileNotFoundError:
-        print(f"Exception: File '{env_file}' not found.")
 
-    if dotenv.load_dotenv(env_file):
-        variable = key
+    if os.path.exists(env_file):
+        if dotenv.get_key(env_file, key) is not None:
+            return
+        quote_mode = 'auto'
         if header is not None:
             with open(env_file, 'r') as f:
                 content = f.read()
             if not header in content:
-                variable = "".join([header, key])
+                quote_mode = 'never' if key.isalnum() else quote_mode
+                key = "".join([header, key])
         print(f"Set '{key}' to '{value}' in {env_file}...")
-        dotenv.set_key(env_file, variable, value)
+        dotenv.set_key(env_file, key, value, quote_mode)
 
 def update_n8n_database_settings(env_file=None, supabase=False):
     """Set POSTGRES_HOST in .env file and n8n database depends_on and
@@ -695,27 +762,26 @@ def update_n8n_database_settings(env_file=None, supabase=False):
                 f.write(modified_content)
 
         with open(compose_file, 'r+') as f:
-            updated = False
-            n8n_found = False
+            n8n_updated = False
+            n8n_update = False
             old_db = "postgres:" if supabase else "db:"
             new_db = f"{value}:"
             lines = f.readlines()
             f.seek(0)
             f.truncate()
             for line in lines:
-                if not updated:
-                    if line == '  n8n:\n':
-                        n8n_found = True
+                if not n8n_updated:
+                    if line == '  n8n-import:\n':
+                        n8n_update = True
                     if line == '  n8n-runner:\n':
-                        updated = True
-                        n8n_found = False
-                    if n8n_found:
+                        n8n_updated = True
+                        n8n_update = False
+                    if n8n_update:
                         if line == f'      {old_db}\n':
                             line = f"      {new_db}\n"
-                            updated = True
-                            n8n_found = False
-                            print(f"Set n8n database depends_on: from '{old_db}' "
-                                  f"to '{new_db}' in {compose_file}...")
+                    if n8n_updated:
+                        print(f"Set n8n database depends_on: to '{new_db}' "
+                              f"from '{old_db}' in {compose_file}...")
                 f.write(line)
     except Exception as e:
         print(f"Exception: Update n8n database settings in {compose_file}: {e}")
@@ -723,10 +789,10 @@ def update_n8n_database_settings(env_file=None, supabase=False):
 def main():
     # Name, file and version information
     global name
-    name = info.get("name", "placeholder")
-    file = info.get("file", "placeholder.py")
-    version = info.get("version", (-1, -1, -1))
-    print(f"""{name} version: {".".join(map(str, version))}""")
+    name = info.get('name', 'placeholder')
+    file = info.get('file', 'placeholder.py')
+    version = info.get('version', (-1, -1, -1))
+    print(f"""{name} version: {'.'.join(map(str, version))}""")
 
     # Profile, environment and operation arguments
     global open_webui_all_profiles
@@ -753,7 +819,7 @@ def main():
 
             Syntax:
 
-            python {file} [--profiles <arguments...>] [--environment <argument>] [--operation <argument>]
+            python {file} [--profile <arguments...>] [--environment <argument>] [--operation <argument>]
 
             Example commands:
 
@@ -810,6 +876,15 @@ def main():
     else:  # Linux and other Unix-like systems
         print("""Detected Linux/Unix platform...""")
 
+    # Check prerequisites
+    if not check_prerequisites():
+        sys.exit(1)
+    
+    # Load environment variables
+    env_vars = load_env_file(env_file)
+    if env_vars == {}:
+        sys.exit(1)
+
     # Detect default profile - no arguments specified
     default_profile = False if args.profile else True
 
@@ -862,14 +937,14 @@ def main():
             sys.exit(0)
         if default_profile:
             args.profile = ['ai-all']
-        if args.operation == 'update' or args.operation == 'install':
-            build = True            
+        build = args.operation in ['update', 'install']
+        if build:
             install = args.operation == 'install'
             if args.operation == 'update':
                 user_confirm = input(textwrap.dedent(f"""\
                     Performing an {name} update can impact its integrity.
                     Named and anonymous data volumes will be deleted.
-                    [Type 'Got-It' to continue]: 
+                    [Type 'Got-It' to continue]:
                     """))
                 if len(user_confirm) == 0 or user_confirm.lower() != 'got-it':
                     print(f"""Received [{user_confirm}].""") if user_confirm else None
@@ -897,26 +972,26 @@ def main():
             args.profile = ['open-webui']
 
     # Set default projects path in .env file
-    if any(profile for profile in args.profile if profile in agent_all_profiles):
+    if any(p for p in args.profile if p in agent_all_profiles):
         key = "PROJECTS_PATH"
         value = os.path.join(os.path.expanduser('~'), "projects")
         header = " ".join(["\n############", "\n# Projects", "\n############\n\n"])
         set_variable_in_env_file(env_file, key, value, header)
 
     # Setup Supabase
-    if any(profile for profile in args.profile if profile == 'supabase'):
-        if not any(profile for profile in args.profile if profile in n8n_all_profiles):
+    if any(p for p in args.profile if p == 'supabase'):
+        if not any(p for p in args.profile if p in n8n_all_profiles):
             print(f"""Profile argument 'supabase' requires argument in {n8n_all_profiles}
                       - removing 'supabase'...""")
             args.profile.remove('supabase')
     supabase = \
-        any(profile for profile in args.profile if profile in ['supabase', 'ai-all'])
+        any(p for p in args.profile if p in ['supabase', 'ai-all'])
     if supabase:
         args.profile.remove('supabase') if 'supabase' in args.profile else None
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
 
-    if any(profile for profile in args.profile if profile in n8n_all_profiles):
+    if any(p for p in args.profile if p in n8n_all_profiles):
         update_n8n_database_settings(env_file, supabase)
 
     if supabase:
@@ -926,13 +1001,13 @@ def main():
         args.profile.remove('langfuse')
 
     # Generate SearXNG secret key and check docker-compose.yml
-    if any(profile for profile in args.profile if profile in ['searxng', 'ai-all']):
+    if any(p for p in args.profile if p in ['searxng', 'ai-all']):
         generate_searxng_secret_key()
         check_and_fix_docker_compose_for_searxng()
 
     # Setup Open WebUI Functions and Tools Filesystem repos
     open_webui = \
-        any(profile for profile in args.profile if profile in open_webui_all_profiles)
+        any(p for p in args.profile if p in open_webui_all_profiles)
     if open_webui:
         clone_open_webui_functions_repos()
         clone_open_webui_tools_filesystem_repo()
@@ -958,35 +1033,35 @@ def main():
         time.sleep(1)
 
     # Check if open-webui-mcpo specified with required profile arguments, else remove open-webui-mcpo
-    if any(profile for profile in args.profile if profile == 'open-webui-mcpo'):
-        if not any(profile for profile in args.profile if profile in open_webui_all_profiles):
+    if any(p for p in args.profile if p == 'open-webui-mcpo'):
+        if not any(p for p in args.profile if p in open_webui_all_profiles):
             print(f"""Profile argument 'open-webui-mcpo' requires argument in
                       {open_webui_all_profiles} - removing 'open-webui-mcpo'...""")
             args.profile.remove('open-webui-mcpo')
 
     # Check if open-webui-pipe specified with required profile arguments, else remove open-webui-pipe
-    if any(profile for profile in args.profile if profile == 'open-webui-pipe'):
-        if not any(profile for profile in args.profile if profile in open_webui_all_profiles):
+    if any(p for p in args.profile if p == 'open-webui-pipe'):
+        if not any(p for p in args.profile if p in open_webui_all_profiles):
             print(f"""Profile argument 'open-webui-pipe' requires argument in
                       {open_webui_all_profiles} - removing 'open-webui-pipe'...""")
             args.profile.remove('open-webui-pipe')
 
     # Check if profile arguments n8n and open-webui specified, remove redundant open-webui
-    if any(profile for profile in args.profile if profile == 'n8n'):
-        if any(profile for profile in args.profile if profile == 'open-webui'):
+    if any(p for p in args.profile if p == 'n8n'):
+        if any(p for p in args.profile if p == 'open-webui'):
             print("""Profiles arguments 'n8n' and 'open-webui' detected - removing 'open-webui'...""")
             args.profile.remove('open-webui')
 
     # Check if more than one Ollama CPU/GPU argument specified, use first argument
-    if any(profile for profile in args.profile if profile in ollama_profiles):
+    if any(p for p in args.profile if p in ollama_docker_profiles):
         first_argument = False
-        for ollama_profile in ollama_profiles:
+        for profile_arg in ollama_docker_profiles:
             if not first_argument:
-                if any(profile for profile in args.profile if profile == ollama_profile):
-                    print(f"""{name} will use Ollama CPU/GPU profile argument '{ollama_profile}'...""")
+                if any(p for p in args.profile if p == profile_arg):
+                    print(f"""{name} will use Ollama CPU/GPU profile argument '{profile_arg}'...""")
                     first_argument = True
             else:
-                args.profile.remove(ollama_profile)
+                args.profile.remove(profile_arg)
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, build)
