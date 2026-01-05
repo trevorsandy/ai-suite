@@ -1,31 +1,32 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update January 09, 2026
+Last Update January 10, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
-functional module selection, Ollama CPU/GPU configuration, and starting Supabase and
-Open WebUI Filesystem when specified.
+functional module selection, llama CPU/GPU configuration, and starting Supabase
+and Open WebUI Filesystem when specified.
 
 If specified, the Supabase stack is started first. The script waits for it to initialize,
-then starts open-webui filesystem tool - if specified, and then starts the AI-Suite stack.
-All stacks use the same Docker Compose services project name ("ai-suite") so they appear
-grouped together in Docker Desktop.
+then starts open-webui filesystem tool - if specified, and then starts the AI-Suite
+stack. All stacks use the same Docker Compose services project name ("ai-suite")
+so they appear grouped together in Docker Desktop.
 
-This script is also used for operation commands that start, stop, stop-ollama,
+This script is also used for operation commands that start, stop, stop-llama,
 pause, unpause, update and install the AI-Suite services using the optional
---operation argument. An Ollama check is performed when it is assumed Ollama is
-running from the Docker Host. If Ollama is determined to be installed but not running,
-an attempt to launch the Ollama service is executed on install, start and unpause.
-The check will also attempt to stop the Ollama service (in addition to stopping the
-AI-Suite services) when the stop-ollama operational command is specified.
+--operation argument. A llama (Ollama/Llama.cpp) check is performed when it is
+assumed llama is running from the Docker Host. If llama is determined to be installed
+but not running, an attempt to launch the Ollama/Llama.cpp service is executed
+on install, start and unpause. The check will also attempt to stop the llama service
+(in addition to stopping the AI-Suite services) when the stop-llama operational
+command is specified.
 
 Both installation and operation commands utilize the optional --profile
-arguments to specify which AI-Suite functional modules and which Ollama CPU/GPU
+arguments to specify which AI-Suite functional modules and which llama CPU/GPU
 configuration to use. When no functional profile argument is specified, the
 default functional module open-webui is used, Likewise, if no CPU/GPU configuration
-profile is specified, it is assumed Ollama is being run from the Docker Host.
+profile is specified, it is assumed llama is being run from the Docker Host.
 Multiple profile arguments (functional modules) are supported.
 
 The --environment command allows the installation to be defined as private (default)
@@ -89,80 +90,173 @@ def run_command(cmd, cwd=None):
     except Exception as e:
         print(f"Command Exception: {e}.")
 
-
-def launch_ollama_process():
-    """Launch Ollama inference server on host"""
-    cmd = " ".join([ollama_exe, "serve"])
-    print("Running command:", cmd)
+def launch_llama_process(args):
+    """Launch Ollama/Llama.cpp server on the host"""
+    log_dir = "llama.cpp" if llama_cpp else ""
+    log_path = os.path.join(os.getcwd(), log_dir, 'llama_start.log')
+    log = "".join(['>', log_path, ' 2>&1'])
     if system == "Windows":
-        path = tempfile.gettempdir()
-        ollama_launch = os.path.join(path, "ollama_launch.vbs")
-        print("Command script:", ollama_launch)
-        with open(ollama_launch, 'w') as f:
-            f.write(textwrap.dedent(f"""\
-                ' Generated from {info.get("file")} on: {datetime.datetime.now().ctime()}
-                Set WshShell = CreateObject("WScript.Shell")
-                WshShell.Run "{cmd}", 0, False
-                Set WshShell = Nothing
-                """))
-        os.startfile(ollama_launch)
+        win = "".join(['/c,"', llama_exe])
+        cmd = ['powershell', '-Command', 'Start-Process cmd -Args', win, args,
+               "".join([log, '"']), '-WindowStyle Hidden']
     else:  # Unix-based systems (Linux, macOS)
-        os.system(cmd)
+        cmd = [llama_exe, args, log]
+    print("Running command:", " ".join(cmd))
+    try:
+        completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        if completed.returncode != 0:
+            print(f"Error: {llama} process: {completed.stderr}")
+    except Exception as e:
+        print(f"Exception: {llama} process: {e} - assuming {llama} did not start.")
     global attempted_launch
     attempted_launch = True
-    print("Waiting for Ollama on host to initialize...")
+    print(f"Waiting for {llama} on host to initialize...")
     time.sleep(4)
-    check_ollama_process(None)
+    check_llama_process(None, {})
 
-def check_ollama_process(operation=None):
-    """Check for Ollama (on host) and attempt to launch if not running."""
+def check_llama_cpp_model(operation, env_vars, using_hf):
+    """Check if the specified llama.cpp model exists, offer to download if not"""
+    model_path = normalize_path(env_vars.get('LLAMACPP_MODEL_PATH'))
+    model_name = env_vars.get('LLAMACPP_MODEL_NAME', 'gemma-4b')
+    if not os.path.exists(model_path):
+        proceed = True
+        # Dictionary of common llama.cpp model names and their download identifiers
+        llama_cpp_models = {
+            "LLAMACPP_MODEL_GEMMA": "LLAMACPP_MODEL_GEMMA_ID",
+            "LLAMACPP_MODEL_DEEPSEEK": "LLAMACPP_MODEL_DEEPSEEK_ID",
+            "LLAMACPP_MODEL_MISTRAL": "LLAMACPP_MODEL_MISTRAL_ID",
+            "LLAMACPP_MODEL_LLAMA": "LLAMACPP_MODEL_LLAMA_ID",
+            "LLAMACPP_MODEL_QWEN": "LLAMACPP_MODEL_QWEN_ID",
+            "LLAMACPP_MODEL_USER": "LLAMACPP_MODEL_USER_ID"
+        }
+        if operation != 'install' and not using_hf:
+            print(f"{llama} model not found at {model_path}")
+            response = input(f"Would you like to download the {model_name} model now? (y/n): ")
+            proceed = response.lower() == 'y'
+        if proceed:
+            model_dir = os.path.dirname(model_path)
+            if not os.path.exists(model_dir):
+                os.makedirs(model_dir,exist_ok=True)
+            best_match = None
+            best_match_key = None
+            best_match_score = 0
+            for model_key in llama_cpp_models.keys():
+                known_model = env_vars.get(model_key)
+                if not known_model:
+                    continue
+                match_score = sum(c1 == c2 for c1, c2 in zip(model_name.lower(), known_model.lower()))
+                if match_score > best_match_score:
+                    best_match = known_model
+                    best_match_key = model_key
+                    best_match_score = match_score
+            if best_match and best_match_key and best_match_score > len(best_match) / 2:
+                print(f"Using {llama} model: {best_match}...")
+                return env_vars.get(llama_cpp_models[best_match_key])
+            else:
+                print(f"Error: Unknown model '{model_name}', download model manually - Models:")
+                proceed = False
+        else: # User elected not to proceed
+            print("Notice: Download the model manually and update your .env file - Models:")
+        if not proceed:
+            llama_server_args = env_vars.get('LLAMACPP_SERVER_ARGS')
+            for model_key, model_value in llama_cpp_models.items():
+                model = env_vars.get(model_key)
+                model_id = env_vars.get(model_value)
+                print(f"- {model} command: {llama_app} {llama_server_args} {model_id}")
+            return None
+    print(f"Using {llama} model: {model_name}...")
+    return model_name
+
+def check_llama_process(operation=None, env_vars={}):
+    """Check for Ollama/Llama.cpp (on host) and attempt to launch if not running."""
     if not attempted_launch:
-        print("Checking for Ollama process on host...")
-    ollama_running = False
-    ollama_proc = ollama_app.lower()
+        print(f"Checking for {llama} process on host...")
+    llama_running = False
+    llama_proc = llama_app.lower()
     try:
         if system == "Windows":
             cmd = ["tasklist"]
         else:  # Unix-based systems (Linux, macOS)
-            cmd = ["pgrep", "-f", ollama_proc]
+            cmd = ["pgrep", "-f", llama_proc]
         print("Running command:", " ".join(cmd))
-        check_proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
         if system == "Windows":
-            ollama_running = True if ollama_proc in check_proc.stdout.lower() else False
+            llama_running = True if llama_proc in completed.stdout.lower() else False
         else:  # Unix-based systems (Linux, macOS)
-            ollama_running = check_proc.returncode == 0 if check_proc else False
+            llama_running = completed.returncode == 0 if completed else False
     except Exception as e:
-        print(f"Exception: Ollama process: {e} - assuming Ollama is not running.")
+        print(f"Exception: {llama} process: {e} - assuming {llama} is not running.")
 
-    stop_ollama = operation == 'stop-ollama'
+    stop_llama = operation == 'stop-llama'
+    start_llama = not stop_llama and operation in ['start', 'unpause']
 
-    if ollama_running:
-        if stop_ollama:
-            print("Stopping Ollama process on host...")
+    if llama_running:
+        if stop_llama:
+            print(f"Stopping {llama} process on host...")
             if system == "Windows":
-                cmd = ["taskkill", "/f", "/im", ollama_proc]
+                cmd = ["taskkill", "/f", "/im", llama_proc]
             else:  # Unix-based systems (Linux, macOS)
-                cmd = ["ps", "-C", ollama_proc, "-o", "pid=|xargs", "kill", "-9"]
+                cmd = ["ps", "-C", llama_proc, "-o", "pid=|xargs", "kill", "-9"]
             print("Running command:", " ".join(cmd))
             os.system(" ".join(cmd))
         else:
             insert = "is now" if attempted_launch else "is"
-            print(f"Ollama on host {insert} running...")
+            print(f"{llama} on host {insert} running...")
     else:
         if attempted_launch:
-            print("Failed to launch Ollama on host - exiting...")
+            print(f"Failed to launch {llama} on host - exiting...")
             sys.exit(1)
-        print("Ollama is not running...")
-        if not stop_ollama:
-            if ollama_found:
-                print("Attempting to launch Ollama on host...")
-                launch_ollama_process()
+        print(f"{llama} is not running...")
+        if start_llama:
+            if llama_found:
+                print(f"Attempting to launch {llama} on host...")
+                llama_args = []
+                if llama_cpp:
+                    regex = r"(?:-hf|--hf-file|-m|--model|--model-url)"
+                    llama_hf_repo = env_vars.get('LLAMA_ARG_HF_REPO')
+                    llama_server_args = env_vars.get('LLAMACPP_SERVER_ARGS')
+                    llama_models_dir = normalize_path(env_vars.get('LLAMACPP_MODELS_DIR'))
+                    llama_model_arg = re.search(regex, llama_server_args)
+                    if llama_models_dir:
+                        if os.path.isdir(llama_models_dir):
+                            default_models_dir = normalize_path(os.path.join('llama.cpp','models'))
+                            if llama_models_dir != default_models_dir and os.listdir(llama_models_dir):
+                                regex = r"\b{--models-dir}\b"
+                                if not re.search(regex, llama_server_args):
+                                    llama_args.extend(["--models-dir", llama_models_dir])
+                        else:
+                            print(f"Error: Models directory {llama_models_dir} does not exist.")
+                    can_download = True if llama_hf_repo else False
+                    if llama_server_args:
+                        llama_args.extend([llama_server_args])
+                    if not llama_hf_repo:
+                        using_hf = False
+                        if llama_model_arg:
+                            using_hf = llama_model_arg.group() in ['-hf', '--hf-file']
+                            can_download = llama_model_arg.group() not in ['-m', '--model']
+                        llama_model = check_llama_cpp_model(operation, env_vars, using_hf)
+                        if llama_model:
+                            if not llama_model_arg:
+                                llama_args.extend(['-hf'])
+                            llama_args.extend([llama_model])
+                        elif operation == 'install':
+                            sys.exit(1)
+                    if can_download and operation in ['install', 'update']:
+                        print(f"""Configured to download {llama} model (this may take a while).\n
+                                  Check container log for download progress...""")
+                else:
+                    llama_server_args = env_vars.get('OLLAMA_SERVER_ARGS')
+                    if llama_server_args:
+                        llama_args.extend([llama_server_args])
+
+                args = " ".join(llama_args)
+                launch_llama_process(args)
             else:
                 print(textwrap.dedent(f"""\
-                    Error: The {ollama_app} file was not found at {ollama_exe}.
-                    If Ollama is installed in a non-standard location, you can set the OLLAMA_PATH
-                    environment variable with its full path (including the Ollama file) to .env and
-                    re-run this file - exiting...
+                    Error: The {llama_app} file was not found at {llama_exe}.
+                    If {llama} is installed in a non-standard location, you can set the LLAMA_PATH
+                    environment variable with its full path (including the {llama} file) in .env and
+                    re-run {info.get("file")} - exiting...
                     """))
                 sys.exit(1)
 
@@ -324,7 +418,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
         operation = "stop"
 
     with open('.operation', 'w') as f:
-        f.write(operation)
+        f.write(operation + ':' + llama.lower())
 
     supabase = False
     open_webui = False
@@ -852,20 +946,41 @@ def main():
     name = info.get('name', 'placeholder')
     file = info.get('file', 'placeholder.py')
     version = info.get('version', (-1, -1, -1))
-    print(f"""{name} version: {'.'.join(map(str, version))}""")
+
+    # Detect operational status and current llama (Ollama/Llama.cpp) configuration
+    global llama, llama_cpp
+    status = None
+    llama_cpp = False
+    if os.path.exists('.operation'):
+        with open('.operation', 'r') as f:
+            a = f.readline().split(':')
+            status = a[0].strip() if a else None
+            if len(a) > 1:
+                llama_cpp = a[1].strip() == 'llama.cpp'
+    else:
+        lp = dotenv.get_key(os.path.join(".env"), 'LLAMA_PATH')
+        llama_cpp = lp and os.path.basename(lp).lower().startswith('llama-server')
+    llama = "Llama.cpp" if llama_cpp else "Ollama"
+
+    # Banner
+    print(f"""{name} version: {'.'.join(map(str, version))} LLM: {llama}""")
 
     # Profile, environment and operation arguments
     global open_webui_all_profiles
-    ollama_profiles = ['cpu', 'gpu-nvidia', 'gpu-amd']
-    n8n_profiles = ["n8n", "n8n-all"]
+    llama_host_profiles = ['ollama', 'llama.cpp']
+    ollama_docker_profiles = ['cpu', 'gpu-nvidia', 'gpu-amd']
+    llamacpp_docker_profiles = ['cpp-cpu', 'cpp-gpu-nvidia', 'cpp-gpu-amd']
+    llama_docker_profiles = ollama_docker_profiles + llamacpp_docker_profiles
+    n8n_profiles = ['n8n', 'n8n-all']
     n8n_all_profiles = n8n_profiles + ['ai-all']
     open_webui_utils_profiles = ['open-webui-mcpo', 'open-webui-pipe']
     open_webui_profiles = ['open-webui', 'open-webui-all']
     open_webui_all_profiles = open_webui_profiles + n8n_all_profiles
     agent_all_profiles = open_webui_all_profiles + ['opencode']
     server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j', 'caddy']
-    profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + ollama_profiles
-    operations = ['stop', 'stop-ollama', 'start', 'pause', 'unpause', 'update', 'install']
+    profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + \
+               llama_docker_profiles + llama_host_profiles
+    operations = ['stop', 'stop-llama', 'start', 'pause', 'unpause', 'update', 'install']
     environments = ['private', 'public']
     parser = argparse.ArgumentParser(
         prog=f'{file}',
@@ -884,23 +999,27 @@ def main():
             Example commands:
 
             - Install profile arguments n8n and opencode...
-              ...with Ollama running in the Host:
+              ...with {llama} running in the Host:
               >python {file} --profile n8n opencode
 
-              ...with Ollama runing in Docker using CPU:
+              ...with Ollama CPU running in Docker:
               >python {file} --profile n8n opencode cpu
 
-              ...using GPU and in public (production) environment:
-              >python {file} --profile n8n opencode --environment public
+              ...using Llama.cpp AMD GPU in Docker and on production environment:
+              >python {file} --profile n8n opencode cpp-gpu-amd --environment public
 
             - Perform stop (start, pause, unpause) suite operation:
-              >python {file} --profile n8n opencode cpu --operation stop
+              >python {file} --profile n8n opencode --operation stop
 
             - Perform suite operation to update all modules and restart:
               >python {file} --operation update
 
-            - Perform suite operation to install all functional modules and start:
+            - Perform suite operation to install all functional modules and start...
               >python {file} --operation install
+
+              ...using Llama.cpp Nvidia GPU running in Docker:
+              >python {file} --profile ai-all cpp-gpu-nvidia --operation install
+
             '''),
         epilog=textwrap.dedent(f'''\
             - Title: {info.get("title")}
@@ -913,14 +1032,14 @@ def main():
             - Copyright: {info.get("copyright")}
             '''))
     parser.add_argument('-p', '--profile', type=str, nargs='+', choices=profiles,
-                        help='Docker Compose Profile arguments for functional modules and Ollama'
-                             'CPU/GPU options (default: open-webui - with Ollama running on Host)')
+                        help='Docker Compose Profile arguments for functional modules and llama'
+                             f'CPU/GPU options (default: open-webui - with {llama} running on Host)')
     parser.add_argument('-e', '--environment', type=str, choices=environments, default='private',
                         help='Environment arguments used by Docker Compose to expose '
                              'or restrict network communication ports (default: private)')
     parser.add_argument('-o', '--operation', type=str, choices=operations,
-                        help='Docker container, volumes and image management arguments '
-                              'along with argument to stop Ollama running on Host.')
+                        help='Docker container, volumes and image management arguments along '
+                              f'with argument to stop {llama} running on Host.')
 
     args = parser.parse_args()
 
@@ -942,51 +1061,89 @@ def main():
     env_vars = get_dotenv_vars()
     if not env_vars:
         sys.exit(1)
-    
+
     # Detect default profile - no arguments specified
     default_profile = False if args.profile else True
-    
-    # Set default projects path in working environment variables
-    if any(p for p in args.profile if p in agent_all_profiles):
-        if not env_vars['PROJECTS_PATH']:
-            env_vars['PROJECTS_PATH'] = normalize_path(os.path.join('~', 'projects'))
+    args.profile = [] if default_profile else args.profile
 
-    # Check Ollama status when running Ollama in the Host
-    ollama_in_host = default_profile or not \
-        any(profile for profile in args.profile if profile in ollama_profiles)
-    if ollama_in_host:
-        global ollama_found, ollama_app, ollama_exe, attempted_launch
-        ollama_found = False
+    # Check llama (Ollama/Llama.cpp) status
+    llama_arg = "cpu"
+    llama_in_host = default_profile or not \
+        any(p for p in args.profile if p in llama_docker_profiles)
+    if llama_in_host:
+        global llama_found, llama_app, llama_exe, attempted_launch
         attempted_launch = False
-        if system == "Windows":
-            ollama_app = 'ollama.exe'
-            ollama_exe = os.path.join(os.path.expanduser('~'), 'AppData\\Local\\Programs\\Ollama', ollama_app)
-            ollama_found = os.path.exists(ollama_exe)
-        else: # Unix-based systems (Linux, macOS)
-            ollama_app = 'ollama'
-            for ollama_path in ['/bin', '/usr/local/bin', '/usr/bin']:
-                ollama_exe = os.path.join(ollama_path, ollama_app)
-                if os.path.exists(ollama_exe):
-                    ollama_found = True
-                    break
-        if not ollama_found:
-            ollama_path = dotenv.get_key(env_file, 'OLLAMA_PATH')
-            if ollama_path is None:
-                ollama_path = os.environ.get('OLLAMA_PATH')
-            if ollama_path is not None:
-                ollama_exe = os.path.normpath(ollama_path)
-                ollama_app = os.path.basename(ollama_exe)
-                ollama_found = os.path.exists(ollama_exe)
-        check_ollama_process(args.operation)
+        llama_found = False
+        llama_path = normalize_path(env_vars.get('LLAMA_PATH'))
+        llama_cpp = any(p for p in args.profile if p == 'llama.cpp')
+        llama = "Llama.cpp" if llama_cpp else "Ollama"
+        if llama_path is not None:
+            llama_exe = os.path.normpath(llama_path)
+            llama_app = os.path.basename(llama_exe)
+            llama_found = os.path.exists(llama_exe)
+        if not llama_found:
+            llama_app = "llama-server" if llama_cpp else "ollama"
+            if system == "Windows":
+                llama_app = "".join([llama_app, '.exe'])
+                llama_dir = "llama.cpp" if llama_cpp else "Ollama"
+                for llama_sub in ['~\\AppData\\Local\\Programs', os.getcwd()]:
+                    llama_exe = normalize_path(os.path.join(llama_sub, llama_dir, llama_app))
+                    if os.path.exists(llama_exe):
+                        llama_found = True
+                        break
+            else: # Unix-based systems (Linux, macOS)
+                for llama_path in ['/bin', '/usr/local/bin', '/usr/bin']:
+                    llama_exe = os.path.join(llama_path, llama_app)
+                    if os.path.exists(llama_exe):
+                        llama_found = True
+                        break
+            set_dotenv_key(os.path.join(".env"), 'LLAMA_PATH', llama_exe, None)
+            env_vars = get_dotenv_vars(force=True)
+        # Check if llama exe (llama-server, ollama) matches profile argument (llama.cpp, ollama)
+        if (llama_cpp and not llama_app.lower().startswith('llama-server')) or \
+           (not llama_cpp and not llama_app.lower().startswith('ollama')):
+            llama_cpp = llama_app.lower().startswith('llama-server')
+            llama = "Llama.cpp" if llama_cpp else "Ollama"
+            llama_mismatch = "ollama" if llama_cpp else "llama.cpp"
+            print(f"""Notice: The executable '{llama_app}' did not match the '{llama}'
+                      profile argument - argument updated to '{llama.lower()}'...""")
+            args.profile.remove(llama_mismatch) if llama_mismatch in args.profile else None
+            args.profile.extend([llama.lower()]) if llama_cpp else None
+        llama_host = "host.docker.internal"
+        llama_host_var = llama_host if llama_cpp else llama_host + ":${OLLAMA_PORT}"
+        check_llama_process(args.operation, env_vars)
+    else:
+        llama_cpp = any(p for p in args.profile if p in llamacpp_docker_profiles)
+        llama = "Llama.cpp" if llama_cpp else "Ollama"
+        llama_host_var = "0.0.0.0" if llama_cpp else "ollama:${OLLAMA_PORT}"
+        # Check if more than one llama CPU/GPU argument specified, use first argument
+        if any(p for p in args.profile if p in llama_docker_profiles):
+            first_argument = False
+            for profile_arg in llama_docker_profiles:
+                if not first_argument:
+                    if any(p for p in args.profile if p == profile_arg):
+                        print(f"""{name} will use {llama} CPU/GPU profile argument '{profile_arg}'...""")
+                        first_argument = True
+                else:
+                    args.profile.remove(profile_arg) if profile_arg in args.profile else None
+        # Check if any llama host profile arguments specified and remove if found
+        for profile_arg in llama_host_profiles:
+            if any(p for p in args.profile if p == profile_arg):
+                print(f"""A llama in host profile argument cannot be specified with
+                          llama CPU/GPU profile argument  - removing '{profile_arg}'...""")
+                args.profile.remove(profile_arg)
+    # Assemble .env updates, set respective keys in .env file and reload .env vars
+    llama_host_env = "LLAMA_ARG_HOST" if llama_cpp else "OLLAMA_HOST"
+    oai_base_url_var = "${LLAMACPP_HOST}" if llama_cpp else "${OLLAMA_HOST}"
+    mod_env_vars.update({llama_host_env: llama_host_var, 'OPENAI_API_BASE_URL': oai_base_url_var})
+    for env, var in mod_env_vars.items():
+        set_dotenv_var(env_file, env, var, None)
+    env_vars = get_dotenv_vars(env_file, True)
 
     # Process operation argument
     build = False
     if args.operation:
-        status = None
-        if os.path.exists('.operation'):
-            with open('.operation', 'r') as f:
-                status = f.readline()
-        if args.operation == 'stop-ollama':
+        if args.operation == 'stop-llama':
             args.operation = "stop"
         if args.operation == status:
             if status == 'stop':
@@ -1016,8 +1173,9 @@ def main():
             args.operation = 'pull'
             insert = "Installing" if install == 'install' else "Updating"
             if default_profile:
-                print(f"""{insert} all container images including Ollama...""")
-                args.profile.extend(["cpu"])
+                print(f"""{insert} all container images including {llama}...""")
+                llama_arg = "cpp-cpu" if llama_cpp else "cpu"
+                args.profile.extend([llama_arg])
             else:
                 print(f"""{insert} container images for {args.profile}...""")
             docker_compose_include(True, True, True)
@@ -1030,7 +1188,7 @@ def main():
     # Manually set default profile argument
     if default_profile:
         if build:
-            args.profile.remove('cpu') if 'cpu' in args.profile else None
+            args.profile.remove(llama_arg) if llama_arg in args.profile else None
         else:
             args.profile = ['open-webui']
 
@@ -1132,7 +1290,7 @@ def main():
     start_ai_suite(args.profile, args.environment, build)
 
     with open('.operation', 'w') as f:
-        f.write('start')
+        f.write('start' + ':' + llama.lower())
 
 if __name__ == "__main__":
     main()

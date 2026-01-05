@@ -77,3 +77,15 @@ services:
   ollama-gpu-amd:
     ports:
       - 127.0.0.1:11434:11434
+
+  llamacpp-cpu:
+    ports:
+      - 127.0.0.1:8040:8040
+
+  llamacpp-gpu:
+    ports:
+      - 127.0.0.1:8040:8040
+
+  llamacpp-gpu-amd:
+    ports:
+      - 127.0.0.1:8040:8040

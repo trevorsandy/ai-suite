@@ -217,6 +217,7 @@ Before you begin, make sure you have the following software installed:
    # SUPABASE_HOSTNAME=supabase.yourdomain.com
    # LANGFUSE_HOSTNAME=langfuse.yourdomain.com
    # OLLAMA_HOSTNAME=ollama.yourdomain.com
+   # LLAMACPP_HOSTNAME=llama.cpp.yourdomain.com
    # SEARXNG_HOSTNAME=searxng.yourdomain.com
    # NEO4J_HOSTNAME=neo4j.yourdomain.com
    # LETSENCRYPT_EMAIL=internal
@@ -245,22 +246,23 @@ Before you begin, make sure you have the following software installed:
 ---
 
 **AI-Suite** uses the `suite_services.py` script for the _installation_ command
-that handles the AI-Suite functional module selection, Ollama GPU configuration,
-and starting Supabase when specified.
+that handles the AI-Suite functional module selection, llama CPU/GPU configuration,
+and starting Supabase and Open WebUI Filesystem when specified.
 
-Additionally, This script is also used for operation commands that _start_, _stop_,
-_pause_ and _unpause_ the AI-Suite services using the optional `--operation` argument.
-An Ollama check is performed when it is assumed Ollama is being run from the Docker
-Host. If Ollama is determined to be installed but not running, an attempt to launch
-the Ollama service is executed on _install_, _start_ and _unpause_.  The check
-will also attempt to _stop_ the Ollama service (in addition to stopping the
-AI-Suite services) when the _stop-ollama_ operational command is specified.
+This script is also used for operation commands that _start_, _stop_, _stop-llama_,
+_pause_, _unpause_, _update_ and _install_ the AI-Suite services using the optional
+`--operation` argument. A llama (Ollama/Llama.cpp) check is performed when it is
+assumed llama is running from the Docker Host. If llama is determined to be installed
+but not running, an attempt to launch the Ollama/Llama.cpp service is executed
+on _install_, _start_ and _unpause_. The check will also attempt to _stop_ the
+running llama service (in addition to stopping the AI-Suite services) when the
+_stop-llama_ operational command is specified.
 
 Both installation and operation commands utilize the optional `--profile`
-arguments to specify which AI-Suite functional modules and which Ollama CPU/GPU
+arguments to specify which AI-Suite functional modules and which llama CPU/GPU
 configuration to use. When no functional profile argument is specified, the
-default functional module `open-webui` is used, Likewise, if no GPU configuration
-profile is specified, it is assumed Ollama is being run from the Docker Host.
+default functional module `open-webui` is used, Likewise, if no CPU/GPU configuration
+profile is specified, it is assumed llama is being run from the Docker Host.
 **Multiple profile arguments (functional modules) are supported**.
 
 The `--environment` command allows the installation to be defined as _private_
@@ -286,9 +288,17 @@ to the network.
 | `n8n-all` | n8n - complete bundle |
 | `open-webui-all` | Open WebUI - complete bundle |
 | `ai-all` | AI-Suite full stack - all modules |
+
+`suite_services.py` `--profile` llama CPU/GPU argument:
+
+| Argument | Llama CPU/GPU |
+| -----------------------: | ------: |
 | `cpu` | Ollama - run on CPU |
 | `gpu-nvidia` | Ollama - run on Nvidia GPU |
 | `gpu-amd` | Ollama - run on AMD GPU |
+| `cpp-cpu` | Llama.cpp - run on CPU |
+| `cpp-gpu-nvidia` | Llama.cpp - run on Nvidia GPU |
+| `cpp-gpu-amd` | Llama.cpp - run on AMD GPU |
 
 Example command:
 
@@ -298,13 +308,13 @@ python suite_services.py --profile n8n opencode gpu-nvidia
 
 ---
 
-`suite_services.py` ... `--operation` arguments:
+`suite_services.py` ... `--operation` argument:
 
 | Argument | Operation |
 | -----------------------: | ------: |
 | `start` | Start - start the previously stopped, specified profile containers |
 | `stop` | Stop - shut down the specified profile containers |
-| `stop-ollama` | Stop Ollama - perform stop plus shut down Ollama on the Host |
+| `stop-llama` | Stop - perform `stop` and shut down Ollama/Llama.cpp on Host |
 | `pause` | Pause - pause the specified profile containers |
 | `unpause` | Unpause - unpause the previously paused profile containers |
 
@@ -816,12 +826,28 @@ modules described above:
 > path `/root/projects` and the resulting path is set as _work_dir_ to form the
 > OpenCode Docker exec command's _workdir=work_dir_ keyword argument.
 
-### Ollama - running on host
+### Ollama or Llama.cpp - running on host
 
-- **OLLAMA_PATH environment variable**
+- **LLAMA_PATH environment variable**
 
-  - If Ollama is installed in a non-standard location, you can add `OLLAMA_PATH`
-    with its absolute path (including the Ollama file) to the _.env_ file.
+  - If _Ollama_ is installed in a custom location or you are using _Llama.cpp_,
+    Add `LLAMA_PATH` with its absolute path (including the file name) to your
+    _.env_ file.
+
+- **OLLAMA_SERVER_ARGS environment variable**
+
+  - Add _OLLAMA_SERVER_ARGS_ with additional Ollama server process start arguments
+    to your _.env_ file.
+
+- **LLAMACPP_MODELS_DIR environment variable**
+
+  - If you are using _Llama.cpp_ with models that were **not** downloaded with
+    that instance of _Llama.cpp_, add `LLAMACPP_MODELS_DIR` with said models path
+    to your _.env_ file.
+
+- **LLAMACPP_SERVER_ARGS environment variable**
+  - Add _LLAMACPP_SERVER_ARGS_ with additional Llama.cpp server process start arguments
+    to your _.env_ file.
 
 ## Upgrading
 

@@ -10,6 +10,7 @@ volumes:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
+  llamacpp_data:
   redis_valkey_data:
   caddy_data:
   caddy_config_data:
@@ -68,6 +69,8 @@ x-n8n: &service-n8n
     #- N8N_PROXY_HOPS=${N8N_PROXY_HOPS}
 
     - OLLAMA_HOST=${OLLAMA_HOST}
+    - LLAMACPP_HOST=${LLAMACPP_HOST}
+    - PROJECTS_PATH=${PROJECTS_PATH}
     - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
 
 x-n8n-runner: &service-n8n-runner
@@ -98,6 +101,25 @@ x-init-ollama: &init-ollama
   command:
     - "-c"
     - "sleep 3; ollama pull ${OLLAMA_DEFAULT_MODEL}; ollama pull ${OLLAMA_SUPPLEMENT_MODEL}; ollama pull ${OLLAMA_EMBEDDING_MODEL}"
+
+x-llamacpp: &service-llamacpp
+  container_name: llamacpp
+  restart: unless-stopped
+  expose:
+    - 8040/tcp
+  entrypoint: /app/llama-server ${LLAMACPP_SERVER_ARGS}
+  environment:
+    - LLAMA_ARG_PORT
+    - LLAMA_ARG_HOST
+    - LLAMA_ARG_HF_REPO
+    - LLAMA_ARG_N_GPU_LAYERS
+    - LLAMA_ARG_CTX_SIZE
+    - LLAMA_ARG_FLASH_ATTN
+    - LLAMA_ARG_THREADS
+    - LLAMA_ARG_MODELS_MAX
+  volumes:
+    - llamacpp_data:/root/.cache
+    - ./llama.cpp/models:/models
 
 name: ai-suite
 
@@ -595,3 +617,28 @@ services:
     image: ollama/ollama:rocm
     depends_on:
       - ollama-gpu-amd
+
+  llamacpp-cpu:
+    profiles: ["cpp-cpu"]
+    <<: *service-llamacpp
+    image: ghcr.io/ggml-org/llama.cpp:server
+
+  llamacpp-gpu:
+    profiles: ["cpp-gpu-nvidia"]
+    <<: *service-llamacpp
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  llamacpp-gpu-amd:
+    profiles: ["cpp-gpu-amd"]
+    <<: *service-llamacpp
+    image: ghcr.io/ggml-org/llama.cpp:server-rocm
+    devices:
+      - "/dev/kfd"
+      - "/dev/dri"

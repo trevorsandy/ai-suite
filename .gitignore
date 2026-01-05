@@ -4,6 +4,8 @@ supabase/
 searxng/
 neo4j/
 caddy/
+llama.cpp/
+ollama/
 opencode/*
 !opencode/opencode.jsonc
 !opencode/run_opencode_docker.py
