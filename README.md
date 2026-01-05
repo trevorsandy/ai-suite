@@ -2059,70 +2059,95 @@ as your vector store.
   - As we are using the config file _config.json_, each tool will be accessible
     under its own unique route, e.g. <http://host.docker.internal:8090/MCP_DOCKER>.
 
-- **Functions**
-
-  <details>
-  <summary>Locally available functions</summary>
+- **Locally available functions**
 
   Pipes:
 
-  - n8n
+  - <details>
+    <summary>n8n</summary>
 
     ```sh
     ./open-webui/functions/owndev/pipelines/n8n/
     ```
 
-  - Anthropic
+    </details>
+
+  - <details>
+    <summary>Anthropic</summary>
 
     ```sh
     ./open-webui/functions/open-webui/functions/pipes/anthropic/
     ```
 
-  - Open AI
+    </details>
+
+  - <details>
+    <summary>Open AI</summary>
 
     ```sh
     ./open-webui/functions/open-webui/functions/pipes/openai/
     ```
 
+    </details>
+
   Filters:
 
-  - Various filters
+  - <details>
+    <summary>Various filters</summary>
 
     ```sh
     ./open-webui/functions/owndev/filters/
     ```
 
-  - Agent hotswap
+    </details>
+
+  - <details>
+    <summary>Agent hotswap</summary>
 
     ```sh
     ./open-webui/functions/open-webui/functions/filters/agent_hotswap/
     ```
 
-  - Context clip
+    </details>
+
+  - <details>
+    <summary>Context clip</summary>
 
     ```sh
     ./open-webui/functions/open-webui/functions/filters/context_clip/
     ```
 
-  - Dynamic vision router
+    </details>
+
+  - <details>
+    <summary>Dynamic vision router</summary>
 
     ```sh
     ./open-webui/functions/open-webui/functions/filters/dynamic_vision_router/
     ```
 
-  - Max turns
+    </details>
+
+  - <details>
+    <summary>Max turns</summary>
 
     ```sh
     ./open-webui/functions/open-webui/functions/filters/max_turns/
     ```
 
-  - Moderation
+    </details>
+
+  - <details>
+    <summary>Moderation</summary>
 
     ```sh
     ./open-webui/functions/open-webui/functions/filters/moderation/
     ```
 
-  - Summarizer
+    </details>
+
+  - <details>
+    <summary>Summarizer</summary>
 
     ```sh
     ./open-webui/functions/open-webui/functions/filters/summarizer/
