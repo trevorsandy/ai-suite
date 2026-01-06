@@ -264,24 +264,19 @@ def clone_open_webui_functions_repos():
                 shutil.rmtree(item)
     os.chdir("../../../../")
 
-def copy_dot_env_file(env_file=None):
-    """Copy .env to .env in target compose file destination."""
-    if env_file is not None:
-        env_source_file = os.path.join(".env")
-        print(f"Copying .env in {name} root to {env_file}...")
-        shutil.copyfile(env_source_file, env_file)
-
-def prepare_supabase_env():
-    """Copy .env to .env in supabase/docker."""
+def prepare_supabase_env(env_vars):
+    """Write env_vars to .env in supabase/docker."""
     env_file = os.path.join("supabase", "docker", ".env")
-    copy_dot_env_file(env_file)
-    set_variable_in_env_file(env_file, 'COMPOSE_IGNORE_ORPHANS', 'true', None)
+    built_env_vars = env_vars
+    built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
+    write_dotenv_file(env_file, built_env_vars)
 
-def prepare_open_webui_tools_filesystem_env():
-    """Copy .env and write compose.yaml to open-webui/tools/servers/filesystem."""
+def prepare_open_webui_tools_filesystem_env(env_vars):
+    """Write env_vars to .env and compose.yaml to open-webui/tools/servers/filesystem."""
     env_file = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
-    copy_dot_env_file(env_file)
-    set_variable_in_env_file(env_file, 'COMPOSE_IGNORE_ORPHANS', 'true', None)
+    built_env_vars = env_vars
+    built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
+    write_dotenv_file(env_file, built_env_vars)
 
     docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")
     print(f"Writing {docker_compose_path}...")
@@ -340,6 +335,8 @@ def operate_ai_suite(operation, profile, environment, env_vars):
         open_webui = any(p for p in profile if p in open_webui_all_profiles)
 
     if operation == 'start' and environment:
+        env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"
+        load_dotenv_vars(env_vars)
         if supabase:
             start_supabase(environment, False)
             print("""Waiting for Supabase to initialize...""")
@@ -590,74 +587,6 @@ def convert_supabase_pooler_line_endings():
         with open(file_path, 'wb') as f:
             f.write(content)
 
-def normalize_path(path):
-    """Normalize path for current platform"""
-    if path.startswith('~'):
-        path = os.path.expanduser(path)   
-    # Convert to absolute path
-    path = os.path.abspath(path)   
-    return path
-
-def check_prerequisites():
-    """Check if required tools are installed"""
-    required_tools = ['docker', 'git']
-    missing_tools = []    
-    for tool in required_tools:
-        if shutil.which(tool) is None:
-            missing_tools.append(tool)   
-    if missing_tools:
-        print(f"Missing required tools: {', '.join(missing_tools)}")
-        print("Please install them before continuing.")
-        return False
-    try:
-        subprocess.run(["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        print("Docker is not running. Please start Docker Desktop.")
-        return False    
-    return True
-
-def load_env_file(env_file=None):
-    """Load environment variables from .env file"""
-    if env_file is None:
-        env_file = os.path.join(".env")
-    if not os.path.exists(env_file):
-        print(f".env file not found. Creating from template...")
-        shutil.copy('.env.example', '.env')
-        print("Created .env file from template.")
-        print("⚠️ IMPORTANT: Please edit .env file with secure passwords and keys - exiting...")
-        return {}
-    else:
-        with open(env_file, 'r') as f:
-            env_content = f.read()
-        default_secrets = [
-            'N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key',
-            'N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key',
-            'N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret',
-            'POSTGRES_PASSWORD=your-super-secret-postgres-password',
-            'JWT_SECRET=your-super-secret-jwt-token-with-at-least-40-characters-long',
-            'DASHBOARD_PASSWORD=your-super-secret-password-1',
-            'FLOWISE_PASSWORD=your-super-secret-postgres-password',
-            'NEO4J_AUTH=neo4j/your-super-secret-password-2',
-            'CLICKHOUSE_PASSWORD=your-super-secret-password-3',
-            'MINIO_ROOT_PASSWORD=your-super-secret-password-4',
-            'LANGFUSE_SALT=your-super-secret-key-1',
-            'NEXTAUTH_SECRET=your-super-secret-key-2',
-            'ENCRYPTION_KEY=your-super-secret-key-3']
-        unset_secrets = []
-        for secret in default_secrets:
-            if secret in env_content:
-                unset_secrets.append(secret)   
-        if unset_secrets:
-            print("ERROR: YOUR .env FILE CONTAINS DEFAULT VALUES THAT NEED TO BE CHANGED!")
-            for secret in unset_secrets:
-                print(f"⚠️ CHANGE THIS VALUE! ⚠️: {secret}")
-            print("Exiting...")
-            return {}
-    # Load variables into environment
-    dotenv.load_dotenv(env_file)
-
-    return dotenv.dotenv_values(env_file)
-
 def docker_compose_include(supabase=False, filesystem=False):
     """Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml"""
     compose_file = "docker-compose.yml"
@@ -718,41 +647,165 @@ def docker_compose_include(supabase=False, filesystem=False):
     except Exception as e:
         print(f"Exception: Set 'include:' in {compose_file}: {e}")
 
-def set_variable_in_env_file(env_file=None, key=None , value=None, header=None):
-    """Set an environment variable and add optional header in .env file"""
-    if not key or not value:
-        print("Error: A valid .env key or value was not specified.")
-        return
+def normalize_path(path):
+    """Normalize path for current platform"""
+    if path:
+        if path.startswith('~'):
+            path = os.path.expanduser(path)
+        # Convert to absolute path
+        path = os.path.abspath(path)
+    return path
 
+def check_prerequisites():
+    """Check if required tools are installed"""
+    required_tools = ['docker', 'git']
+    missing_tools = []
+    for tool in required_tools:
+        if shutil.which(tool) is None:
+            missing_tools.append(tool)
+    if missing_tools:
+        print(f"Missing required tools: {', '.join(missing_tools)}")
+        print("Install them before continuing.")
+        return False
+    try:
+        subprocess.run(["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        print("Docker is not running. Start Docker Desktop.")
+        return False
+    return True
+
+def get_dotenv_vars(env_file=None, force=False):
+    """Load environment variables from .env file"""
     if env_file is None:
         env_file = os.path.join(".env")
+    if not os.path.exists(env_file):
+        if os.path.exists(".env.example"):
+            print("The .env file was not found - creating from .env.example template...")
+            shutil.copy('.env.example', '.env')
+            print("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
+        else:
+            print("The .env file was not found - exiting...")
+        return {}
+    else:
+        with open(env_file, 'r') as f:
+            env_content = f.read()
+        default_secrets = [
+            'N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key',
+            'N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key',
+            'N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret',
+            'POSTGRES_PASSWORD=your-super-secret-postgres-password',
+            'JWT_SECRET=your-super-secret-jwt-token-with-at-least-40-characters-long',
+            'DASHBOARD_PASSWORD=your-super-secret-password-1',
+            'FLOWISE_PASSWORD=your-super-secret-postgres-password',
+            'NEO4J_AUTH=neo4j/your-super-secret-password-2',
+            'CLICKHOUSE_PASSWORD=your-super-secret-password-3',
+            'MINIO_ROOT_PASSWORD=your-super-secret-password-4',
+            'LANGFUSE_SALT=your-super-secret-key-1',
+            'NEXTAUTH_SECRET=your-super-secret-key-2',
+            'ENCRYPTION_KEY=your-super-secret-key-3']
+        unset_secrets = []
+        for secret in default_secrets:
+            if secret in env_content:
+                unset_secrets.append(secret)
+        if unset_secrets and not force:
+            print("ERROR: YOUR .env FILE CONTAINS DEFAULT VALUES THAT NEED TO BE CHANGED!")
+            for secret in unset_secrets:
+                print(f"⚠️ CHANGE THIS VALUE ⚠️: {secret}")
+            print("Exiting...")
+            return {}
 
-    if os.path.exists(env_file):
-        if dotenv.get_key(env_file, key) is not None:
-            return
-        quote_mode = 'auto'
-        if header is not None:
-            with open(env_file, 'r') as f:
-                content = f.read()
-            if not header in content:
-                quote_mode = 'never' if key.isalnum() else quote_mode
-                key = "".join([header, key])
-        print(f"Set '{key}' to '{value}' in {env_file}...")
-        dotenv.set_key(env_file, key, value, quote_mode)
+    env_vars = dotenv.dotenv_values(env_file)
 
-def update_n8n_database_settings(env_file=None, supabase=False):
-    """Set POSTGRES_HOST in .env file and n8n database depends_on and
-       postgres volume in Docker Compose file.
-    """
-    key = "POSTGRES_HOST"
-    value = "db" if supabase else "postgres"
-    set_variable_in_env_file(env_file, key, value, None)
+    if not env_vars['PROJECTS_PATH']:
+        env_vars['PROJECTS_PATH'] = normalize_path(os.path.join('~', 'projects'))
 
-    old_vol = "postgres_data" if supabase else "langfuse_postgres_data"
+    return env_vars
+
+def load_dotenv_vars(env_vars):
+    """Load working environment variables into environment"""
+    if env_vars:
+        print("Loading working environment variables...")
+        for env, var in env_vars.items():
+            if not var:
+                continue
+            os.environ[env] = var
+    else:
+        env_file = os.path.join(".env")
+        if not os.path.exists(env_file):
+            if not get_dotenv_vars():
+                sys.exit(1)
+        print("Loading .env environment variables...")
+        dotenv.load_dotenv(env_file)
+
+def write_dotenv_file(env_file, env_vars):
+    """Copy .env to .env in target compose file destination."""
+    if env_file is None:
+        print("Error: The .env file path to be written is not defined!")
+        return
+    if env_vars is None:
+        print("Error: The env_vars dictionary to be written is empty!")
+        return
+    print(f"Writing .env file to {env_file}...")
+    with open(env_file, 'w') as f:
+        now = " ".join(['on:', datetime.datetime.now().ctime()])
+        f.seek(0)
+        f.truncate()
+        f.write(textwrap.dedent(f"""\
+            # Generated {now} from {info.get("file")} working .env environment variables.
+            """))
+        f.write('\n')
+        for env, var in env_vars.items():
+            if not var:
+                continue
+            quoted_var = var if var.isalnum() else f"'{var}'"
+            f.write("".join([env, '=', quoted_var, '\n']))
+
+def set_dotenv_key(env_file, key, value, header):
+    """Set or unset an environment variable and add optional header in .env file"""
+    if not key:
+        print("Error: A valid .env key was not specified.")
+        return
+    if env_file is None:
+        env_file = os.path.join(".env")
+    if not value:
+        try:
+            with open(env_file, 'r+') as f:
+                lines = f.readlines()
+                f.seek(0)
+                f.truncate()
+                for line in lines:
+                    line_array = line.strip().split('=')
+                    if len(line_array) > 1 and key == line_array[0].strip():
+                        value_array = line_array[1].strip().split('#')
+                        mod_line = line
+                        if len(value_array) > 1 and value == value_array[0].strip():
+                            mod_line = ''.join([key, '  #', value_array[1], '\n'])
+                        elif len(value_array) == 1:
+                            mod_line = ''.join([key, '\n'])
+                        line = mod_line
+                        f.write("# Omitted '=' to return 'None' vs empty 'str' when not set")
+                        print(f"Notice: Value for {key} removed...")
+                    f.write(line)
+        except FileNotFoundError:
+            print(f"Exception: File '{env_file}' not found.")
+        return
+    quote_mode = "auto"
+    if header is not None:
+        with open(env_file, 'r') as f:
+            content = f.read()
+        if not header in content:
+            quote_mode = "never"
+            key = "".join([header, key])
+    print(f"Set '{key}' to {quote_mode}-quote '{value}' in {env_file}...")
+    dotenv.set_key(env_file, key, value, quote_mode)
+
+def configure_n8n_database_settings(supabase):
+    """Set n8n database depends_on and postgres volume in Docker Compose file."""
     compose_file = os.path.join("docker-compose.yml")
     try:
         with open(compose_file, 'r') as f:
             content = f.read()
+        old_vol = "postgres_data" if supabase else "langfuse_postgres_data"
         regex = r"\b{}\b\:".format(old_vol)
         if re.search(regex, content):
             new_vol = "langfuse_postgres_data:" if supabase else "postgres_data:"
@@ -765,7 +818,7 @@ def update_n8n_database_settings(env_file=None, supabase=False):
             n8n_updated = False
             n8n_update = False
             old_db = "postgres:" if supabase else "db:"
-            new_db = f"{value}:"
+            new_db = "db:" if supabase else "postgres:"
             lines = f.readlines()
             f.seek(0)
             f.truncate()
@@ -864,8 +917,6 @@ def main():
 
     args = parser.parse_args()
 
-    env_file = os.path.join(".env")
-
     # Detect platform
     global system
     system = platform.system()
@@ -879,14 +930,19 @@ def main():
     # Check prerequisites
     if not check_prerequisites():
         sys.exit(1)
-    
-    # Load environment variables
-    env_vars = load_env_file(env_file)
-    if env_vars == {}:
-        sys.exit(1)
 
+    # Load working environment variables
+    env_vars = get_dotenv_vars()
+    if not env_vars:
+        sys.exit(1)
+    
     # Detect default profile - no arguments specified
     default_profile = False if args.profile else True
+    
+    # Set default projects path in working environment variables
+    if any(p for p in args.profile if p in agent_all_profiles):
+        if not env_vars['PROJECTS_PATH']:
+            env_vars['PROJECTS_PATH'] = normalize_path(os.path.join('~', 'projects'))
 
     # Check Ollama status when running Ollama in the Host
     ollama_in_host = default_profile or not \
@@ -959,7 +1015,7 @@ def main():
                 print(f"""{insert} container images for {args.profile}...""")
             docker_compose_include(True, True)
             destroy_ai_suite(args.profile, build, install)
-        operate_ai_suite(args.operation, args.profile, args.environment)
+        operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
         if not build:
             sys.exit(0)
     os.remove('.operation') if os.path.exists('.operation') else None
@@ -970,13 +1026,6 @@ def main():
             args.profile.remove('cpu') if 'cpu' in args.profile else None
         else:
             args.profile = ['open-webui']
-
-    # Set default projects path in .env file
-    if any(p for p in args.profile if p in agent_all_profiles):
-        key = "PROJECTS_PATH"
-        value = os.path.join(os.path.expanduser('~'), "projects")
-        header = " ".join(["\n############", "\n# Projects", "\n############\n\n"])
-        set_variable_in_env_file(env_file, key, value, header)
 
     # Setup Supabase
     if any(p for p in args.profile if p == 'supabase'):
@@ -992,10 +1041,11 @@ def main():
         convert_supabase_pooler_line_endings()
 
     if any(p for p in args.profile if p in n8n_all_profiles):
-        update_n8n_database_settings(env_file, supabase)
+        env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"
+        configure_n8n_database_settings(supabase)
 
     if supabase:
-        prepare_supabase_env()
+        prepare_supabase_env(env_vars)
     elif 'langfuse' in args.profile:
         print("""Profile argument 'langfuse' requires Supabase - removing 'langfuse'...'""")
         args.profile.remove('langfuse')
@@ -1011,7 +1061,7 @@ def main():
     if open_webui:
         clone_open_webui_functions_repos()
         clone_open_webui_tools_filesystem_repo()
-        prepare_open_webui_tools_filesystem_env()
+        prepare_open_webui_tools_filesystem_env(env_vars)
 
     # Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml
     docker_compose_include(supabase, open_webui)
@@ -1019,6 +1069,9 @@ def main():
     # Stop and remove AI-Suite containers
     if not build:
         destroy_ai_suite(args.profile, False, False)
+
+    # Load environment variables
+    load_dotenv_vars(env_vars)
 
     # Start Supabase first
     if supabase:
@@ -1031,6 +1084,11 @@ def main():
     if open_webui:
         start_open_webui_tools_filesystem(args.environment, build)
         time.sleep(1)
+
+    # Unset Compose ignore orphans variable
+    key='COMPOSE_IGNORE_ORPHANS'
+    if key in os.environ:
+        del os.environ[key]
 
     # Check if open-webui-mcpo specified with required profile arguments, else remove open-webui-mcpo
     if any(p for p in args.profile if p == 'open-webui-mcpo'):

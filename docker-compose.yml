@@ -69,17 +69,9 @@ x-n8n: &service-n8n
 
     - OLLAMA_HOST=${OLLAMA_HOST}
     - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
-  env_file:
-    - path: .env
-      required: true
 
 x-n8n-runner: &service-n8n-runner
   image: n8nio/runners:latest
-  environment:
-    - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
-  env_file:
-    - path: .env
-      required: true
 
 x-ollama: &service-ollama
   image: ollama/ollama:latest
@@ -125,9 +117,6 @@ services:
       - OLLAMA_BASE_URL
       - CORS_ALLOW_ORIGIN
       - FORWARDED_ALLOW_IPS
-    env_file:
-      - path: .env
-        required: true
 
   mcp-gateway:
     profiles: ["open-webui-mcpo", "open-webui", "opencode", "open-webui-all", "n8n", "n8n-all", "ai-all"]
@@ -269,6 +258,7 @@ services:
     container_name: n8n-runner
     restart: unless-stopped
     environment:
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
       - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
     depends_on:
       - n8n
@@ -293,6 +283,7 @@ services:
     container_name: n8n-worker-runner
     restart: unless-stopped
     environment:
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
       - N8N_RUNNERS_TASK_BROKER_URI=http://n8n-worker:5679
     depends_on:
       - n8n
