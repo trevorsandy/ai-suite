@@ -183,7 +183,7 @@ services:
   opencode:
     profiles: ["opencode", "ai-all"]
     container_name: opencode
-    image: ghcr.io/sst/opencode
+    image: ghcr.io/anomalyco/opencode
     stdin_open: true
     tty: true
     volumes:
