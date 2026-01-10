@@ -753,7 +753,8 @@ def normalize_path(path):
     if path:
         if path.startswith('~'):
             path = os.path.expanduser(path)
-        # Convert to absolute path
+        elif path == '.':
+            path = os.getcwd()
         path = os.path.abspath(path)
     return path
 
@@ -816,9 +817,10 @@ def get_dotenv_vars(env_file=None, force=False):
             return {}
 
     env_vars = dotenv.dotenv_values(env_file)
-
-    if not env_vars['PROJECTS_PATH']:
-        env_vars['PROJECTS_PATH'] = normalize_path(os.path.join('~', 'projects'))
+    path = env_vars['PROJECTS_PATH']
+    if not path:
+        path = os.path.join('~', 'projects')
+    env_vars['PROJECTS_PATH'] = normalize_path(path)
 
     return env_vars
 
@@ -861,14 +863,14 @@ def write_dotenv_file(env_file, env_vars):
             quoted_var = var if var.isalnum() else f"'{var}'"
             f.write("".join([env, '=', quoted_var, '\n']))
 
-def set_dotenv_key(env_file, key, value, header):
+def set_dotenv_var(env_file, env, var, header):
     """Set or unset an environment variable and add optional header in .env file"""
-    if not key:
+    if not env:
         print("Error: A valid .env key was not specified.")
         return
     if env_file is None:
         env_file = os.path.join(".env")
-    if not value:
+    if not var:
         try:
             with open(env_file, 'r+') as f:
                 lines = f.readlines()
@@ -876,16 +878,16 @@ def set_dotenv_key(env_file, key, value, header):
                 f.truncate()
                 for line in lines:
                     line_array = line.strip().split('=')
-                    if len(line_array) > 1 and key == line_array[0].strip():
-                        value_array = line_array[1].strip().split('#')
+                    if len(line_array) > 1 and env == line_array[0].strip():
+                        var_array = line_array[1].strip().split('#')
                         mod_line = line
-                        if len(value_array) > 1 and value == value_array[0].strip():
-                            mod_line = ''.join([key, '  #', value_array[1], '\n'])
-                        elif len(value_array) == 1:
-                            mod_line = ''.join([key, '\n'])
+                        if len(var_array) > 1 and var == var_array[0].strip():
+                            mod_line = ''.join([env, '=    #', var_array[1], '\n'])
+                        elif len(var_array) == 1:
+                            mod_line = ''.join([env, '=\n'])
                         line = mod_line
-                        f.write("# Omitted '=' to return 'None' vs empty 'str' when not set")
-                        print(f"Notice: Value for {key} removed...")
+                        f.write("# Omitted '<value>' to return 'False' when queried")
+                        print(f"Notice: Value for {env} removed...")
                     f.write(line)
         except FileNotFoundError:
             print(f"Exception: File '{env_file}' not found.")
@@ -896,9 +898,9 @@ def set_dotenv_key(env_file, key, value, header):
             content = f.read()
         if not header in content:
             quote_mode = "never"
-            key = "".join([header, key])
-    print(f"Set '{key}' to {quote_mode}-quote '{value}' in {env_file}...")
-    dotenv.set_key(env_file, key, value, quote_mode)
+            env = "".join([header, env])
+    print(f"Set '{env}' to {quote_mode}-quote '{var}' in {env_file}...")
+    dotenv.set_key(env_file, env, var, quote_mode)
 
 def configure_n8n_database_settings(supabase):
     """Set n8n database depends_on and postgres volume in Docker Compose file."""
@@ -951,14 +953,15 @@ def main():
     global llama, llama_cpp
     status = None
     llama_cpp = False
+    env_file = os.path.join(".env")
     if os.path.exists('.operation'):
         with open('.operation', 'r') as f:
             a = f.readline().split(':')
             status = a[0].strip() if a else None
             if len(a) > 1:
                 llama_cpp = a[1].strip() == 'llama.cpp'
-    else:
-        lp = dotenv.get_key(os.path.join(".env"), 'LLAMA_PATH')
+    elif os.path.exists(env_file):
+        lp = dotenv.get_key(env_file, 'LLAMA_PATH')
         llama_cpp = lp and os.path.basename(lp).lower().startswith('llama-server')
     llama = "Llama.cpp" if llama_cpp else "Ollama"
 
@@ -1058,6 +1061,7 @@ def main():
         sys.exit(1)
 
     # Load working environment variables
+    mod_env_vars = {}
     env_vars = get_dotenv_vars()
     if not env_vars:
         sys.exit(1)
@@ -1097,8 +1101,7 @@ def main():
                     if os.path.exists(llama_exe):
                         llama_found = True
                         break
-            set_dotenv_key(os.path.join(".env"), 'LLAMA_PATH', llama_exe, None)
-            env_vars = get_dotenv_vars(force=True)
+            mod_env_vars.update({'LLAMA_PATH': llama_exe})
         # Check if llama exe (llama-server, ollama) matches profile argument (llama.cpp, ollama)
         if (llama_cpp and not llama_app.lower().startswith('llama-server')) or \
            (not llama_cpp and not llama_app.lower().startswith('ollama')):
@@ -1251,9 +1254,9 @@ def main():
         time.sleep(1)
 
     # Unset Compose ignore orphans variable
-    key='COMPOSE_IGNORE_ORPHANS'
-    if key in os.environ:
-        del os.environ[key]
+    env = "COMPOSE_IGNORE_ORPHANS"
+    if env in os.environ:
+        del os.environ[env]
 
     # Check if open-webui-mcpo specified with required profile arguments, else remove open-webui-mcpo
     if any(p for p in args.profile if p == 'open-webui-mcpo'):
