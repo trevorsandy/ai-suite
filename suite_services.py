@@ -585,7 +585,7 @@ def convert_supabase_pooler_line_endings():
         with open(file_path, 'wb') as f:
             f.write(content)
 
-def docker_compose_include(supabase=False, filesystem=False):
+def docker_compose_include(supabase, filesystem, silent):
     """Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml"""
     compose_file = "docker-compose.yml"
     supabase_compose_file = "supabase/docker/docker-compose.yml"
@@ -594,15 +594,18 @@ def docker_compose_include(supabase=False, filesystem=False):
         print(f"Error: Docker Compose file '{compose_file}' not found - include skipped...")
         return
     if supabase and not os.path.exists(supabase_compose_file):
-        print(f"Warning: Include file '{supabase_compose_file}' not found.")
+        if not silent:
+            print(f"Warning: Include file '{supabase_compose_file}' not found.")
         supabase = False
     if filesystem and not os.path.exists(filesystem_compose_file):
-        print(f"Warning: Include file '{filesystem_compose_file}' not found.")
+        if not silent:
+            print(f"Warning: Include file '{filesystem_compose_file}' not found.")
         filesystem = False
-    supabase_ins = "add" if supabase else "remove"
-    filesystem_ins = "add" if filesystem else "remove"
-    print(f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem "
-          f"'include:' in {compose_file}...")
+    if not silent:
+        supabase_ins = "add" if supabase else "remove"
+        filesystem_ins = "add" if filesystem else "remove"
+        print(f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem "
+              f"'include:' in {compose_file}...")
     include = supabase or filesystem
     compose_include = "include:\n"
     supabase_include = f"  - ./{supabase_compose_file}\n"
@@ -616,23 +619,29 @@ def docker_compose_include(supabase=False, filesystem=False):
             if compose_include in content:
                 content = content.replace(compose_include, "")
             else:
-                print(f"Adding 'include:' element to {compose_file}...")
+                if not silent:
+                    print(f"Adding 'include:' element to {compose_file}...")
                 content = "\n" + content
-        elif compose_include in content:
-            print(f"Removing 'include:' element from {compose_file}...")
+        elif compose_include in content and not silent:
+            if not silent:
+                print(f"Removing 'include:' element from {compose_file}...")
 
         if supabase and supabase_include not in content:
-            print(f"Adding include file ./{supabase_compose_file}...")
+            if not silent:
+                print(f"Adding include file ./{supabase_compose_file}...")
             content = supabase_include + content
         elif not supabase and supabase_include in content:
-            print(f"Removing include file ./{supabase_compose_file}...")
+            if not silent:
+                print(f"Removing include file ./{supabase_compose_file}...")
             content = content.replace(supabase_include, "")
 
         if filesystem and filesystem_include not in content:
-            print(f"Adding include file ./{filesystem_compose_file}...")
+            if not silent:
+                print(f"Adding include file ./{filesystem_compose_file}...")
             content = filesystem_include + content
         elif not filesystem and filesystem_include in content:
-            print(f"Removing include file ./{filesystem_compose_file}...")
+            if not silent:
+                print(f"Removing include file ./{filesystem_compose_file}...")
             content = content.replace(filesystem_include, "")
 
         if include and not compose_include in content:
@@ -1011,8 +1020,8 @@ def main():
                 args.profile.extend(["cpu"])
             else:
                 print(f"""{insert} container images for {args.profile}...""")
-            docker_compose_include(True, True)
-            destroy_ai_suite(args.profile, build, install)
+            docker_compose_include(True, True, True)
+            destroy_ai_suite(args.profile, install)
         operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
         if not build:
             sys.exit(0)
@@ -1062,11 +1071,11 @@ def main():
         prepare_open_webui_tools_filesystem_env(env_vars)
 
     # Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml
-    docker_compose_include(supabase, open_webui)
+    docker_compose_include(supabase, open_webui, False)
 
     # Stop and remove AI-Suite containers
     if not build:
-        destroy_ai_suite(args.profile, False, False)
+        destroy_ai_suite(args.profile, False)
 
     # Load environment variables
     load_dotenv_vars(env_vars)
