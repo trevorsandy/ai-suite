@@ -298,7 +298,7 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
                       - PROJECTS_PATH
                 """))
 
-def destroy_ai_suite(profile, build, install):
+def destroy_ai_suite(profile, install):
     """Stop and remove AI-Suite containers and volumes (using its compose file)
        for the specified profile arguments.
     """
@@ -309,12 +309,10 @@ def destroy_ai_suite(profile, build, install):
         for argument in profile:
             cmd.extend(["--profile", argument])
     cmd.extend(["-f", "docker-compose.yml", "down"])
-    if build:
-        cmd.extend(["--remove-orphans"])
-        if install:
-            cmd.extend(["--volumes"])
+    if install:
+        cmd.extend(["--volumes"])
     run_command(cmd)
-    if build and install:
+    if install:
         cmd = ["docker", "volume", "prune", "--force"]
         run_command(cmd)
 
@@ -999,7 +997,7 @@ def main():
             if args.operation == 'update':
                 user_confirm = input(textwrap.dedent(f"""\
                     Performing an {name} update can impact its integrity.
-                    Named and anonymous data volumes will be deleted.
+                    Consider backing up your data to enable rollback.
                     [Type 'Got-It' to continue]:
                     """))
                 if len(user_confirm) == 0 or user_confirm.lower() != 'got-it':
