@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update January 10, 2026
+Last Update January 11, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -54,31 +54,31 @@ limitations under the License.
 
 import os
 import sys
-import datetime
-import subprocess
-import pathlib
-import shutil
-import time
 import argparse
-import platform
+import datetime
 import dotenv
-import tempfile
-import textwrap
+import pathlib
+import platform
 import re
+import shutil
+import subprocess
+import textwrap
+import time
 
-info = {
-    "name": "AI-Suite",
-    "version": (0, 4, 0),
-    "title": "AI-Suite installation and operation",
-    "file": os.path.basename(__file__),
+# Info attributes
+INFO = {
+    "name"       : "AI-Suite",
+    "version"    : (0, 4, 0),
+    "title"      : "AI-Suite installation and operation",
+    "file"       : os.path.basename(__file__),
     "description": "A dockerized suite of AI agents in a no-code, workflow, LLM environment",
-    "author": "Trevor SANDY <trevor.sandy@gmail.com>",
-    "author_url": "https://github.com/trevorsandy/",
-    "repository": "https://github.com/trevorsandy/ai-suite",
-    "issues": "https://github.com/trevorsandy/ai-suite/issues",
-    "license": "Apache License 2.0",
-    "copyright": "Copyright (c) 2025-present by Trevor SANDY"
-    }
+    "author"     : "Trevor SANDY <trevor.sandy@gmail.com>",
+    "author_url" : "https://github.com/trevorsandy/",
+    "repository" : "https://github.com/trevorsandy/ai-suite",
+    "issues"     : "https://github.com/trevorsandy/ai-suite/issues",
+    "license"    : "Apache License 2.0",
+    "copyright"  : "Copyright (c) 2025-present by Trevor SANDY"
+}
 
 def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
@@ -92,15 +92,15 @@ def run_command(cmd, cwd=None):
 
 def launch_llama_process(args):
     """Launch Ollama/Llama.cpp server on the host"""
-    log_dir = "llama.cpp" if llama_cpp else ""
-    log_path = os.path.join(os.getcwd(), log_dir, 'llama_start.log')
-    log = "".join(['>', log_path, ' 2>&1'])
+    llama_log_dir = "llama.cpp" if llama_cpp else ""
+    llama_log_path = os.path.join(os.getcwd(), llama_log_dir, 'llama_start.log')
+    llama_log = "".join(['>', llama_log_path, ' 2>&1'])
     if system == "Windows":
         win = "".join(['/c,"', llama_exe])
         cmd = ['powershell', '-Command', 'Start-Process cmd -Args', win, args,
-               "".join([log, '"']), '-WindowStyle Hidden']
+               "".join([llama_log, '"']), '-WindowStyle Hidden']
     else:  # Unix-based systems (Linux, macOS)
-        cmd = [llama_exe, args, log]
+        cmd = [llama_exe, args, llama_log]
     print("Running command:", " ".join(cmd))
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -376,21 +376,21 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
     print(f"Writing {docker_compose_path}...")
     with open(docker_compose_path, 'w') as f:
         f.write(textwrap.dedent("""\
-                services:
-                  open-webui-filesystem:
-                    container_name: open-webui-filesystem
-                    restart: unless-stopped
-                    build:
-                      context: .
-                    ports:
-                      - 8091:8091
-                    extra_hosts:
-                      - host.docker.internal:host-gateway
-                    volumes:
-                      - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp
-                    environment:
-                      - PROJECTS_PATH
-                """))
+            services:
+              open-webui-filesystem:
+                container_name: open-webui-filesystem
+                restart: unless-stopped
+                build:
+                  context: .
+                ports:
+                  - 8091:8091
+                extra_hosts:
+                  - host.docker.internal:host-gateway
+                volumes:
+                  - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp
+                environment:
+                  - PROJECTS_PATH
+            """))
 
 def destroy_ai_suite(profile, install):
     """Stop and remove AI-Suite containers and volumes (using its compose file)
@@ -603,8 +603,10 @@ def check_and_fix_docker_compose_for_searxng():
                 print(f"Found running SearXNG container: {container_name}")
 
                 # Check if uwsgi.ini exists inside the container
+                container_check_cmd = \
+                    "[ -f /etc/searxng/uwsgi.ini ] && echo 'found' || echo 'not_found'"
                 container_check = subprocess.run(
-                    ["docker", "exec", container_name, "sh", "-c", "[ -f /etc/searxng/uwsgi.ini ] && echo 'found' || echo 'not_found'"],
+                    ["docker", "exec", container_name, "sh", "-c", container_check_cmd],
                     capture_output=True, text=True, check=False
                 )
 
@@ -666,20 +668,19 @@ def check_and_fix_docker_compose_for_searxng():
 # Treat Selfhosted Supavisor Pooler Keeps Restarting.
 # See: https://github.com/supabase/supabase/issues/30210
 def convert_supabase_pooler_line_endings():
-    """converting Windows line endings to Linux/Unix/MacOS line endings."""
+    """Convert Windows line endings to Linux/Unix/MacOS line endings."""
     if system == "Windows":
         print("Converting supavisor pooler line endings...")
-        WINDOWS_LINE_ENDING = b'\r\n'
-        UNIX_LINE_ENDING = b'\n'
-        file_path = r"supabase/docker/volumes/pooler/pooler.exs"
+        CR_LF = b'\r\n'
+        LF = b'\n'
+        file_path = "supabase/docker/volumes/pooler/pooler.exs"
         with open(file_path, 'rb') as f:
             content = f.read()
-        # Windows ➡ Unix
-        content = content.replace(WINDOWS_LINE_ENDING, UNIX_LINE_ENDING)
+        modified_content = content.replace(CR_LF, LF)
         with open(file_path, 'wb') as f:
-            f.write(content)
+            f.write(modified_content)
 
-def docker_compose_include(supabase, filesystem, silent):
+def docker_compose_include(supabase, filesystem, verbose):
     """Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml"""
     compose_file = "docker-compose.yml"
     supabase_compose_file = "supabase/docker/docker-compose.yml"
@@ -688,14 +689,14 @@ def docker_compose_include(supabase, filesystem, silent):
         print(f"Error: Docker Compose file '{compose_file}' not found - include skipped...")
         return
     if supabase and not os.path.exists(supabase_compose_file):
-        if not silent:
+        if verbose:
             print(f"Warning: Include file '{supabase_compose_file}' not found.")
         supabase = False
     if filesystem and not os.path.exists(filesystem_compose_file):
-        if not silent:
+        if verbose:
             print(f"Warning: Include file '{filesystem_compose_file}' not found.")
         filesystem = False
-    if not silent:
+    if verbose:
         supabase_ins = "add" if supabase else "remove"
         filesystem_ins = "add" if filesystem else "remove"
         print(f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem "
@@ -713,28 +714,28 @@ def docker_compose_include(supabase, filesystem, silent):
             if compose_include in content:
                 content = content.replace(compose_include, "")
             else:
-                if not silent:
+                if verbose:
                     print(f"Adding 'include:' element to {compose_file}...")
                 content = "\n" + content
-        elif compose_include in content and not silent:
-            if not silent:
+        elif compose_include in content and verbose:
+            if verbose:
                 print(f"Removing 'include:' element from {compose_file}...")
 
         if supabase and supabase_include not in content:
-            if not silent:
+            if verbose:
                 print(f"Adding include file ./{supabase_compose_file}...")
             content = supabase_include + content
         elif not supabase and supabase_include in content:
-            if not silent:
+            if verbose:
                 print(f"Removing include file ./{supabase_compose_file}...")
             content = content.replace(supabase_include, "")
 
         if filesystem and filesystem_include not in content:
-            if not silent:
+            if verbose:
                 print(f"Adding include file ./{filesystem_compose_file}...")
             content = filesystem_include + content
         elif not filesystem and filesystem_include in content:
-            if not silent:
+            if verbose:
                 print(f"Removing include file ./{filesystem_compose_file}...")
             content = content.replace(filesystem_include, "")
 
@@ -753,7 +754,7 @@ def normalize_path(path):
     if path:
         if path.startswith('~'):
             path = os.path.expanduser(path)
-        elif path == '.':
+        elif path.strip() == '.':
             path = os.getcwd()
         path = os.path.abspath(path)
     return path
@@ -770,7 +771,8 @@ def check_prerequisites():
         print("Install them before continuing.")
         return False
     try:
-        subprocess.run(["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         print("Docker is not running. Start Docker Desktop.")
         return False
@@ -853,9 +855,7 @@ def write_dotenv_file(env_file, env_vars):
         now = " ".join(['on:', datetime.datetime.now().ctime()])
         f.seek(0)
         f.truncate()
-        f.write(textwrap.dedent(f"""\
-            # Generated {now} from {info.get("file")} working .env environment variables.
-            """))
+        f.write(f"# {now} - Generated {name} working .env environment variables.")
         f.write('\n')
         for env, var in env_vars.items():
             if not var:
@@ -903,7 +903,7 @@ def set_dotenv_var(env_file, env, var, header):
     dotenv.set_key(env_file, env, var, quote_mode)
 
 def configure_n8n_database_settings(supabase):
-    """Set n8n database depends_on and postgres volume in Docker Compose file."""
+    """Set n8n database depends_on and Postgres profiles and volume in Docker Compose file."""
     compose_file = os.path.join("docker-compose.yml")
     try:
         with open(compose_file, 'r') as f:
@@ -943,27 +943,11 @@ def configure_n8n_database_settings(supabase):
         print(f"Exception: Update n8n database settings in {compose_file}: {e}")
 
 def main():
-    # Name, file and version information
-    global name
-    name = info.get('name', 'placeholder')
-    file = info.get('file', 'placeholder.py')
-    version = info.get('version', (-1, -1, -1))
+    # Name and file globals
+    global name, file
+    name = INFO.get('name', 'placeholder')
+    file = INFO.get('file', 'placeholder.py')
 
-    # Detect operational status and current llama (Ollama/Llama.cpp) configuration
-    global llama, llama_cpp
-    status = None
-    llama_cpp = False
-    env_file = os.path.join(".env")
-    if os.path.exists('.operation'):
-        with open('.operation', 'r') as f:
-            a = f.readline().split(':')
-            status = a[0].strip() if a else None
-            if len(a) > 1:
-                llama_cpp = a[1].strip() == 'llama.cpp'
-    elif os.path.exists(env_file):
-        lp = dotenv.get_key(env_file, 'LLAMA_PATH')
-        llama_cpp = lp and os.path.basename(lp).lower().startswith('llama-server')
-    llama = "Llama.cpp" if llama_cpp else "Ollama"
 
     # Banner
     print(f"""{name} version: {'.'.join(map(str, version))} LLM: {llama}""")
@@ -985,66 +969,94 @@ def main():
                llama_docker_profiles + llama_host_profiles
     operations = ['stop', 'stop-llama', 'start', 'pause', 'unpause', 'update', 'install']
     environments = ['private', 'public']
+    log_levels = ['OFF', 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
     parser = argparse.ArgumentParser(
         prog=f'{file}',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent(f'''\
-            {info.get("description")}
+            {INFO.get("description")}
 
             With {file}, you can install, start, stop, pause, update or install
             {name} with specified profile arguments (functional modules) and environment.
             ___________________________
 
-            Syntax:
+            Command syntax:
 
             python {file} [--profile <arguments...>] [--environment <argument>] [--operation <argument>]
 
             Example commands:
 
-            - Install profile arguments n8n and opencode...
-              ...with {llama} running in the Host:
-              >python {file} --profile n8n opencode
+            - Install functional modules n8n and opencode...
+              ...with {llama} running on the Host:
+              python {file} --profile n8n opencode
 
               ...with Ollama CPU running in Docker:
-              >python {file} --profile n8n opencode cpu
+              python {file} --profile n8n opencode cpu
 
-              ...using Llama.cpp AMD GPU in Docker and on production environment:
-              >python {file} --profile n8n opencode cpp-gpu-amd --environment public
+              ...with Llama.cpp AMD GPU in Docker and on production environment:
+              python {file} --profile n8n opencode cpp-gpu-amd --environment public
 
-            - Perform stop (start, pause, unpause) suite operation:
-              >python {file} --profile n8n opencode --operation stop
+            - Perform (stop, start, pause, unpause) operation...
+              ...to stop n8n and opencode:
+              python {file} --profile n8n opencode --operation stop
 
-            - Perform suite operation to update all modules and restart:
-              >python {file} --operation update
+              ...to stop n8n, opencode and {llama} running on the Host:
+              python {file} --profile n8n opencode --operation stop-llama
 
-            - Perform suite operation to install all functional modules and start...
-              >python {file} --operation install
+            - Perform (install, update) operation...
+              ...to update all modules and restart using Ollama running on the Host:
+              python {file} --operation update
 
-              ...using Llama.cpp Nvidia GPU running in Docker:
-              >python {file} --profile ai-all cpp-gpu-nvidia --operation install
+              ...to update all modules and restart using Ollama CPU running in Docker:
+              python {file} --profile ai-all cpu --operation update
+
+              ...to install all modules and start using Ollama running on the Host:
+              python {file} --operation install
+
+              ...to install all modules and start using Llama.cpp Nvidia GPU running in Docker:
+              python {file} --profile ai-all cpp-gpu-nvidia --operation install
 
             '''),
         epilog=textwrap.dedent(f'''\
-            - Title: {info.get("title")}
-            - File: {info.get("file")}
-            - Author: {info.get("author")}
-            - Author URL: {info.get("author_url")}
-            - Repository: {info.get("repository")}
-            - Report Issues: {info.get("issues")}
-            - License: {info.get("license")}
-            - Copyright: {info.get("copyright")}
+            - Title: {INFO.get("title")}
+            - File: {INFO.get("file")}
+            - Author: {INFO.get("author")}
+            - Author URL: {INFO.get("author_url")}
+            - Repository: {INFO.get("repository")}
+            - Report Issues: {INFO.get("issues")}
+            - License: {INFO.get("license")}
+            - Copyright: {INFO.get("copyright")}
             '''))
-    parser.add_argument('-p', '--profile', type=str, nargs='+', choices=profiles,
+    parser.add_argument('-p', '--profile', type=str.lower, nargs='+', choices=profiles,
                         help='Docker Compose Profile arguments for functional modules and llama'
                              f'CPU/GPU options (default: open-webui - with {llama} running on Host)')
-    parser.add_argument('-e', '--environment', type=str, choices=environments, default='private',
+    parser.add_argument('-e', '--environment', type=str.lower, choices=environments, default='private',
                         help='Environment arguments used by Docker Compose to expose '
                              'or restrict network communication ports (default: private)')
-    parser.add_argument('-o', '--operation', type=str, choices=operations,
+    parser.add_argument('-o', '--operation', type=str.lower, choices=operations,
                         help='Docker container, volumes and image management arguments along '
                               f'with argument to stop {llama} running on Host.')
+    parser.add_argument('-l', '--log', type=str.upper, choices=log_levels, default='INFO',
+                        help='Enable stream (console) logging and set log level. File logging is always '
+                             'enabled at DEBUG and is not affected by this argument (default: INFO)')
 
     args = parser.parse_args()
+    # Detect operational status and current llama (Ollama/Llama.cpp) configuration
+    global llama, llama_cpp
+    status = None
+    llama_cpp = False
+    env_file = os.path.join(".env")
+    if os.path.exists('.operation'):
+        with open('.operation', 'r') as f:
+            op_array = f.readline().split(':')
+            status = op_array[0].strip() if op_array else None
+            if len(op_array) > 1:
+                llama_cpp = op_array[1].strip() == 'llama.cpp'
+    elif os.path.exists(env_file):
+        lpv = dotenv.get_key(env_file, 'LLAMA_PATH')
+        llama_cpp = lpv and os.path.basename(lpv).lower().startswith('llama-server')
+    llama = "Llama.cpp" if llama_cpp else "Ollama"
+
 
     # Detect platform
     global system
@@ -1070,7 +1082,7 @@ def main():
     default_profile = False if args.profile else True
     args.profile = [] if default_profile else args.profile
 
-    # Check llama (Ollama/Llama.cpp) status
+    # Process llama (Ollama/Llama.cpp) status checks
     llama_arg = "cpu"
     llama_in_host = default_profile or not \
         any(p for p in args.profile if p in llama_docker_profiles)
@@ -1167,8 +1179,7 @@ def main():
                 user_confirm = input(textwrap.dedent(f"""\
                     Performing an {name} update can impact its integrity.
                     Consider backing up your data to enable rollback.
-                    [Type 'Got-It' to continue]:
-                    """))
+                    [Type 'Got-It' to continue]: """))
                 if len(user_confirm) == 0 or user_confirm.lower() != 'got-it':
                     print(f"""Received [{user_confirm}].""") if user_confirm else None
                     print(f"""{name} update was not confirmed - exiting...""")
@@ -1181,7 +1192,7 @@ def main():
                 args.profile.extend([llama_arg])
             else:
                 print(f"""{insert} container images for {args.profile}...""")
-            docker_compose_include(True, True, True)
+            docker_compose_include(True, True, False)
             destroy_ai_suite(args.profile, install)
         operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
         if not build:
@@ -1232,7 +1243,7 @@ def main():
         prepare_open_webui_tools_filesystem_env(env_vars)
 
     # Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml
-    docker_compose_include(supabase, open_webui, False)
+    docker_compose_include(supabase, open_webui, True)
 
     # Stop and remove AI-Suite containers
     if not build:
@@ -1287,7 +1298,7 @@ def main():
                     print(f"""{name} will use Ollama CPU/GPU profile argument '{profile_arg}'...""")
                     first_argument = True
             else:
-                args.profile.remove(profile_arg)
+                args.profile.remove(profile_arg) if profile_arg in args.profile else None
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, build)

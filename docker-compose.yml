@@ -125,7 +125,7 @@ name: ai-suite
 
 services:
   open-webui:
-    profiles: ["open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
+    profiles: ["open-webui", "open-webui-all", "n8n-all", "ai-all"]
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
@@ -153,7 +153,7 @@ services:
       - ${DOCKER_SOCKET_LOCATION}.raw:/var/run/docker.sock:ro
 
   open-webui-mcpo:
-    profiles: ["open-webui-mcpo", "open-webui", "open-webui-all", "n8n", "n8n-all", "ai-all"]
+    profiles: ["open-webui-mcpo", "open-webui", "open-webui-all", "n8n-all", "ai-all"]
     image: ghcr.io/open-webui/mcpo:main
     restart: unless-stopped
     container_name: open-webui-mcpo
