@@ -909,11 +909,23 @@ def configure_n8n_database_settings(supabase):
         with open(compose_file, 'r') as f:
             content = f.read()
         old_vol = "postgres_data" if supabase else "langfuse_postgres_data"
-        regex = r"\b{}\b\:".format(old_vol)
-        if re.search(regex, content):
+        old_vol_regex = r"\b{}\b\:".format(old_vol)
+        if re.search(old_vol_regex, content):
             new_vol = "langfuse_postgres_data:" if supabase else "postgres_data:"
-            print(f"Set Postgres volume: from '{old_vol}' to '{new_vol}' in {compose_file}...")
-            modified_content = re.sub(r"\b{}\b\:".format(old_vol), new_vol, content)
+            print(f"Set Postgres volume: to '{new_vol}' from '{old_vol}' in {compose_file}...")
+            modified_content = re.sub(old_vol_regex, new_vol, content)
+            with open(compose_file, 'w') as f:
+                f.write(modified_content)
+
+        postgres_profiles = 'postgres:\n    profiles: ["n8n", "langfuse", "n8n-all",'
+        supabase_profiles = 'postgres:\n    profiles: ["langfuse",'
+        old_profiles = postgres_profiles if supabase else supabase_profiles
+        old_profiles_regex = re.escape(old_profiles)
+        if re.search(old_profiles_regex, content):
+            new_profiles = supabase_profiles if supabase else postgres_profiles
+            insert = "'langfuse'" if supabase else "'n8n' and 'langfuse'"
+            print(f"Set Postgres profiles: to include {insert} in {compose_file}...")
+            modified_content = re.sub(old_profiles_regex, new_profiles, content)
             with open(compose_file, 'w') as f:
                 f.write(modified_content)
 
