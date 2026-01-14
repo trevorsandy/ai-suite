@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update January 11, 2026
+Last Update January 19, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -57,6 +57,7 @@ import sys
 import argparse
 import datetime
 import dotenv
+import logging
 import pathlib
 import platform
 import re
@@ -80,15 +81,186 @@ INFO = {
     "copyright"  : "Copyright (c) 2025-present by Trevor SANDY"
 }
 
+# Logging
+class Formatter(logging.Formatter):
+    """A class that formats colored logs using Select Graphic Rendition parameters."""
+    FORMATS = {
+        logging.NOTSET: "%(prefix)s%(msg)s%(suffix)s",
+        logging.DEBUG: "%(name)-8s: %(levelname)-8s %(lineno)d: %(prefix)s%(message)s%(suffix)s"
+    }
+
+    RED     = 31
+    RED_BG  = 41 # Red background (White foreground)
+    GREEN   = 32
+    YELLOW  = 33
+    BLUE    = 34
+    MAGENTA = 35
+    CYAN    = 36
+    WHITE   = 37
+    COLOR   = {'msg': WHITE, 'level': WHITE, 'name': BLUE}
+    LOG_LEVEL_COLOR = {
+        logging.CRITICAL: {'msg': RED_BG, 'level': RED_BG, 'name': BLUE} ,
+        logging.ERROR   : {'msg': RED,    'level': RED,    'name': BLUE} ,
+        logging.WARNING : {'msg': YELLOW, 'level': YELLOW, 'name': BLUE} ,
+        logging.INFO    : {'msg': CYAN,   'level': CYAN,   'name': BLUE} ,
+        logging.DEBUG   : {'msg': WHITE,  'level': WHITE,  'name': BLUE}
+    }
+
+    def __init__(self, fmt: str):
+        super().__init__()
+        self.FORMATS[logging.NOTSET] = fmt
+
+    @staticmethod
+    def suffix():
+        """Return Select Graphic Rendition parameters reset"""
+        return '\033[0m'
+
+    @staticmethod
+    def prefix(color, bright=False, bold=False, faint=False, italic=False, underline=False):
+        """Return Select Graphic Rendition Control Sequence Introducer parameters"""
+        # Resolve format conflicts
+        faint = False if faint and bright or bold else faint
+        # Set CSI parameters
+        codes = []
+        color = color if isinstance(color, int) else 0 # black
+        if bright:
+           color += 60
+        if bold:
+            codes.append('1;')
+        if faint:
+            codes.append('2;')
+        if italic:
+            codes.append('3;')
+        if underline:
+            codes.append('4;')
+        codes.append(str(color))
+        rendition = ''.join(codes) if codes else color
+        return ('\033[{0}m').format(rendition)
+
+    @staticmethod
+    def style(level:int | None=None, color:int | None=None, **kwargs):
+        """Return Select Graphic Rendition style parameters
+           kwargs (level): bright:bool, bold:bool, faint:bool, italic:bool, underline:bool,
+                           emoji:str
+           kwargs (record): name_color:int, name_prefix:str, level_name_color:int,
+                            level_name_prefix:str + kwargs (level)
+           kwargs (prefix): header_prefix:str, header:str, prefix:str, msg:str + kwargs (level)
+        """
+        d = {'bright': False, 'bold': False, 'faint': False, 'italic': False, 'underline': False, 'emoji': '',
+            'name_color': None, 'name_prefix': '', 'level_name_color': None, 'level_name_prefix': '',
+            'header_prefix': '', 'header': '', 'header_suffix': '', 'msg_prefix': '', 'msg': ''}
+        d.update(kwargs)
+        bright, bold, faint, italic, underline, emoji, \
+        name_color, name_prefix, level_name_color, level_name_prefix, \
+        header_prefix, header, header_suffix, msg_prefix, msg = \
+        d['bright'], d['bold'], d['faint'], d['italic'], d['underline'], d['emoji'], \
+        d['name_color'], d['name_prefix'], d['level_name_color'], d['level_name_prefix'], \
+        d['header_prefix'], d['header'], d['header_suffix'], d['msg_prefix'], d['msg']
+        # Resolve format conflicts
+        faint = False if faint and bright or bold else faint
+        if isinstance(level, int) and level not in [10, 20, 30, 40, 50]:
+            color = level
+            level = logging.INFO
+        # Construct a SGR dictionary with the specified arguments
+        suffix = Formatter.suffix()
+        as_msg = msg or header
+        no_msg_prefix = header and not msg
+        emoji = "🐛" if not emoji and level == logging.DEBUG else emoji
+        emoji = emoji + " " if emoji else ""
+        level = logging.INFO if not level else level
+        name = True if name_prefix or name_color else False
+        level_name = True if level_name_prefix or level_name_color else False
+        if not color:
+            color = Formatter.LOG_LEVEL_COLOR.get(level, Formatter.COLOR)['msg']
+        if header:
+            if not header_prefix:
+                header_prefix = Formatter.prefix(color, bright, True, faint, italic, underline)
+            header_suffix = suffix + " " if not no_msg_prefix else ""
+        if not msg_prefix and not no_msg_prefix:
+            msg_prefix = Formatter.prefix(color, bright, bold, faint, italic, underline)
+        prefix = ("{0}{1}{2}{3}{4}{5}").format(
+                  emoji, header_prefix, header, header_suffix, msg_prefix, msg)
+        style = {'prefix': prefix, 'suffix': suffix}
+        if as_msg:
+            style.update({'as_message': ("{0}{1}{2}").format(suffix, prefix, suffix)})
+        if name:
+            if not name_prefix:
+                name_prefix = Formatter.prefix(name_color, bright, bold, faint, True, underline)
+            style.update({'name_prefix': name_prefix})
+        if level_name:
+            if not level_name_prefix:
+                bold = True if level in [logging.ERROR, logging.CRITICAL, logging.DEBUG] else bold
+                underline = True if level in [logging.WARNING] else underline
+                level_name_prefix = Formatter.prefix(level_name_color, bright, bold, faint, italic, underline)
+            style.update({'level_name_prefix': level_name_prefix})
+        # Return the SGR dictionary
+        return style
+
+    def format(self, record):
+        """Format log record attributes with color or emojie prefix, and reset suffix"""
+        # Save record
+        saved_record = record
+        # Get log level color dictionary
+        color = self.LOG_LEVEL_COLOR.get(record.levelno, self.COLOR)
+        # Set SGR parameters
+        bold = record.levelno in [logging.ERROR, logging.CRITICAL, logging.DEBUG]
+        italic = record.levelno in [logging.CRITICAL, logging.DEBUG]
+        faint = record.levelno in [logging.INFO]
+        underline = record.levelno in [logging.WARNING]
+        suffix = self.suffix()
+        # Apply name attribute SGR parameters
+        name = record.name
+        name_prefix = None
+        if hasattr(record, 'name_prefix'):
+            name_prefix = getattr(record, 'name_prefix')
+        if not name_prefix:
+            name_prefix = self.prefix(color['name'], italic=True)
+        record.name = ('{0}{1}{2}').format(name_prefix, name, suffix)
+        # Apply level name attribute SGR parameters
+        levelname = record.levelname
+        levelname_prefix = None
+        if hasattr(record, 'level_name_prefix'):
+            levelname_prefix = getattr(record, 'level_name_prefix')
+        if not levelname_prefix:
+            levelname_prefix = self.prefix(color['level'], bold=bold, underline=underline)
+        record.levelname = ('{0}{1}{2}').format(levelname_prefix, levelname, suffix)
+        # Apply msg attribute SGR parameters
+        if not hasattr(record, 'prefix'):
+            msg_prefix = self.prefix(color['msg'], italic=italic, faint=faint)
+            record.prefix = msg_prefix
+        if not hasattr(record, 'suffix'):
+            record.suffix = suffix
+        # Format record
+        format = self.FORMATS.get(record.levelno, self.FORMATS[logging.NOTSET])
+        formatter = logging.Formatter(format)
+        formatted = formatter.format(record)
+        # Restore record
+        record = saved_record
+        # Return formatted record
+        return formatted
+
+# File logging
+LFH = logging.FileHandler(f'{str(INFO.get("name")).lower()}.log', 'a', 'utf-8')
+LFHF = logging.Formatter('%(asctime)s %(name)-8s %(levelname)-8s %(message)s', '%m-%d %H:%M')
+LFH.setFormatter(LFHF)
+LFH.setLevel(logging.DEBUG)
+
+# Stream (Console) logging
+LSH = logging.StreamHandler()
+LSHF = Formatter('%(name)-8s: %(levelname)-8s %(prefix)s%(message)s%(suffix)s')
+LSH.setFormatter(LSHF)
+LSH.setLevel(logging.NOTSET)
+
+
 def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
-    print("Running command:", " ".join(cmd))
+    log.info("", extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
     try:
         completed = subprocess.run(cmd, cwd=cwd, check=True)
         if completed.returncode != 0:
-            print(f"Command Error: {completed.stderr}")
+            log.error(f"Command: {completed.stderr}")
     except Exception as e:
-        print(f"Command Exception: {e}.")
+        log.error(f"Exception: {e}.")
 
 def launch_llama_process(args):
     """Launch Ollama/Llama.cpp server on the host"""
@@ -101,16 +273,16 @@ def launch_llama_process(args):
                "".join([llama_log, '"']), '-WindowStyle Hidden']
     else:  # Unix-based systems (Linux, macOS)
         cmd = [llama_exe, args, llama_log]
-    print("Running command:", " ".join(cmd))
+    log.info("Running command: {}".format(" ".join(cmd)), extra=log_info_style)
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
         if completed.returncode != 0:
-            print(f"Error: {llama} process: {completed.stderr}")
+            log.error(f"Command: {llama} process: {completed.stderr}")
     except Exception as e:
-        print(f"Exception: {llama} process: {e} - assuming {llama} did not start.")
+        log.error(f"Exception: {llama} process: {e} - assuming {llama} did not start.")
     global attempted_launch
     attempted_launch = True
-    print(f"Waiting for {llama} on host to initialize...")
+    log.info(f"Waiting for {llama} on host to initialize...")
     time.sleep(4)
     check_llama_process(None, {})
 
@@ -130,9 +302,10 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
             "LLAMACPP_MODEL_USER": "LLAMACPP_MODEL_USER_ID"
         }
         if operation != 'install' and not using_hf:
-            print(f"{llama} model not found at {model_path}")
+            log.info(f"{llama} model not found at {model_path}")
             response = input(f"Would you like to download the {model_name} model now? (y/n): ")
             proceed = response.lower() == 'y'
+        response = None
         if proceed:
             model_dir = os.path.dirname(model_path)
             if not os.path.exists(model_dir):
@@ -150,27 +323,28 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
                     best_match_key = model_key
                     best_match_score = match_score
             if best_match and best_match_key and best_match_score > len(best_match) / 2:
-                print(f"Using {llama} model: {best_match}...")
+                log.info(f"Using {llama} model: {best_match}...")
                 return env_vars.get(llama_cpp_models[best_match_key])
             else:
-                print(f"Error: Unknown model '{model_name}', download model manually - Models:")
+                response = f"Unknown model '{model_name}', download model manually - Models:"
                 proceed = False
         else: # User elected not to proceed
-            print("Notice: Download the model manually and update your .env file - Models:")
+            response ="Notice: Download the model manually and update your .env file - Models:"
         if not proceed:
             llama_server_args = env_vars.get('LLAMACPP_SERVER_ARGS')
             for model_key, model_value in llama_cpp_models.items():
                 model = env_vars.get(model_key)
                 model_id = env_vars.get(model_value)
-                print(f"- {model} command: {llama_app} {llama_server_args} {model_id}")
+                log.info(f"- {model} command: {llama_app} {llama_server_args} {model_id}")
+            log.critical(response) if operation == 'install' else log.info(response)
             return None
-    print(f"Using {llama} model: {model_name}...")
+    log.info(f"Using {llama} model: {model_name}...")
     return model_name
 
 def check_llama_process(operation=None, env_vars={}):
     """Check for Ollama/Llama.cpp (on host) and attempt to launch if not running."""
     if not attempted_launch:
-        print(f"Checking for {llama} process on host...")
+        log.info(f"Checking for {llama} process on host...")
     llama_running = False
     llama_proc = llama_app.lower()
     try:
@@ -178,38 +352,38 @@ def check_llama_process(operation=None, env_vars={}):
             cmd = ["tasklist"]
         else:  # Unix-based systems (Linux, macOS)
             cmd = ["pgrep", "-f", llama_proc]
-        print("Running command:", " ".join(cmd))
+        log.info("Running command: {}".format(" ".join(cmd)), extra=log_info_style)
         completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
         if system == "Windows":
             llama_running = True if llama_proc in completed.stdout.lower() else False
         else:  # Unix-based systems (Linux, macOS)
             llama_running = completed.returncode == 0 if completed else False
     except Exception as e:
-        print(f"Exception: {llama} process: {e} - assuming {llama} is not running.")
+        log.error(f"Exception: {llama} process: {e} - assuming {llama} is not running.")
 
     stop_llama = operation == 'stop-llama'
     start_llama = not stop_llama and operation in ['start', 'unpause']
 
     if llama_running:
         if stop_llama:
-            print(f"Stopping {llama} process on host...")
+            log.info(f"Stopping {llama} process on host...")
             if system == "Windows":
                 cmd = ["taskkill", "/f", "/im", llama_proc]
             else:  # Unix-based systems (Linux, macOS)
                 cmd = ["ps", "-C", llama_proc, "-o", "pid=|xargs", "kill", "-9"]
-            print("Running command:", " ".join(cmd))
+            log.info("Running command: {}".format(" ".join(cmd)), extra=log_info_style)
             os.system(" ".join(cmd))
         else:
             insert = "is now" if attempted_launch else "is"
-            print(f"{llama} on host {insert} running...")
+            log.info(f"{llama} on host {insert} running...")
     else:
         if attempted_launch:
-            print(f"Failed to launch {llama} on host - exiting...")
+            log.critical(f"Failed to launch {llama} on host - exiting...")
             sys.exit(1)
-        print(f"{llama} is not running...")
+        log.info(f"{llama} is not running...")
         if start_llama:
             if llama_found:
-                print(f"Attempting to launch {llama} on host...")
+                log.info(f"Attempting to launch {llama} on host...")
                 llama_args = []
                 if llama_cpp:
                     regex = r"(?:-hf|--hf-file|-m|--model|--model-url)"
@@ -225,7 +399,7 @@ def check_llama_process(operation=None, env_vars={}):
                                 if not re.search(regex, llama_server_args):
                                     llama_args.extend(["--models-dir", llama_models_dir])
                         else:
-                            print(f"Error: Models directory {llama_models_dir} does not exist.")
+                            log.error(f"Models directory {llama_models_dir} does not exist.")
                     can_download = True if llama_hf_repo else False
                     if llama_server_args:
                         llama_args.extend([llama_server_args])
@@ -242,8 +416,8 @@ def check_llama_process(operation=None, env_vars={}):
                         elif operation == 'install':
                             sys.exit(1)
                     if can_download and operation in ['install', 'update']:
-                        print(f"""Configured to download {llama} model (this may take a while).\n
-                                  Check container log for download progress...""")
+                        log.info(f"Configured to download {llama} model (this may take a while). "
+                                  "Check container log for download progress...")
                 else:
                     llama_server_args = env_vars.get('OLLAMA_SERVER_ARGS')
                     if llama_server_args:
@@ -252,18 +426,18 @@ def check_llama_process(operation=None, env_vars={}):
                 args = " ".join(llama_args)
                 launch_llama_process(args)
             else:
-                print(textwrap.dedent(f"""\
-                    Error: The {llama_app} file was not found at {llama_exe}.
-                    If {llama} is installed in a non-standard location, you can set the LLAMA_PATH
-                    environment variable with its full path (including the {llama} file) in .env and
-                    re-run {info.get("file")} - exiting...
-                    """))
+                log.critical(textwrap.dedent(
+                    f"""The {llama_app} file was not found at {llama_exe}.
+                      If {llama} is installed in a non-standard location, you can set the LLAMA_PATH
+                      environment variable with its full path (including the {llama} file) in .env and
+                      re-run {file} - exiting...
+                     """))
                 sys.exit(1)
 
 def clone_supabase_repo():
     """Clone the Supabase repository using sparse checkout if not already present."""
     if not os.path.exists("supabase"):
-        print("Cloning the Supabase repository...")
+        log.info("Cloning the Supabase repository...")
         run_command([
             "git", "clone", "--filter=blob:none", "--no-checkout",
             "https://github.com/supabase/supabase.git"
@@ -274,7 +448,7 @@ def clone_supabase_repo():
         run_command(["git", "checkout", "master"])
         os.chdir("..")
     else:
-        print("Supabase repository already exists, updating...")
+        log.info("Supabase repository already exists, updating...")
         os.chdir("supabase")
         run_command(["git", "pull"])
         os.chdir("..")
@@ -286,7 +460,7 @@ def clone_open_webui_tools_filesystem_repo():
     repo_path = os.path.join("open-webui", "tools", "servers")
     if not os.path.exists(repo_path):
         os.chdir("open-webui")
-        print("Cloning the Open WebUI Tools Filesystem repository...")
+        log.info("Cloning the Open WebUI Tools Filesystem repository...")
         run_command([
             "git", "clone", "--filter=blob:none", "--no-checkout",
             "https://github.com/open-webui/openapi-servers.git", "tools"
@@ -298,7 +472,7 @@ def clone_open_webui_tools_filesystem_repo():
         os.chdir("../../")
     else:
         repo_path = os.path.join("open-webui", "tools")
-        print("Open WebUI Tools Filesystem repository already exists, updating...")
+        log.info("Open WebUI Tools Filesystem repository already exists, updating...")
         os.chdir(repo_path)
         run_command(["git", "pull"])
         os.chdir("../../")
@@ -311,7 +485,7 @@ def clone_open_webui_functions_repos():
     if not os.path.exists(repo_path):
         os.mkdir("open-webui/functions")
         os.chdir("open-webui/functions")
-        print("Cloning the Open WebUI Functions repository...")
+        log.info("Cloning the Open WebUI Functions repository...")
         run_command([
             "git", "clone", "--filter=blob:none", "--no-checkout",
             "https://github.com/open-webui/functions.git", "open-webui"
@@ -322,7 +496,7 @@ def clone_open_webui_functions_repos():
         run_command(["git", "checkout", "main"])
         os.chdir("../../../")
     else:
-        print("Open WebUI Functions repository already exists, updating...")
+        log.info("Open WebUI Functions repository already exists, updating...")
         os.chdir(repo_path)
         run_command(["git", "pull"])
         os.chdir("../../../")
@@ -330,7 +504,7 @@ def clone_open_webui_functions_repos():
     repo_path = os.path.join("open-webui", "functions", "owndev")
     if not os.path.exists(repo_path):
         os.chdir("open-webui/functions")
-        print("Cloning the Open WebUI Owndev Functions repository...")
+        log.info("Cloning the Open WebUI Owndev Functions repository...")
         run_command([
             "git", "clone", "--filter=blob:none", "--no-checkout",
             "https://github.com/owndev/Open-WebUI-Functions.git", "owndev"
@@ -341,7 +515,7 @@ def clone_open_webui_functions_repos():
         run_command(["git", "checkout", "main"])
         os.chdir("../../../")
     else:
-        print("Open WebUI Functions repository already exists, updating...")
+        log.info("Open WebUI Functions repository already exists, updating...")
         os.chdir(repo_path)
         run_command(["git", "pull"])
         os.chdir("../../../")
@@ -373,7 +547,7 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
     write_dotenv_file(env_file, built_env_vars)
 
     docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")
-    print(f"Writing {docker_compose_path}...")
+    log.info(f"Writing {docker_compose_path}...")
     with open(docker_compose_path, 'w') as f:
         f.write(textwrap.dedent("""\
             services:
@@ -397,7 +571,7 @@ def destroy_ai_suite(profile, install):
        for the specified profile arguments.
     """
     insert = "and volumes for" if install else "for"
-    print(f"Destroying {name} containers {insert} profile arguments: {profile}...")
+    log.info(f"Destroying {name} containers {insert} profile arguments: {profile}...")
     cmd = ["docker", "compose", "-p", "ai-suite"]
     if profile:
         for argument in profile:
@@ -409,6 +583,7 @@ def destroy_ai_suite(profile, install):
     if install:
         cmd = ["docker", "volume", "prune", "--force"]
         run_command(cmd)
+    log.info("Services stopped successfully")
 
 def operate_ai_suite(operation, profile, environment, env_vars):
     """Start, stop, pause or pull the AI-Suite containers (using its compose file)
@@ -431,7 +606,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
         load_dotenv_vars(env_vars)
         if supabase:
             start_supabase(environment, False)
-            print("""Waiting for Supabase to initialize...""")
+            log.info("""Waiting for Supabase to initialize...""")
             time.sleep(10)
         if open_webui:
             start_open_webui_tools_filesystem(environment, False)
@@ -446,7 +621,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     else:
         insert = "Pausing" if operation == 'pause' else None
     container = "images" if operation == 'pull' else "containers"
-    print(f"{insert} '{name}' {container} for profile arguments: {profile}...")
+    log.info(f"{insert} '{name}' {container} for profile arguments: {profile}...")
     base = ["docker", "compose", "-p", "ai-suite"]
     if supabase:
         cmd = base + ["-f", "supabase/docker/docker-compose.yml", operation]
@@ -463,6 +638,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     if operation == 'pull':
         cmd = ["docker", "image", "prune", "--force"]
         run_command(cmd)
+    log.info(f"Services '{operation}' operation completed successfully")
 
 def start_built_container(compose_file=None, environment=None, build=False):
     """Start the locally built container services (using its compose file)."""
@@ -476,13 +652,13 @@ def start_built_container(compose_file=None, environment=None, build=False):
 
 def start_supabase(environment=None, build=False):
     """Start the Supabase services (using its compose file)."""
-    print("Starting Supabase services...")
+    log.info("Starting Supabase services...")
     compose_file = "supabase/docker/docker-compose.yml"
     start_built_container(compose_file, environment, build)
 
 def start_open_webui_tools_filesystem(environment=None, build=False):
     """Start the Open WebUI Tools Filesystem services (using its compose file)."""
-    print("Starting Open WebUI Tools Filesystem services...")
+    log.info("Starting Open WebUI Tools Filesystem services...")
     compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     start_built_container(compose_file, environment, build)
 
@@ -490,7 +666,7 @@ def start_ai_suite(profile=None, environment=None, build=False):
     """Start the AI-Suite services (using its compose file) for the specified
        profile arguments and environment argument.
     """
-    print(f"Starting {name} services for profile arguments: {profile}...")
+    log.info(f"Starting {name} services for profile arguments: {profile}...")
     cmd = ["docker", "compose", "-p", "ai-suite"]
     if profile:
         for argument in profile:
@@ -509,122 +685,114 @@ def start_ai_suite(profile=None, environment=None, build=False):
 
 def generate_searxng_secret_key():
     """Generate a secret key for SearXNG based on the current platform."""
-    print("Checking SearXNG settings...")
-
-    # Define paths for SearXNG settings files
+    log.info("Checking SearXNG settings...")
+    # Define paths for SearXNG settings file
     settings_path = os.path.join("searxng", "settings.yml")
     settings_base_path = os.path.join("searxng", "settings-base.yml")
-
     # Check if settings-base.yml exists
     if not os.path.exists(settings_base_path):
-        print(f"Warning: SearXNG base settings file not found at {settings_base_path}")
+        log.warning(f"SearXNG base settings file not found at {settings_base_path}")
         return
-
     # Check if settings.yml exists, if not create it from settings-base.yml
     if not os.path.exists(settings_path):
-        print(f"SearXNG settings.yml not found. Creating from {settings_base_path}...")
+        log.info(f"SearXNG settings.yml not found. Creating from {settings_base_path}...")
         try:
             shutil.copyfile(settings_base_path, settings_path)
-            print(f"Created {settings_path} from {settings_base_path}")
+            log.info(f"Created {settings_path} from {settings_base_path}")
         except Exception as e:
-            print(f"Exception: Create SearXNG settings.yml: {e}")
+            log.error(f"Exception: Create SearXNG settings.yml: {e}")
             return
     else:
-        print(f"SearXNG settings.yml already exists at {settings_path}")
-
-    print("Generating SearXNG secret key...")
-
+        log.info(f"SearXNG settings.yml already exists at {settings_path}")
+    log.info("Generating SearXNG secret key...")
     # Run the appropriate platform command
     try:
         if system == "Windows":
-            print("Using Windows PowerShell to generate secret key...")
+            log.info("Using Windows PowerShell to generate secret key...")
             # PowerShell command to generate a random key and replace in the settings file
             ps_command = [
                 "powershell", "-Command",
                 "$randomBytes = New-Object byte[] 32; " +
                 "(New-Object Security.Cryptography.RNGCryptoServiceProvider).GetBytes($randomBytes); " +
                 "$secretKey = -join ($randomBytes | ForEach-Object { \"{0:x2}\" -f $_ }); " +
-                "(Get-Content searxng/settings.yml) -replace 'ultrasecretkey', $secretKey | Set-Content searxng/settings.yml"
-            ]
+                "(Get-Content searxng/settings.yml) -replace 'ultrasecretkey', $secretKey | Set-Content searxng/settings.yml"]
             subprocess.run(ps_command, check=True)
-
         elif system == "Darwin":  # macOS
-            print("Using macOS sed command with empty string parameter...")
+            log.info("Using macOS sed command with empty string parameter...")
             # macOS sed command requires an empty string for the -i parameter
             openssl_cmd = ["openssl", "rand", "-hex", "32"]
             random_key = subprocess.check_output(openssl_cmd).decode('utf-8').strip()
             sed_cmd = ["sed", "-i", "", f"s|ultrasecretkey|{random_key}|g", settings_path]
             subprocess.run(sed_cmd, check=True)
-
         else:  # Linux and other Unix-like systems
-            print("Using standard Linux/Unix sed command...")
+            log.info("Using standard Linux/Unix sed command...")
             # Standard sed command for Linux
             openssl_cmd = ["openssl", "rand", "-hex", "32"]
             random_key = subprocess.check_output(openssl_cmd).decode('utf-8').strip()
             sed_cmd = ["sed", "-i", f"s|ultrasecretkey|{random_key}|g", settings_path]
             subprocess.run(sed_cmd, check=True)
-
-        print("SearXNG secret key generated successfully.")
-
+        log.info("SearXNG secret key generated successfully.", extra=log_info_style)
     except Exception as e:
-        print(f"Exception: Generate SearXNG secret key: {e}")
-        print("You may need to manually generate the secret key using the commands:")
-        print("  - Linux: sed -i \"s|ultrasecretkey|$(openssl rand -hex 32)|g\" searxng/settings.yml")
-        print("  - macOS: sed -i '' \"s|ultrasecretkey|$(openssl rand -hex 32)|g\" searxng/settings.yml")
-        print("  - Windows (PowerShell):")
-        print("    $randomBytes = New-Object byte[] 32")
-        print("    (New-Object Security.Cryptography.RNGCryptoServiceProvider).GetBytes($randomBytes)")
-        print("    $secretKey = -join ($randomBytes | ForEach-Object { \"{0:x2}\" -f $_ })")
-        print("    (Get-Content searxng/settings.yml) -replace 'ultrasecretkey', $secretKey | Set-Content searxng/settings.yml")
+        log.error(f"Exception: Generate SearXNG secret key: {e}.")
+        log.info("You may need to manually generate the secret key:", extra=log_info_style)
+        if system == "Windows":
+            log.info(
+                """- Windows (PowerShell):
+                     $randomBytes = New-Object byte[] 32
+                     (New-Object Security.Cryptography.RNGCryptoServiceProvider).GetBytes($randomBytes)
+                     $secretKey = -join ($randomBytes | ForEach-Object { "{0:x2}" -f $_ })
+                     (Get-Content searxng/settings.yml) -replace 'ultrasecretkey', $secretKey | Set-Content searxng/settings.yml""",
+                extra=log_info_style)
+        elif system == "Darwin":
+            log.info(
+                """- macOS:
+                     sed -i '' "s|ultrasecretkey|$(openssl rand -hex 32)|g" searxng/settings.yml""", extra=log_info_style)
+        else:
+            log.info(
+                """- Linux:
+                     sed -i "s|ultrasecretkey|$(openssl rand -hex 32)|g" searxng/settings.yml""", extra=log_info_style)
 
 def check_and_fix_docker_compose_for_searxng():
     """Check and modify docker-compose.yml for SearXNG first run."""
     docker_compose_path = "docker-compose.yml"
     if not os.path.exists(docker_compose_path):
-        print(f"Warning: Docker Compose file not found at {docker_compose_path}")
+        log.error(f"Docker Compose file not found at {docker_compose_path}")
         return
-
     try:
         # Default to first run
         is_first_run = True
-
         # Check if Docker is running and if the SearXNG container exists
         try:
             # Check if the SearXNG container is running
             container_check = subprocess.run(
                 ["docker", "ps", "--filter", "name=searxng", "--format", "{{.Names}}"],
-                capture_output=True, text=True, check=True
-            )
+                capture_output=True, text=True, check=True)
             searxng_containers = container_check.stdout.strip().split('\n')
-
             # If SearXNG container is running, check inside for uwsgi.ini
             if any(container for container in searxng_containers if container):
                 container_name = next(container for container in searxng_containers if container)
-                print(f"Found running SearXNG container: {container_name}")
-
+                log.info(f"Found running SearXNG container: {container_name}")
                 # Check if uwsgi.ini exists inside the container
                 container_check_cmd = \
                     "[ -f /etc/searxng/uwsgi.ini ] && echo 'found' || echo 'not_found'"
                 container_check = subprocess.run(
                     ["docker", "exec", container_name, "sh", "-c", container_check_cmd],
-                    capture_output=True, text=True, check=False
-                )
-
+                    capture_output=True, text=True, check=False)
                 if "found" in container_check.stdout:
-                    print("Found uwsgi.ini inside the SearXNG container - not first run")
+                    log.info("Found uwsgi.ini inside the SearXNG container - not first run")
                     is_first_run = False
                 else:
-                    print("uwsgi.ini not found inside the SearXNG container - first run")
+                    log.info("uwsgi.ini not found inside the SearXNG container - first run")
                     is_first_run = True
             else:
-                print("No running SearXNG container found - assuming first run")
+                log.info("Notice: No running SearXNG container found - assuming first run")
                 is_first_run = True
         except Exception as e:
-            print(f"Exception: Check Docker container running: {e} - assuming first run")
+            log.error(f"Exception: Check Docker container running: {e} - assuming first run")
 
         # Temporarily comment out the cap_drop line on first run
         if is_first_run:
-            print("First run detected for SearXNG. Temporarily commenting 'cap_drop:' directive...")
+            log.info("First run detected for SearXNG. Temporarily commenting 'cap_drop:' directive...")
             with open(docker_compose_path, 'r+') as f:
                 commented = False
                 searxng_found = False
@@ -643,34 +811,32 @@ def check_and_fix_docker_compose_for_searxng():
                                 line = "   #  - ALL  # Temporarily commented out for first run\n"
                                 commented = True
                                 searxng_found = False
-                                print("SearXNG 'cap_drop:' directive temporarily commented...")
+                                log.info("SearXNG 'cap_drop:' directive temporarily commented...")
                     f.write(line)
-            print("Note: After the first run completes successfully, uncomment 'cap_drop:' in docker-compose.yml for security.")
+            log.info("Notice: After the first run completes successfully, uncomment 'cap_drop:' "
+                     "in docker-compose.yml for security.")
         else:
             # Read the docker-compose.yml file
             with open(docker_compose_path, 'r') as f:
                 content = f.read()
-
             # Uncomment the cap_drop line
             cap_drop_comment = "   #cap_drop:\n   #  - ALL  # Temporarily commented out for first run\n"
             if cap_drop_comment in content:
-                print(f"SearXNG has been initialized. Uncommenting 'cap_drop:' directive for security...")
+                log.info(f"SearXNG has been initialized. Uncommenting 'cap_drop:' directive for security...")
                 cap_drop = "cap_drop:\n      - ALL\n"
                 modified_content = content.replace(cap_drop_comment, cap_drop)
-
                 # Write the modified content back
                 with open(docker_compose_path, 'w') as f:
                     f.write(modified_content)
-
     except Exception as e:
-        print(f"Exception: Check/modify docker-compose.yml for SearXNG: {e}")
+        log.error(f"Exception: Check/modify docker-compose.yml for SearXNG: {e}")
 
 # Treat Selfhosted Supavisor Pooler Keeps Restarting.
 # See: https://github.com/supabase/supabase/issues/30210
 def convert_supabase_pooler_line_endings():
     """Convert Windows line endings to Linux/Unix/MacOS line endings."""
     if system == "Windows":
-        print("Converting supavisor pooler line endings...")
+        log.info("Converting supavisor pooler line endings...")
         CR_LF = b'\r\n'
         LF = b'\n'
         file_path = "supabase/docker/volumes/pooler/pooler.exs"
@@ -686,21 +852,22 @@ def docker_compose_include(supabase, filesystem, verbose):
     supabase_compose_file = "supabase/docker/docker-compose.yml"
     filesystem_compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     if not os.path.exists(compose_file):
-        print(f"Error: Docker Compose file '{compose_file}' not found - include skipped...")
+        log.error(f"Docker Compose file '{compose_file}' not found - include skipped...")
         return
     if supabase and not os.path.exists(supabase_compose_file):
         if verbose:
-            print(f"Warning: Include file '{supabase_compose_file}' not found.")
+            log.warning(f"Include file '{supabase_compose_file}' not found.")
         supabase = False
     if filesystem and not os.path.exists(filesystem_compose_file):
         if verbose:
-            print(f"Warning: Include file '{filesystem_compose_file}' not found.")
+            log.warning(f"Include file '{filesystem_compose_file}' not found.")
         filesystem = False
     if verbose:
         supabase_ins = "add" if supabase else "remove"
         filesystem_ins = "add" if filesystem else "remove"
-        print(f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem "
-              f"'include:' in {compose_file}...")
+        log.info(
+            f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem "
+            f"'include:' in {compose_file}...")
     include = supabase or filesystem
     compose_include = "include:\n"
     supabase_include = f"  - ./{supabase_compose_file}\n"
@@ -715,28 +882,28 @@ def docker_compose_include(supabase, filesystem, verbose):
                 content = content.replace(compose_include, "")
             else:
                 if verbose:
-                    print(f"Adding 'include:' element to {compose_file}...")
+                    log.info(f"Adding 'include:' element to {compose_file}...")
                 content = "\n" + content
         elif compose_include in content and verbose:
             if verbose:
-                print(f"Removing 'include:' element from {compose_file}...")
+                log.info(f"Removing 'include:' element from {compose_file}...")
 
         if supabase and supabase_include not in content:
             if verbose:
-                print(f"Adding include file ./{supabase_compose_file}...")
+                log.info(f"Adding include file ./{supabase_compose_file}...")
             content = supabase_include + content
         elif not supabase and supabase_include in content:
             if verbose:
-                print(f"Removing include file ./{supabase_compose_file}...")
+                log.info(f"Removing include file ./{supabase_compose_file}...")
             content = content.replace(supabase_include, "")
 
         if filesystem and filesystem_include not in content:
             if verbose:
-                print(f"Adding include file ./{filesystem_compose_file}...")
+                log.info(f"Adding include file ./{filesystem_compose_file}...")
             content = filesystem_include + content
         elif not filesystem and filesystem_include in content:
             if verbose:
-                print(f"Removing include file ./{filesystem_compose_file}...")
+                log.info(f"Removing include file ./{filesystem_compose_file}...")
             content = content.replace(filesystem_include, "")
 
         if include and not compose_include in content:
@@ -747,7 +914,7 @@ def docker_compose_include(supabase, filesystem, verbose):
         with open(compose_file, 'w') as f:
             f.write(content)
     except Exception as e:
-        print(f"Exception: Set 'include:' in {compose_file}: {e}")
+        log.error(f"Exception: Set 'include:' in {compose_file}: {e}")
 
 def normalize_path(path):
     """Normalize path for current platform"""
@@ -767,14 +934,14 @@ def check_prerequisites():
         if shutil.which(tool) is None:
             missing_tools.append(tool)
     if missing_tools:
-        print(f"Missing required tools: {', '.join(missing_tools)}")
-        print("Install them before continuing.")
+        log.critical("Missing required tools: [{}].".format(", ".join(missing_tools)))
+        log.critical("Install them before continuing...")
         return False
     try:
         subprocess.run(
             ["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
-        print("Docker is not running. Start Docker Desktop.")
+        log.critical("Docker is not running. Start Docker Desktop.")
         return False
     return True
 
@@ -784,11 +951,11 @@ def get_dotenv_vars(env_file=None, force=False):
         env_file = os.path.join(".env")
     if not os.path.exists(env_file):
         if os.path.exists(".env.example"):
-            print("The .env file was not found - creating from .env.example template...")
+            log.warning("The .env file was not found - creating from .env.example template...")
             shutil.copy('.env.example', '.env')
-            print("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
+            log.critical("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
         else:
-            print("The .env file was not found - exiting...")
+            log.critical("The .env file was not found - exiting...")
         return {}
     else:
         with open(env_file, 'r') as f:
@@ -812,10 +979,10 @@ def get_dotenv_vars(env_file=None, force=False):
             if secret in env_content:
                 unset_secrets.append(secret)
         if unset_secrets and not force:
-            print("ERROR: YOUR .env FILE CONTAINS DEFAULT VALUES THAT NEED TO BE CHANGED!")
+            log.critical("YOUR .env FILE CONTAINS DEFAULT VALUES THAT NEED TO BE CHANGED!")
             for secret in unset_secrets:
-                print(f"⚠️ CHANGE THIS VALUE ⚠️: {secret}")
-            print("Exiting...")
+                log.critical(f"⚠️ CHANGE THIS VALUE ⚠️: {secret}")
+            log.critical("Exiting...")
             return {}
 
     env_vars = dotenv.dotenv_values(env_file)
@@ -829,7 +996,7 @@ def get_dotenv_vars(env_file=None, force=False):
 def load_dotenv_vars(env_vars):
     """Load working environment variables into environment"""
     if env_vars:
-        print("Loading working environment variables...")
+        log.info("Loading working environment variables...")
         for env, var in env_vars.items():
             if not var:
                 continue
@@ -839,18 +1006,18 @@ def load_dotenv_vars(env_vars):
         if not os.path.exists(env_file):
             if not get_dotenv_vars():
                 sys.exit(1)
-        print("Loading .env environment variables...")
+        log.info("Loading .env environment variables...")
         dotenv.load_dotenv(env_file)
 
 def write_dotenv_file(env_file, env_vars):
     """Copy .env to .env in target compose file destination."""
     if env_file is None:
-        print("Error: The .env file path to be written is not defined!")
+        log.error("The .env file path to be written is not defined!")
         return
     if env_vars is None:
-        print("Error: The env_vars dictionary to be written is empty!")
+        log.error("The env_vars dictionary to be written is empty!")
         return
-    print(f"Writing .env file to {env_file}...")
+    log.info(f"Writing .env file to {env_file}...")
     with open(env_file, 'w') as f:
         now = " ".join(['on:', datetime.datetime.now().ctime()])
         f.seek(0)
@@ -866,7 +1033,7 @@ def write_dotenv_file(env_file, env_vars):
 def set_dotenv_var(env_file, env, var, header):
     """Set or unset an environment variable and add optional header in .env file"""
     if not env:
-        print("Error: A valid .env key was not specified.")
+        log.error("A valid .env key was not specified.")
         return
     if env_file is None:
         env_file = os.path.join(".env")
@@ -887,10 +1054,10 @@ def set_dotenv_var(env_file, env, var, header):
                             mod_line = ''.join([env, '=\n'])
                         line = mod_line
                         f.write("# Omitted '<value>' to return 'False' when queried")
-                        print(f"Notice: Value for {env} removed...")
+                        log.info(f"Notice: Value for {env} removed...")
                     f.write(line)
         except FileNotFoundError:
-            print(f"Exception: File '{env_file}' not found.")
+            log.error(f"Exception: File '{env_file}' not found.")
         return
     quote_mode = "auto"
     if header is not None:
@@ -899,7 +1066,7 @@ def set_dotenv_var(env_file, env, var, header):
         if not header in content:
             quote_mode = "never"
             env = "".join([header, env])
-    print(f"Set '{env}' to {quote_mode}-quote '{var}' in {env_file}...")
+    log.info(f"Set '{env}' to '{var}' in {env_file}...")
     dotenv.set_key(env_file, env, var, quote_mode)
 
 def configure_n8n_database_settings(supabase):
@@ -912,7 +1079,7 @@ def configure_n8n_database_settings(supabase):
         old_vol_regex = r"\b{}\b\:".format(old_vol)
         if re.search(old_vol_regex, content):
             new_vol = "langfuse_postgres_data:" if supabase else "postgres_data:"
-            print(f"Set Postgres volume: to '{new_vol}' from '{old_vol}' in {compose_file}...")
+            log.info(f"Set Postgres volume: to '{new_vol}' from '{old_vol}' in {compose_file}...")
             modified_content = re.sub(old_vol_regex, new_vol, content)
             with open(compose_file, 'w') as f:
                 f.write(modified_content)
@@ -924,7 +1091,7 @@ def configure_n8n_database_settings(supabase):
         if re.search(old_profiles_regex, content):
             new_profiles = supabase_profiles if supabase else postgres_profiles
             insert = "'langfuse'" if supabase else "'n8n' and 'langfuse'"
-            print(f"Set Postgres profiles: to include {insert} in {compose_file}...")
+            log.info(f"Set Postgres profiles: to include {insert} in {compose_file}...")
             modified_content = re.sub(old_profiles_regex, new_profiles, content)
             with open(compose_file, 'w') as f:
                 f.write(modified_content)
@@ -948,11 +1115,11 @@ def configure_n8n_database_settings(supabase):
                         if line == f'      {old_db}\n':
                             line = f"      {new_db}\n"
                     if n8n_updated:
-                        print(f"Set n8n database depends_on: to '{new_db}' "
-                              f"from '{old_db}' in {compose_file}...")
+                        log.info(f"Set n8n database depends_on: to '{new_db}' "
+                                 f"from '{old_db}' in {compose_file}...")
                 f.write(line)
     except Exception as e:
-        print(f"Exception: Update n8n database settings in {compose_file}: {e}")
+        log.error(f"Exception: Update n8n database settings in {compose_file}: {e}")
 
 def main():
     # Name and file globals
@@ -960,9 +1127,21 @@ def main():
     name = INFO.get('name', 'placeholder')
     file = INFO.get('file', 'placeholder.py')
 
-
-    # Banner
-    print(f"""{name} version: {'.'.join(map(str, version))} LLM: {llama}""")
+    # Detect operational status and current llama (Ollama/Llama.cpp) configuration
+    global llama, llama_cpp
+    status = None
+    llama_cpp = False
+    env_file = os.path.join(".env")
+    if os.path.exists('.operation'):
+        with open('.operation', 'r') as f:
+            op_array = f.readline().split(':')
+            status = op_array[0].strip() if op_array else None
+            if len(op_array) > 1:
+                llama_cpp = op_array[1].strip() == 'llama.cpp'
+    elif os.path.exists(env_file):
+        lpv = dotenv.get_key(env_file, 'LLAMA_PATH')
+        llama_cpp = lpv and os.path.basename(lpv).lower().startswith('llama-server')
+    llama = "Llama.cpp" if llama_cpp else "Ollama"
 
     # Profile, environment and operation arguments
     global open_webui_all_profiles
@@ -985,6 +1164,56 @@ def main():
     parser = argparse.ArgumentParser(
         prog=f'{file}',
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        usage=textwrap.dedent(f'''\
+            usage:
+              python PROG [options: help | profile environment operation log]
+
+            options:
+              - help:
+                python {file} -h, --help                    show this help message and exit
+
+              - profile:
+                python {file} -p, --profile <arguments...>  specify {name} functional and LLM modules
+
+              - environment:
+                python {file} -e, --environment <argument>  specify the type of deployment network
+
+              - operation:
+                python {file} -o, --operation <argument>    perform {name} setup or management operations
+
+              - log:
+                python {file} -l, --log <argument>.         enable, disable and specify logging levels
+
+            profile arguments:
+              - functional modules:
+                open-webui                                  Open WebUI client
+                n8n                                         n8n
+                opencode                                    OpenCode
+                open-webui-mcpo open-webui-pipe             Open WebUI pipelines, tools and functions
+                flowise                                     Flowise
+                supabase                                    Supabase database
+                searxng langfuse neo4j                      management, analytics and monitoring utilities
+                caddy                                       Caddy network management
+                open-webui-all                              Open WebUI complete bundle
+                n8n-all                                     n8n, Open WebUI and selected utilities bundle
+                ai-all                                      full {name} bundle
+
+              - LLM modules:
+                cpu gpu-nvidia gpu-amd                      Ollama CPU/GPU options running in Docker
+                cpp-cpu cpp-gpu-nvidia cpp-gpu-amd          Llama.cpp CPU/GPU options rinning in Docker
+                ollama llama.cpp                            llama options running on the {name} Host
+
+            environment arguments:
+              private public                                self-hosted network options
+
+            operation arguments:
+              update install                                installation options
+              stop stop-llama start pause unpause           management options
+
+            log arguments:
+              OFF CRITICAL ERROR WARNING INFO DEBUG         console logging options
+
+            '''),
         description=textwrap.dedent(f'''\
             {INFO.get("description")}
 
@@ -994,7 +1223,7 @@ def main():
 
             Command syntax:
 
-            python {file} [--profile <arguments...>] [--environment <argument>] [--operation <argument>]
+            python {file} [--profile <arguments...>] [--environment <argument>] [--operation <argument>] [--log <argument>]
 
             Example commands:
 
@@ -1053,32 +1282,39 @@ def main():
                              'enabled at DEBUG and is not affected by this argument (default: INFO)')
 
     args = parser.parse_args()
-    # Detect operational status and current llama (Ollama/Llama.cpp) configuration
-    global llama, llama_cpp
-    status = None
-    llama_cpp = False
-    env_file = os.path.join(".env")
-    if os.path.exists('.operation'):
-        with open('.operation', 'r') as f:
-            op_array = f.readline().split(':')
-            status = op_array[0].strip() if op_array else None
-            if len(op_array) > 1:
-                llama_cpp = op_array[1].strip() == 'llama.cpp'
-    elif os.path.exists(env_file):
-        lpv = dotenv.get_key(env_file, 'LLAMA_PATH')
-        llama_cpp = lpv and os.path.basename(lpv).lower().startswith('llama-server')
-    llama = "Llama.cpp" if llama_cpp else "Ollama"
 
+    # Setup logging
+    global log, log_info_style, log_cmd_header
+    log_info_style = None
+    log_cmd_header = "Running command:"
+    log_level = logging.NOTSET
+    log_handlers: list[logging.Handler] = [LFH]
+    if args.log != 'OFF':
+        log_level = getattr(logging, args.log, log_level)
+        LSH.setLevel(log_level)
+        log_handlers.extend([LSH])
+        log_info_style = LSHF.style(logging.INFO)
+        if args.operation == 'install':
+            open(f'{name.lower()}.log', 'w').close() if \
+            os.path.exists(f'{name.lower()}.log') else None
+    logging.basicConfig(handlers=log_handlers, level=log_level)
+    log = logging.getLogger(name)
+
+    # Name and version banner
+    version = INFO.get('version', (-1, -1, -1))
+    banner = f"""{name} version: {'.'.join(map(str, version))} LLM: {llama}"""
+    print(banner) if args.log == 'OFF' else None
+    log.info(banner)
 
     # Detect platform
     global system
     system = platform.system()
     if system == "Windows":
-        print("""Detected Windows platform...""")
+        log.info("Detected Windows platform...")
     elif system == "Darwin":  # macOS
-        print("""Detected macOS platform...""")
+        log.info("Detected macOS platform...")
     else:  # Linux and other Unix-like systems
-        print("""Detected Linux/Unix platform...""")
+        log.info("Detected Linux/Unix platform...")
 
     # Check prerequisites
     if not check_prerequisites():
@@ -1096,9 +1332,12 @@ def main():
 
     # Process llama (Ollama/Llama.cpp) status checks
     llama_arg = "cpu"
-    llama_in_host = default_profile or not \
+    conflicting_profile_arguments = []
+    global llama_on_host
+    llama_on_host = default_profile or not \
         any(p for p in args.profile if p in llama_docker_profiles)
-    if llama_in_host:
+    llama_host_env = "LLAMA_ARG_HOST" if llama_cpp else "OLLAMA_HOST"
+    if llama_on_host:
         global llama_found, llama_app, llama_exe, attempted_launch
         attempted_launch = False
         llama_found = False
@@ -1132,40 +1371,77 @@ def main():
             llama_cpp = llama_app.lower().startswith('llama-server')
             llama = "Llama.cpp" if llama_cpp else "Ollama"
             llama_mismatch = "ollama" if llama_cpp else "llama.cpp"
-            print(f"""Notice: The executable '{llama_app}' did not match the '{llama}'
-                      profile argument - argument updated to '{llama.lower()}'...""")
+            log.warning(f"The executable '{llama_app}' did not match the '{llama}' "
+                        f"profile argument - argument updated to '{llama.lower()}'...")
             args.profile.remove(llama_mismatch) if llama_mismatch in args.profile else None
             args.profile.extend([llama.lower()]) if llama_cpp else None
+         # Check if any llama CPU/GPU profile arguments specified and remove if found
+        for profile_arg in llama_docker_profiles:
+            if any(p for p in args.profile if p == profile_arg):
+                conflicting_profile_arguments.append(profile_arg)
+        if len(conflicting_profile_arguments):
+            log.warning(f"Profile arguments for {llama} CPU/GPU in Docker and {llama} "
+                         "running on host cannot be specified together...")
+            for profile_arg in conflicting_profile_arguments:
+                log.warning(f"Removing '{profile_arg}'...")
+                args.profile.remove(profile_arg)
         llama_host = "host.docker.internal"
         llama_host_var = llama_host if llama_cpp else llama_host + ":${OLLAMA_PORT}"
+        mod_env_vars.update({llama_host_env: llama_host_var})
+        # Load Llama environment variables when running llama on host
+        log.debug(f"Loading {llama} environment variables....")
+        llama_env_prefix = "LLAMA_ARG_" if llama_cpp else "OLLAMA_"
+        for env, var in env_vars.items():
+            if not var or not env.startswith(llama_env_prefix):
+                continue
+            log.debug(f" - {env}: {var}", extra=LSHF.style(logging.WARNING))
+            os.environ[env] = var
         check_llama_process(args.operation, env_vars)
     else:
         llama_cpp = any(p for p in args.profile if p in llamacpp_docker_profiles)
         llama = "Llama.cpp" if llama_cpp else "Ollama"
         llama_host_var = "0.0.0.0" if llama_cpp else "ollama:${OLLAMA_PORT}"
+        mod_env_vars.update({llama_host_env: llama_host_var, 'LLAMA_PATH': None})
         # Check if more than one llama CPU/GPU argument specified, use first argument
         if any(p for p in args.profile if p in llama_docker_profiles):
             first_argument = False
             for profile_arg in llama_docker_profiles:
                 if not first_argument:
                     if any(p for p in args.profile if p == profile_arg):
-                        print(f"""{name} will use {llama} CPU/GPU profile argument '{profile_arg}'...""")
+                        log.info(f"{name} will use {llama} profile argument '{profile_arg}'...")
                         first_argument = True
                 else:
                     args.profile.remove(profile_arg) if profile_arg in args.profile else None
         # Check if any llama host profile arguments specified and remove if found
         for profile_arg in llama_host_profiles:
             if any(p for p in args.profile if p == profile_arg):
-                print(f"""A llama in host profile argument cannot be specified with
-                          llama CPU/GPU profile argument  - removing '{profile_arg}'...""")
+                conflicting_profile_arguments.append(profile_arg)
+        if len(conflicting_profile_arguments):
+            log.warning(f"Profile arguments for {llama} running on host and {llama} "
+                        "CPU/GPU in Docker cannot be specified together...")
+            for profile_arg in conflicting_profile_arguments:
+                log.warning(f"Removing '{profile_arg}'...")
                 args.profile.remove(profile_arg)
     # Assemble .env updates, set respective keys in .env file and reload .env vars
-    llama_host_env = "LLAMA_ARG_HOST" if llama_cpp else "OLLAMA_HOST"
     oai_base_url_var = "${LLAMACPP_HOST}" if llama_cpp else "${OLLAMA_HOST}"
-    mod_env_vars.update({llama_host_env: llama_host_var, 'OPENAI_API_BASE_URL': oai_base_url_var})
+    mod_env_vars.update({'OPENAI_API_BASE_URL': oai_base_url_var})
     for env, var in mod_env_vars.items():
         set_dotenv_var(env_file, env, var, None)
     env_vars = get_dotenv_vars(env_file, True)
+    # Check .env interpolation
+    debug_style = LSHF.style(logging.WARNING)
+    log.debug("DotEnv dictionary updates:")
+    log.debug(f" - PROJECTS_PATH: {env_vars['PROJECTS_PATH']}", extra=debug_style)
+    log.debug("DotEnv file updates:")
+    for env in [llama_host_env, 'OPENAI_API_BASE_URL']:
+        log.debug(f" - {env}: {env_vars[env]}", extra=debug_style)
+    valid_llama_path = env_vars.get('LLAMA_PATH')
+    if valid_llama_path and valid_llama_path.strip():
+        log.debug(f" - LLAMA_PATH: {env_vars['LLAMA_PATH']}", extra=debug_style)
+    if llama_cpp:
+        log.debug(f"DotEnv {llama} file updates:")
+        for env in ['LLAMACPP_MODEL_NAME', 'LLAMACPP_MODEL_PATH', 'LLAMA_ARG_HF_REPO']:
+            log.debug(f" - {env}: {env_vars[env]}", extra=debug_style)
 
     # Process operation argument
     build = False
@@ -1177,10 +1453,10 @@ def main():
                 insert = "Stopped"
             else:
                 insert = "Paused" if status == 'pause' else "Started"
-            print(f"""{name} is already {insert} - exiting...""")
+            log.info(f"{name} is already {insert} - exiting...")
             sys.exit(0)
         elif args.operation == 'unpause' and not status == 'pause':
-            print(f"""{name} cannot unpause as it is not paused - exiting...""")
+            log.info(f"{name} cannot unpause as it is not paused - exiting...")
             sys.exit(0)
         if default_profile:
             args.profile = ['ai-all']
@@ -1193,22 +1469,28 @@ def main():
                     Consider backing up your data to enable rollback.
                     [Type 'Got-It' to continue]: """))
                 if len(user_confirm) == 0 or user_confirm.lower() != 'got-it':
-                    print(f"""Received [{user_confirm}].""") if user_confirm else None
-                    print(f"""{name} update was not confirmed - exiting...""")
+                    log.info(f"Received [{user_confirm}].") if user_confirm else None
+                    log.info(f"{name} update was not confirmed - exiting...",
+                             extra=LSHF.style(logging.INFO, 34, bold=True))
                     sys.exit(0)
             args.operation = 'pull'
             insert = "Installing" if install == 'install' else "Updating"
             if default_profile:
-                print(f"""{insert} all container images including {llama}...""")
+                log.info(f"{insert} all container images including {llama}...")
                 llama_arg = "cpp-cpu" if llama_cpp else "cpu"
                 args.profile.extend([llama_arg])
             else:
-                print(f"""{insert} container images for {args.profile}...""")
+                log.info(f"""{insert} container images for {args.profile}...""")
             docker_compose_include(True, True, False)
             destroy_ai_suite(args.profile, install)
         operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
         if not build:
             sys.exit(0)
+    else:
+        hdr = "Notice:"
+        msg = f"{name} will perform operations similar to an update..."
+        log.info(" ".join([hdr, msg]), extra=LSHF.style(header=hdr, msg=msg))
+
     os.remove('.operation') if os.path.exists('.operation') else None
 
     # Manually set default profile argument
@@ -1221,8 +1503,8 @@ def main():
     # Setup Supabase
     if any(p for p in args.profile if p == 'supabase'):
         if not any(p for p in args.profile if p in n8n_all_profiles):
-            print(f"""Profile argument 'supabase' requires argument in {n8n_all_profiles}
-                      - removing 'supabase'...""")
+            log.warning("Profile argument 'supabase' requires argument in "
+                       f"{n8n_all_profiles} - removing 'supabase'...")
             args.profile.remove('supabase')
     supabase = \
         any(p for p in args.profile if p in ['supabase', 'ai-all'])
@@ -1238,7 +1520,8 @@ def main():
     if supabase:
         prepare_supabase_env(env_vars)
     elif 'langfuse' in args.profile:
-        print("""Profile argument 'langfuse' requires Supabase - removing 'langfuse'...'""")
+        log.warning("Profile argument 'langfuse' requires Supabase - "
+                    "removing 'langfuse'...'")
         args.profile.remove('langfuse')
 
     # Generate SearXNG secret key and check docker-compose.yml
@@ -1268,7 +1551,7 @@ def main():
     if supabase:
         start_supabase(args.environment, build)
         # Give Supabase some time to initialize
-        print("""Waiting for Supabase to initialize...""")
+        log.info("Waiting for Supabase to initialize...")
         time.sleep(10)
 
     # Start Open WebUI Tools Filesystem
@@ -1284,30 +1567,31 @@ def main():
     # Check if open-webui-mcpo specified with required profile arguments, else remove open-webui-mcpo
     if any(p for p in args.profile if p == 'open-webui-mcpo'):
         if not any(p for p in args.profile if p in open_webui_all_profiles):
-            print(f"""Profile argument 'open-webui-mcpo' requires argument in
-                      {open_webui_all_profiles} - removing 'open-webui-mcpo'...""")
+            log.warning("Profile argument 'open-webui-mcpo' requires argument in "
+                       f"{open_webui_all_profiles} - removing 'open-webui-mcpo'...")
             args.profile.remove('open-webui-mcpo')
 
     # Check if open-webui-pipe specified with required profile arguments, else remove open-webui-pipe
     if any(p for p in args.profile if p == 'open-webui-pipe'):
         if not any(p for p in args.profile if p in open_webui_all_profiles):
-            print(f"""Profile argument 'open-webui-pipe' requires argument in
-                      {open_webui_all_profiles} - removing 'open-webui-pipe'...""")
+            log.warning("Profile argument 'open-webui-pipe' requires argument in "
+                       f"{open_webui_all_profiles} - removing 'open-webui-pipe'...")
             args.profile.remove('open-webui-pipe')
 
     # Check if profile arguments n8n and open-webui specified, remove redundant open-webui
     if any(p for p in args.profile if p == 'n8n'):
         if any(p for p in args.profile if p == 'open-webui'):
-            print("""Profiles arguments 'n8n' and 'open-webui' detected - removing 'open-webui'...""")
+            log.info("Profiles arguments 'n8n' and 'open-webui' detected "
+                     "- removing 'open-webui'...")
             args.profile.remove('open-webui')
 
-    # Check if more than one Ollama CPU/GPU argument specified, use first argument
-    if any(p for p in args.profile if p in ollama_docker_profiles):
+    # Check if more than one llama CPU/GPU argument specified, use first argument
+    if any(p for p in args.profile if p in llama_docker_profiles):
         first_argument = False
-        for profile_arg in ollama_docker_profiles:
+        for profile_arg in llama_docker_profiles:
             if not first_argument:
                 if any(p for p in args.profile if p == profile_arg):
-                    print(f"""{name} will use Ollama CPU/GPU profile argument '{profile_arg}'...""")
+                    log.info(f"{name} will use {llama} profile argument '{profile_arg}'...")
                     first_argument = True
             else:
                 args.profile.remove(profile_arg) if profile_arg in args.profile else None
