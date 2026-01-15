@@ -29,21 +29,19 @@ import subprocess
 CONTAINER = 'opencode'
 FAIL = -1
 
-def run_command(cmd, cwd=None):
-    """Run a shell command and print it."""
-    print("Running command:", " ".join(cmd))
-    subprocess.run(cmd, cwd=cwd, check=True)
-
 def container_is_running():
     """:return: True if container name found in output check, else False."""
     cmd = " ".join(['docker', 'ps', '-a', '--format', '"{{.Names}}"', '--filter',
                    f'name=^/{CONTAINER}$'])
     print("Running command:", cmd)
-    bytes = subprocess.check_output(cmd, shell=True)
-    running = bytes.find(CONTAINER.encode()) != FAIL  
-    insert = ('is', '...') if running else ('is not', '- exiting...')
-    print("Container", " ".join([CONTAINER, insert[0], 'running', insert[1]]))
-    return running
+    try:
+        bytes = subprocess.check_output(cmd, shell=True)
+        running = bytes.find(CONTAINER.encode()) != FAIL
+        insert = ('is', 'running...') if running else ('is not', 'running - exiting...')
+        print("Container", " ".join([CONTAINER, insert[0], insert[1]]))
+        return running
+    except subprocess.CalledProcessError:
+        return False
 
 def container_env_var(env_var):
     """:return: container environment variable."""
@@ -53,7 +51,7 @@ def container_env_var(env_var):
         bytes = subprocess.check_output(cmd, shell=True)
         print(f"Container env var: {env_var} = {bytes.decode().strip()}")
         return bytes.decode().strip()
-    except Exception as e:
+    except subprocess.CalledProcessError as e:
         print(f"Container env var: {env_var} not found: {e}")
         return ""
 
@@ -63,14 +61,14 @@ def container_work_dir(project_path):
     if project_path is None:
         project_path = os.environ.get('PROJECT_PATH')
     if project_path is None:
-        project_path = os.getcwd() 
+        project_path = os.getcwd()
     work_path = pathlib.Path('/root', 'projects').as_posix()
     projects_path = os.path.normcase(container_env_var('PROJECTS_PATH'))
     if projects_path != "":
-        abs_project_path = os.path.normcase(os.path.abspath(project_path))      
-        rel_project_path = os.path.normcase(os.path.relpath(project_path, start=projects_path))   
+        abs_project_path = os.path.normcase(os.path.abspath(project_path))
+        rel_project_path = os.path.normcase(os.path.relpath(project_path, start=projects_path))
         if abs_project_path.startswith(projects_path):
-            work_path = pathlib.Path('/root', 'projects', rel_project_path).as_posix() 
+            work_path = pathlib.Path('/root', 'projects', rel_project_path).as_posix()
         else:
             print(f"Warning: project path does not start with container projects path...")
     else:
@@ -86,7 +84,7 @@ def main():
                         'within and relative to PROJECTS_PATH defined in '
                         'the AI-Suite .env file.')
     args = parser.parse_args()
-    
+
     if not container_is_running():
         exit(FAIL)
 
@@ -94,7 +92,12 @@ def main():
     work_dir = container_work_dir(args.project_path)
     cmd = ['docker', 'exec', '-it', '-w', work_dir, CONTAINER, '/bin/sh', '-c',
            '/usr/local/bin/opencode', '.']
-    run_command(cmd)
+
+    print(f"Running launch command: {" ".join(cmd)}...")
+    try:
+        subprocess.run(cmd, cwd=cwd, check=True)
+    except Exception as e:
+        print(f"Exception: {e}.")
 
 if __name__ == "__main__":
     main()
