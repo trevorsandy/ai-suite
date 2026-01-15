@@ -1093,7 +1093,7 @@ def main():
         llama_path = normalize_path(env_vars.get('LLAMA_PATH'))
         llama_cpp = any(p for p in args.profile if p == 'llama.cpp')
         llama = "Llama.cpp" if llama_cpp else "Ollama"
-        if llama_path is not None:
+        if llama_path:
             llama_exe = os.path.normpath(llama_path)
             llama_app = os.path.basename(llama_exe)
             llama_found = os.path.exists(llama_exe)
@@ -1101,7 +1101,7 @@ def main():
             llama_app = "llama-server" if llama_cpp else "ollama"
             if system == "Windows":
                 llama_app = "".join([llama_app, '.exe'])
-                llama_dir = "llama.cpp" if llama_cpp else "Ollama"
+                llama_dir = os.path.join("llama.cpp", "bin") if llama_cpp else "Ollama"
                 for llama_sub in ['~\\AppData\\Local\\Programs', os.getcwd()]:
                     llama_exe = normalize_path(os.path.join(llama_sub, llama_dir, llama_app))
                     if os.path.exists(llama_exe):
