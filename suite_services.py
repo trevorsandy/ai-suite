@@ -270,8 +270,8 @@ def launch_llama_process(args, llama_log):
         cmd = ['powershell', '-Command', 'Start-Process cmd -Args', win, args,
                "".join([log_file, '"']), '-WindowStyle Hidden']
     else:  # Unix-based systems (Linux, macOS)
-        cmd = [llama_exe, args, llama_log]
-    log.info("Running command: {}".format(" ".join(cmd)), extra=log_info_style)
+        cmd = [llama_exe, args, log_file]
+    log.info("", extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
         if completed.returncode != 0:
@@ -381,7 +381,7 @@ def check_llama_process(operation=None, env_vars={}):
             cmd = ["tasklist"]
         else:  # Unix-based systems (Linux, macOS)
             cmd = ["pgrep", "-f", llama_proc]
-        log.info("Running command: {}".format(" ".join(cmd)), extra=log_info_style)
+        log.info("", extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
         completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
         if system == "Windows":
             llama_running = True if llama_proc in completed.stdout.lower() else False
@@ -403,16 +403,21 @@ def check_llama_process(operation=None, env_vars={}):
                 cmd = ["taskkill", "/f", "/im", llama_proc]
             else:  # Unix-based systems (Linux, macOS)
                 cmd = ["ps", "-C", llama_proc, "-o", "pid=|xargs", "kill", "-9"]
-            log.info("Running command: {}".format(" ".join(cmd)), extra=log_info_style)
+            log.info("", extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
             os.system(" ".join(cmd))
         else:
-            insert = "is now" if attempted_launch else "is"
-            log.info(f"{llama} on host {insert} running...")
+            if attempted_launch:
+                log.info(f"{llama} on host is now running...", extra=LSHF.style(color=LSHF.GREEN))
+                log.info("", extra=LSHF.style(color=LSHF.GREEN, header=header, msg=llama_log_file))
+            else:
+                log.info(f"{llama} on host is running...", extra=LSHF.style(color=LSHF.GREEN))
     else:
         if attempted_launch:
-            log.critical(f"Failed to launch {llama} on host - exiting...")
+            log.critical(f"Failed to launch {llama} on host...")
+            log.critical("", extra=LSHF.style(color=LSHF.RED_BG, header=header, msg=llama_log_file))
+            log.critical("Exiting...")
             sys.exit(1)
-        log.info(f"{llama} is not running...")
+        log.info(f"{llama} is not running...", extra=log_info_style)
         if start_llama:
             if llama_found:
                 log.info(f"Attempting to launch {llama} on host...")
