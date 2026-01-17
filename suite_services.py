@@ -262,15 +262,13 @@ def run_command(cmd, cwd=None):
     except Exception as e:
         log.error(f"Exception: {e}.")
 
-def launch_llama_process(args):
+def launch_llama_process(args, llama_log):
     """Launch Ollama/Llama.cpp server on the host"""
-    llama_log_dir = "llama.cpp" if llama_cpp else ""
-    llama_log_path = os.path.join(os.getcwd(), llama_log_dir, 'llama_start.log')
-    llama_log = "".join(['>', llama_log_path, ' 2>&1'])
+    log_file = "".join(['>', llama_log, ' 2>&1'])
     if system == "Windows":
         win = "".join(['/c,"', llama_exe])
         cmd = ['powershell', '-Command', 'Start-Process cmd -Args', win, args,
-               "".join([llama_log, '"']), '-WindowStyle Hidden']
+               "".join([log_file, '"']), '-WindowStyle Hidden']
     else:  # Unix-based systems (Linux, macOS)
         cmd = [llama_exe, args, llama_log]
     log.info("Running command: {}".format(" ".join(cmd)), extra=log_info_style)
@@ -329,14 +327,45 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
                 response = f"Unknown model '{model_name}', download model manually - Models:"
                 proceed = False
         else: # User elected not to proceed
-            response ="Notice: Download the model manually and update your .env file - Models:"
+            response = "Download the model manually and update your .env file - Models:"
         if not proceed:
             llama_server_args = env_vars.get('LLAMACPP_SERVER_ARGS')
+            if operation == 'install':
+                log.critical(response)
+            else:
+                log.info("", extra=LSHF.style(header="Notice:", msg=response))
+            command_prefix = LSHF.prefix(LSHF.BLUE)
+            command_model_prefix = LSHF.prefix(LSHF.BLUE, bold=True)
+            llama_app_prefix = LSHF.prefix(LSHF.GREEN, bold=True)
+            llama_server_args_prefix = LSHF.prefix(LSHF.GREEN)
+            model_id_prefix = LSHF.prefix(LSHF.GREEN, italic=True)
+            suffix = LSHF.suffix()
             for model_key, model_value in llama_cpp_models.items():
                 model = env_vars.get(model_key)
                 model_id = env_vars.get(model_value)
-                log.info(f"- {model} command: {llama_app} {llama_server_args} {model_id}")
-            log.critical(response) if operation == 'install' else log.info(response)
+                if not model_id:
+                    continue
+                emoji = '🔗' if model_id.startswith('https://') else '🚀'
+                model_command_prefix = (
+                    "{0}•{1} "
+                    "{2} "
+                    "{3}{4}{5} "
+                    "{6}command:{7}").format(
+                    command_prefix, suffix, emoji,
+                    command_model_prefix, model, suffix,
+                    command_prefix, suffix)
+                model_prefix = (
+                    "{0} "
+                    "{1}{2}{3} "
+                    "{4}{5}{6} "
+                    "{7}{8}").format(
+                    model_command_prefix,
+                    llama_app_prefix, llama_app, suffix,
+                    llama_server_args_prefix, llama_server_args, suffix,
+                    model_id_prefix, model_id)
+                model_style = {'prefix': model_prefix, 'suffix': suffix}
+                log.info("", extra=model_style)
+            log.info("Exiting...", extra=log_info_style)
             return None
     log.info(f"Using {llama} model: {model_name}...")
     return model_name
@@ -361,8 +390,11 @@ def check_llama_process(operation=None, env_vars={}):
     except Exception as e:
         log.error(f"Exception: {llama} process: {e} - assuming {llama} is not running.")
 
+    header = "See log for details:"
     stop_llama = operation == 'stop-llama'
-    start_llama = not stop_llama and operation in ['start', 'unpause']
+    start_llama = not stop_llama and not operation in ['stop']
+    llama_log_dir = "llama.cpp" if llama_cpp else ""
+    llama_log_file = os.path.join(os.getcwd(), llama_log_dir, 'llama_start.log')
 
     if llama_running:
         if stop_llama:
@@ -400,10 +432,11 @@ def check_llama_process(operation=None, env_vars={}):
                                     llama_args.extend(["--models-dir", llama_models_dir])
                         else:
                             log.error(f"Models directory {llama_models_dir} does not exist.")
-                    can_download = True if llama_hf_repo else False
                     if llama_server_args:
                         llama_args.extend([llama_server_args])
-                    if not llama_hf_repo:
+                    can_download = True if llama_hf_repo else False
+                    llama_cpp_configured = can_download
+                    if not llama_cpp_configured:
                         using_hf = False
                         if llama_model_arg:
                             using_hf = llama_model_arg.group() in ['-hf', '--hf-file']
@@ -413,25 +446,25 @@ def check_llama_process(operation=None, env_vars={}):
                             if not llama_model_arg:
                                 llama_args.extend(['-hf'])
                             llama_args.extend([llama_model])
-                        elif operation == 'install':
-                            sys.exit(1)
+                            llama_cpp_configured = True
                     if can_download and operation in ['install', 'update']:
-                        log.info(f"Configured to download {llama} model (this may take a while). "
-                                  "Check container log for download progress...")
+                        log_insert = "llama_start.log" if llama_on_host else "Docker container log"
+                        log.info(f"Configured to download {llama} model (this may take a while).")
+                        log.info(f"Check {log_insert} for download progress...")
+                    elif not llama_cpp_configured:
+                        sys.exit(1)
                 else:
                     llama_server_args = env_vars.get('OLLAMA_SERVER_ARGS')
                     if llama_server_args:
                         llama_args.extend([llama_server_args])
 
                 args = " ".join(llama_args)
-                launch_llama_process(args)
+                launch_llama_process(args, llama_log_file)
             else:
-                log.critical(textwrap.dedent(
-                    f"""The {llama_app} file was not found at {llama_exe}.
-                      If {llama} is installed in a non-standard location, you can set the LLAMA_PATH
-                      environment variable with its full path (including the {llama} file) in .env and
-                      re-run {file} - exiting...
-                     """))
+                log.critical(f"The {llama_app} file was not found at {llama_exe}.")
+                log.critical(f"If {llama} is installed in a non-standard location, set the LLAMA_PATH")
+                log.critical(f"environment variable with its full path (including the {llama} file)")
+                log.critical(f"in the .env file and re-run {file} - exiting...")
                 sys.exit(1)
 
 def clone_supabase_repo():
@@ -788,7 +821,8 @@ def check_and_fix_docker_compose_for_searxng():
                     log.info("uwsgi.ini not found inside the SearXNG container - first run")
                     is_first_run = True
             else:
-                log.info("Notice: No running SearXNG container found - assuming first run")
+                message = "No running SearXNG container found - assuming first run"
+                log.info("", extra=LSHF.style(header="Notice:", msg=message))
                 is_first_run = True
         except Exception as e:
             log.error(f"Exception: Check Docker container running: {e} - assuming first run")
@@ -797,11 +831,11 @@ def check_and_fix_docker_compose_for_searxng():
         if is_first_run:
             log.info("First run detected for SearXNG. Temporarily commenting 'cap_drop:' directive...")
             with open(docker_compose_path, 'r+') as f:
-                commented = False
-                searxng_found = False
                 lines = f.readlines()
                 f.seek(0)
                 f.truncate()
+                commented = False
+                searxng_found = False
                 for line in lines:
                     if not commented:
                         compare = line.strip()
@@ -816,8 +850,9 @@ def check_and_fix_docker_compose_for_searxng():
                                 searxng_found = False
                                 log.info("SearXNG 'cap_drop:' directive temporarily commented...")
                     f.write(line)
-            log.info("Notice: After the first run completes successfully, uncomment 'cap_drop:' "
-                     "in docker-compose.yml for security.")
+            msg = "After the first run completes successfully, uncomment 'cap_drop:' " \
+                      "in docker-compose.yml for security."
+            log.info("", extra=LSHF.style(header="Notice:", msg=message))
         else:
             # Read the docker-compose.yml file
             with open(docker_compose_path, 'r') as f:
@@ -1056,8 +1091,8 @@ def set_dotenv_var(env_file, env, var, header):
                         elif len(var_array) == 1:
                             mod_line = ''.join([env, '=\n'])
                         line = mod_line
-                        f.write("# Omitted '<value>' to return 'False' when queried")
-                        log.info(f"Notice: Value for {env} removed...")
+                        msg = f"Value for {env} removed..."
+                        log.info(" ".join(["Notice:", msg]), extra=LSHF.style(header="Notice:", msg=msg))
                     f.write(line)
         except FileNotFoundError:
             log.error(f"Exception: File '{env_file}' not found.")
@@ -1100,13 +1135,13 @@ def configure_n8n_database_settings(supabase):
                 f.write(modified_content)
 
         with open(compose_file, 'r+') as f:
+            lines = f.readlines()
+            f.seek(0)
+            f.truncate()
             n8n_updated = False
             n8n_update = False
             old_db = "postgres:" if supabase else "db:"
             new_db = "db:" if supabase else "postgres:"
-            lines = f.readlines()
-            f.seek(0)
-            f.truncate()
             for line in lines:
                 if not n8n_updated:
                     if line == '  n8n-import:\n':
@@ -1119,7 +1154,7 @@ def configure_n8n_database_settings(supabase):
                             line = f"      {new_db}\n"
                     if n8n_updated:
                         log.info(f"Set n8n database depends_on: to '{new_db}' "
-                                 f"from '{old_db}' in {compose_file}...")
+                                f"from '{old_db}' in {compose_file}...")
                 f.write(line)
     except Exception as e:
         log.error(f"Exception: Update n8n database settings in {compose_file}: {e}")
@@ -1360,9 +1395,9 @@ def main():
     if os.path.exists('.operation'):
         with open('.operation', 'r') as f:
             op_array = f.readline().split(':')
-            status = op_array[0].strip() if op_array else None
-            if len(op_array) > 1:
-                llama_cpp = op_array[1].strip() == 'llama.cpp'
+        status = op_array[0].strip() if op_array else None
+        if len(op_array) > 1:
+            llama_cpp = op_array[1].strip() == 'llama.cpp'
     elif os.path.exists(env_file):
         lpv = dotenv.get_key(env_file, 'LLAMA_PATH')
         llama_cpp = lpv and os.path.basename(lpv).lower().startswith('llama-server')
