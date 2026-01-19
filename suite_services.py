@@ -163,7 +163,6 @@ class Formatter(logging.Formatter):
             level = logging.INFO
         # Construct a SGR dictionary with the specified arguments
         suffix = Formatter.suffix()
-        as_msg = msg or header
         no_msg_prefix = header and not msg
         emoji = "🐛" if not emoji and level == logging.DEBUG else emoji
         emoji = emoji + " " if emoji else ""
@@ -181,8 +180,8 @@ class Formatter(logging.Formatter):
         prefix = ("{0}{1}{2}{3}{4}{5}").format(
                   emoji, header_prefix, header, header_suffix, msg_prefix, msg)
         style = {'prefix': prefix, 'suffix': suffix}
-        if as_msg:
-            style.update({'as_message': ("{0}{1}{2}").format(suffix, prefix, suffix)})
+        if msg or header:
+            style.update({'purge_msg': 'True'})
         if name:
             if not name_prefix:
                 name_prefix = Formatter.prefix(name_color, bright, bold, faint, True, underline)
@@ -216,6 +215,11 @@ class Formatter(logging.Formatter):
         if not name_prefix:
             name_prefix = self.prefix(color['name'], italic=True)
         record.name = ('{0}{1}{2}').format(name_prefix, name, suffix)
+        # Purge message - this unstyled message is designated for the log file.
+        # The styled stream-version of this message is in the prefix attribute.
+        if hasattr(record, 'purge_msg'):
+            record.message = ''
+            record.msg = ''
         # Apply level name attribute SGR parameters
         levelname = record.levelname
         levelname_prefix = None
@@ -254,7 +258,8 @@ LSH.setLevel(logging.NOTSET)
 
 def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
-    log.info("", extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
+    log_file_msg = " ".join([log_cmd_header, " ".join(cmd)])
+    log.info(log_file_msg, extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
     try:
         completed = subprocess.run(cmd, cwd=cwd, check=True)
         if completed.returncode != 0:
@@ -271,7 +276,8 @@ def launch_llama_process(args, llama_log):
                "".join([log_file, '"']), '-WindowStyle Hidden']
     else:  # Unix-based systems (Linux, macOS)
         cmd = [llama_exe, args, log_file]
-    log.info("", extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
+    log_file_msg = " ".join([log_cmd_header, " ".join(cmd)])
+    log.info(log_file_msg, extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
         if completed.returncode != 0:
@@ -333,7 +339,7 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
             if operation == 'install':
                 log.critical(response)
             else:
-                log.info("", extra=LSHF.style(header="Notice:", msg=response))
+                log.info("Notice: " + response, extra=LSHF.style(header="Notice:", msg=response))
             command_prefix = LSHF.prefix(LSHF.BLUE)
             command_model_prefix = LSHF.prefix(LSHF.BLUE, bold=True)
             llama_app_prefix = LSHF.prefix(LSHF.GREEN, bold=True)
@@ -345,6 +351,8 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
                 model_id = env_vars.get(model_value)
                 if not model_id:
                     continue
+                log_file_msg = ("{} Command: {} {} {}").format(model, llama_app,
+                                                          llama_server_args, model_id)
                 emoji = '🔗' if model_id.startswith('https://') else '🚀'
                 model_command_prefix = (
                     "{0}•{1} "
@@ -364,7 +372,8 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
                     llama_server_args_prefix, llama_server_args, suffix,
                     model_id_prefix, model_id)
                 model_style = {'prefix': model_prefix, 'suffix': suffix}
-                log.info("", extra=model_style)
+                model_style.update({'purge_msg': 'True'})
+                log.info(log_file_msg, extra=model_style)
             log.info("Exiting...", extra=log_info_style)
             return None
     log.info(f"Using {llama} model: {model_name}...")
@@ -381,7 +390,8 @@ def check_llama_process(operation=None, env_vars={}):
             cmd = ["tasklist"]
         else:  # Unix-based systems (Linux, macOS)
             cmd = ["pgrep", "-f", llama_proc]
-        log.info("", extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
+        log_file_msg = " ".join([log_cmd_header, " ".join(cmd)])
+        log.info(log_file_msg, extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
         completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
         if system == "Windows":
             llama_running = True if llama_proc in completed.stdout.lower() else False
@@ -403,12 +413,14 @@ def check_llama_process(operation=None, env_vars={}):
                 cmd = ["taskkill", "/f", "/im", llama_proc]
             else:  # Unix-based systems (Linux, macOS)
                 cmd = ["ps", "-C", llama_proc, "-o", "pid=|xargs", "kill", "-9"]
-            log.info("", extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
+            log_file_msg = " ".join([log_cmd_header, " ".join(cmd)])
+            log.info(log_file_msg, extra=LSHF.style(header=log_cmd_header, msg=" ".join(cmd)))
             os.system(" ".join(cmd))
         else:
             if attempted_launch:
                 log.info(f"{llama} on host is now running...", extra=LSHF.style(color=LSHF.GREEN))
-                log.info("", extra=LSHF.style(color=LSHF.GREEN, header=header, msg=llama_log_file))
+                log.info(" ".join([header, llama_log_file]),
+                         extra=LSHF.style(color=LSHF.GREEN, header=header, msg=llama_log_file))
             else:
                 log.info(f"{llama} on host is running...", extra=LSHF.style(color=LSHF.GREEN))
     else:
@@ -826,8 +838,8 @@ def check_and_fix_docker_compose_for_searxng():
                     log.info("uwsgi.ini not found inside the SearXNG container - first run")
                     is_first_run = True
             else:
-                message = "No running SearXNG container found - assuming first run"
-                log.info("", extra=LSHF.style(header="Notice:", msg=message))
+                msg = "No running SearXNG container found - assuming first run"
+                log.info(" ".join(["Notice:", msg]), extra=LSHF.style(header="Notice:", msg=msg))
                 is_first_run = True
         except Exception as e:
             log.error(f"Exception: Check Docker container running: {e} - assuming first run")
@@ -857,7 +869,7 @@ def check_and_fix_docker_compose_for_searxng():
                     f.write(line)
             msg = "After the first run completes successfully, uncomment 'cap_drop:' " \
                       "in docker-compose.yml for security."
-            log.info("", extra=LSHF.style(header="Notice:", msg=message))
+            log.info(" ".join(["Notice:", msg]), extra=LSHF.style(header="Notice:", msg=msg))
         else:
             # Read the docker-compose.yml file
             with open(docker_compose_path, 'r') as f:
@@ -1175,8 +1187,8 @@ def container_is_running(container):
             color = LSHF.WHITE if running else LSHF.RED
             style = LSHF.style(logging.INFO, color)
             insert = ('is', 'running.') if running else ('not', 'running!')
-            message = " ".join([container, insert[0], insert[1]])
-            log.debug("Container {}".format(message), extra=style)
+            log_file_msg = " ".join([container, insert[0], insert[1]])
+            log.debug("Container {}".format(log_file_msg), extra=style)
         return running
     except subprocess.CalledProcessError:
         return False
@@ -1350,6 +1362,7 @@ def display_service_endpoints(profile, supabase, env_vars):
         'prefix': ("{0} {1}{2}").format(
             emoji, LSHF.prefix(color, bold=True, underline=started_ok), header),
         'suffix': LSHF.suffix()}
+    header_style.update({'purge_msg': 'True'})
     info_style = LSHF.style(logging.INFO, color)
     line_style = LSHF.style(logging.INFO, LSHF.BLUE)
     fail_style = LSHF.style(logging.INFO, LSHF.RED)
@@ -1364,7 +1377,7 @@ def display_service_endpoints(profile, supabase, env_vars):
 
     log.info("")
     log.info("="*60, extra=line_style)
-    log.info("", extra=header_style)
+    log.info(header, extra=header_style)
     log.info("="*60, extra=line_style)
     log.info(f"LLM: {llama}", extra=info_style)
     log.info(f"Model: {model_name}", extra=info_style)
@@ -1378,7 +1391,9 @@ def display_service_endpoints(profile, supabase, env_vars):
             module_prefix, module_name + ":", LSHF.suffix(), emoji,
             apoint_prefix, access_point)
         endpoint_style = {'prefix': endpoint_prefix, 'suffix': LSHF.suffix()}
-        log.info("", extra=endpoint_style)
+        endpoint_style.update({'purge_msg':'True'})
+        log_file_msg = ("• {:23s}{} {}").format( module_name + ":", emoji, access_point)
+        log.info(log_file_msg, extra=endpoint_style)
     if not started_ok:
         log.info("")
         log.info("These containers are not running:", extra=info_style)
