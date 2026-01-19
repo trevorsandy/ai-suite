@@ -286,8 +286,8 @@ def launch_llama_process(args, llama_log):
         log.error(f"Exception: {llama} process: {e} - assuming {llama} did not start.")
     global attempted_launch
     attempted_launch = True
-    log.info(f"Waiting for {llama} on host to initialize...")
-    time.sleep(4)
+    log.info(f"Waiting for {llama} on host to initialize...", extra=log_info_style)
+    wait_with_progress(4)
     check_llama_process(None, {})
 
 def check_llama_cpp_model(operation, env_vars, using_hf):
@@ -657,11 +657,13 @@ def operate_ai_suite(operation, profile, environment, env_vars):
         load_dotenv_vars(env_vars)
         if supabase:
             start_supabase(environment, False)
-            log.info("""Waiting for Supabase to initialize...""")
-            time.sleep(10)
+            log.info("Waiting for Supabase to initialize...", extra=log_info_style)
+            wait_with_progress(10)
         if open_webui:
             start_open_webui_tools_filesystem(environment, False)
-            time.sleep(1)
+            log.info("Waiting for Open WebUI Tool Filesystem to initialize...",
+                     extra=log_info_style)
+            wait_with_progress(2)
         start_ai_suite(profile, environment, False)
         display_service_endpoints(profile, supabase, env_vars)
         return
@@ -1193,6 +1195,32 @@ def container_is_running(container):
     except subprocess.CalledProcessError:
         return False
 
+def wait_with_progress(seconds: int, level=logging.INFO, color=None, width=60):
+    """Progress bar for waiting on service to initialize"""
+    begin = time.monotonic()
+    end = LSHF.suffix()
+    colors = LSHF.LOG_LEVEL_COLOR.get(level, LSHF.COLOR)
+    level_name = logging.getLevelName(level)
+    level_color = colors['level']
+    name_color = colors['name']
+    fill_color = colors['msg'] if not color else color
+    header = ("{}{}{}{}:{} {}{}{} {}").format(
+        LSHF.prefix(color=name_color, italic=True), name, end,
+        LSHF.prefix(LSHF.WHITE), end,
+        LSHF.prefix(level_color), level_name, end, LSHF.prefix(fill_color))
+    while True:
+        elapsed = time.monotonic() - begin
+        progress = min(elapsed, seconds)
+        percent = progress / seconds
+        filled = int(width * percent)
+        bar = '█' * filled + '-' * (width - filled)
+        rendition = ("\r{}|{}| {:6.2f}%{}").format(header, bar, percent * 100, end)
+        print(rendition, end="", flush=True)
+        if elapsed >= seconds:
+            break
+        time.sleep(0.05) # smooth updates (~20 FPS)
+    print() # move to next line when done
+
 def display_service_endpoints(profile, supabase, env_vars):
     """Display AI-Suite installation or operationstatus"""
     url = 'http://localhost'
@@ -1584,7 +1612,11 @@ def main():
     version = INFO.get('version', (-1, -1, -1))
     banner = f"""{name} version: {'.'.join(map(str, version))} LLM: {llama}"""
     print(banner) if args.log == 'OFF' else None
-    log.info(banner)
+    log.info("="*60, extra=LSHF.style(color=LSHF.BLUE))
+    log.info(banner, extra=log_info_style)
+    log_file_msg = " ".join(["Command:", " ".join(sys.argv)])
+    log.info(log_file_msg, extra=LSHF.style(header="Command:", msg=" ".join(sys.argv)))
+    log.info("="*60, extra=LSHF.style(color=LSHF.BLUE))
 
     # Detect platform
     global system
@@ -1831,13 +1863,15 @@ def main():
     if supabase:
         start_supabase(args.environment, build)
         # Give Supabase some time to initialize
-        log.info("Waiting for Supabase to initialize...")
-        time.sleep(10)
+        log.info("Waiting for Supabase to initialize...", extra=log_info_style)
+        wait_with_progress(10)
 
     # Start Open WebUI Tools Filesystem
     if open_webui:
         start_open_webui_tools_filesystem(args.environment, build)
-        time.sleep(1)
+        log.info("Waiting for Open WebUI Tool Filesystem to initialize...",
+                 extra=log_info_style)
+        wait_with_progress(2)
 
     # Unset Compose ignore orphans variable
     env = "COMPOSE_IGNORE_ORPHANS"
