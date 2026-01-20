@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update January 19, 2026
+Last Update January 20, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -880,7 +880,7 @@ def check_and_fix_docker_compose_for_searxng():
             cap_drop_comment = "   #cap_drop:\n   #  - ALL  # Temporarily commented out for first run\n"
             if cap_drop_comment in content:
                 log.info(f"SearXNG has been initialized. Uncommenting 'cap_drop:' directive for security...")
-                cap_drop = "cap_drop:\n      - ALL\n"
+                cap_drop = "    cap_drop:\n      - ALL\n"
                 modified_content = content.replace(cap_drop_comment, cap_drop)
                 # Write the modified content back
                 with open(docker_compose_path, 'w') as f:
