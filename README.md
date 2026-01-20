@@ -31,6 +31,9 @@ code in your terminal.
 ✅ [**Ollama**](https://ollama.com/) - Cross-platform LLM platform to install
 and run the latest LLMs.
 
+✅ [**LLaMA.cpp**](https://github.com/ggml-org/llama.cpp/) - Cross-platform LLaMA.cpp
+HTTP Server platform to install and run the latest LLMs in gguf format.
+
 ✅ [**Supabase**](https://supabase.com/) - Open source database as a service,
 most widely used database for AI agents.
 
@@ -70,30 +73,30 @@ system that can generate analytical data reports in real-time.
 
 Before you begin, make sure you have the following software installed:
 
+- [Git](https://git-scm.com/install/) - For easy repository management.
 - [Python](https://www.python.org/downloads/) - To run the setup script.
 
    <details>
    <summary>Import modules</summary>
 
-   ```bash
-   os
-   sys
-   datetime
-   subprocess
-   pathlib
-   shutil
-   time
-   argparse
-   platform
-   dotenv
-   tempfile
-   textwrap
-   re
+   ```python
+   import os
+   import sys
+   import argparse
+   import datetime
+   import dotenv
+   import logging
+   import pathlib
+   import platform
+   import re
+   import shutil
+   import subprocess
+   import textwrap
+   import time
    ```
 
   </details>
 
-- [Git/GitHub Desktop](https://desktop.github.com/) - For easy repository management.
 - [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) - Required
   to setup and run all AI-Suite services.
 
@@ -114,6 +117,11 @@ Before you begin, make sure you have the following software installed:
 
    </details>
 
+Depending on your skill level, also consider the following optional tools:
+
+- [VSCode](https://code.visualstudio.com/download) - Python development.
+- [GitKraken](https://www.gitkraken.com/download-b) - Superior Git SCM platform
+
 ## Installation
 
 1. Clone the repository and navigate to the project directory:
@@ -133,6 +141,9 @@ Before you begin, make sure you have the following software installed:
 
    <details>
    <summary>Credential environment variables</summary>
+
+   If you intend to install Supabase, setup the Supabase environment variables
+   using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
 
    ```ini
    ############
@@ -239,6 +250,10 @@ Before you begin, make sure you have the following software installed:
 
    </details>
 
+4. Review and update the other environment variables taking into account your
+   installation platform specifications. Particularly pay attention to the _Ollama_
+   or _LLaMA.cpp_ (depending on which LLM you are using) configuration settings.
+
 > [!IMPORTANT]
 > Make sure to generate secure random values for all secrets. Never use the
 > example values in production.
@@ -246,30 +261,28 @@ Before you begin, make sure you have the following software installed:
 ---
 
 **AI-Suite** uses the `suite_services.py` script for the _installation_ command
-that handles the AI-Suite functional module selection, llama CPU/GPU configuration,
-and starting Supabase and Open WebUI Filesystem when specified.
+that handles the AI-Suite functional module selection, **LLAMA** (_Ollama_/_LLaMA.cpp_)
+CPU/GPU configuration, and starting Supabase and Open WebUI Filesystem when specified.
 
-This script is also used for operation commands that _start_, _stop_, _stop-llama_,
-_pause_, _unpause_, _update_ and _install_ the AI-Suite services using the optional
-`--operation` argument. A llama (Ollama/Llama.cpp) check is performed when it is
-assumed llama is running from the Docker Host. If llama is determined to be installed
-but not running, an attempt to launch the Ollama/Llama.cpp service is executed
-on _install_, _start_ and _unpause_. The check will also attempt to _stop_ the
-running llama service (in addition to stopping the AI-Suite services) when the
-_stop-llama_ operational command is specified.
+Additionally, this script is used to perform _operational_ actions such as stopping
+or pausing the running suite stack and updating its container images.
 
-Both installation and operation commands utilize the optional `--profile`
-arguments to specify which AI-Suite functional modules and which llama CPU/GPU
-configuration to use. When no functional profile argument is specified, the
-default functional module `open-webui` is used, Likewise, if no CPU/GPU configuration
-profile is specified, it is assumed llama is being run from the Docker Host.
-**Multiple profile arguments (functional modules) are supported**.
-
-The `--environment` command allows the installation to be defined as _private_
-(default) or _public_. A public install restricts the communication ports exposed
-to the network.
+> [!NOTE]
+> The following example commands will use the `n8n` and `OpenCode` functional
+> modules. Simply substitute these modules for your desired options if you elect
+> to use these examples in your environment.
 
 ---
+
+### The _profile_ command arguments
+
+Both installation and operation commands utilize the optional `--profile`
+arguments to specify which AI-Suite functional modules and which **LLAMA** CPU/GPU
+configuration to use. When no functional profile argument is specified, the
+default functional module `open-webui` is used, Likewise, if no CPU/GPU configuration
+profile is specified, it is assumed LLAMA is being run from the Docker Host.
+**Multiple profile arguments (functional modules) are supported**.
+
 `suite_services.py` `--profile` functional module arguments
 
 | Argument | Functional Module |
@@ -289,24 +302,54 @@ to the network.
 | `open-webui-all` | Open WebUI - complete bundle |
 | `ai-all` | AI-Suite full stack - all modules |
 
-`suite_services.py` `--profile` llama CPU/GPU argument:
+`suite_services.py` `--profile` LLAMA CPU/GPU in Docker argument:
 
-| Argument | Llama CPU/GPU |
+| Argument | LLAMA CPU/GPU |
 | -----------------------: | ------: |
 | `cpu` | Ollama - run on CPU |
 | `gpu-nvidia` | Ollama - run on Nvidia GPU |
 | `gpu-amd` | Ollama - run on AMD GPU |
-| `cpp-cpu` | Llama.cpp - run on CPU |
-| `cpp-gpu-nvidia` | Llama.cpp - run on Nvidia GPU |
-| `cpp-gpu-amd` | Llama.cpp - run on AMD GPU |
+| `cpp-cpu` | LLaMA.cpp - run on CPU |
+| `cpp-gpu-nvidia` | LLaMA.cpp - run on Nvidia GPU |
+| `cpp-gpu-amd` | LLaMA.cpp - run on AMD GPU |
 
 Example command:
 
 ```powershell
+# Ollama
 python suite_services.py --profile n8n opencode gpu-nvidia
+# LLaMA.cpp
+python suite_services.py --profile n8n opencode cpp-gpu-nvidia
+```
+
+`suite_services.py` `--profile` LLAMA running on host argument:
+
+| Argument | LLAMA CPU/GPU |
+| -----------------------: | ------: |
+| `ollama` | Ollama - run on host (Default) |
+| `llama.cpp` | LLaMA.cpp - run on host |
+
+Example command:
+
+```powershell
+# Ollama - As the default LLAMA option, the argument is optional
+python suite_services.py --profile n8n opencode
+# LLaMA.cpp
+python suite_services.py --profile n8n opencode llama.cpp
 ```
 
 ---
+
+### The _operation_ command argument
+
+This script is also used for operation commands that _start_, _stop_, _stop-llama_,
+_pause_, _unpause_, _update_ and _install_ the AI-Suite services using the optional
+`--operation` argument. A **LLAMA** (_Ollama_/_LLaMA.cpp_) check is performed when
+it is assumed LLAMA is running from the Docker Host. If **LLAMA** is determined
+to be installed but not running, an attempt to launch the Ollama/LLaMA.cpp service
+is executed on _install_, _start_ and _unpause_. The check will also attempt to
+_stop_ the running LLAMA service (in addition to stopping the AI-Suite services)
+when the _stop-llama_ operational command is specified.
 
 `suite_services.py` ... `--operation` argument:
 
@@ -314,14 +357,17 @@ python suite_services.py --profile n8n opencode gpu-nvidia
 | -----------------------: | ------: |
 | `start` | Start - start the previously stopped, specified profile containers |
 | `stop` | Stop - shut down the specified profile containers |
-| `stop-llama` | Stop - perform `stop` and shut down Ollama/Llama.cpp on Host |
+| `stop-llama` | Stop - perform `stop` and shut down Ollama/LLaMA.cpp on Host |
 | `pause` | Pause - pause the specified profile containers |
 | `unpause` | Unpause - unpause the previously paused profile containers |
 
 Example command:
 
 ```powershell
+# Ollama
 python suite_services.py --profile n8n opencode gpu-nvidia --operation stop
+# LLaMA.cpp
+python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 ```
 
 ---
@@ -329,23 +375,30 @@ python suite_services.py --profile n8n opencode gpu-nvidia --operation stop
 If you intend to install Supabase, before running `suite_services.py`, setup the
 Supabase environment variables using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
 
-### For Docker OLLAMA with Nvidia GPU users
+### For Docker LLAMA with Nvidia GPU users
 
 ```powershell
-python suite_services.py --profile gpu-nvidia
+# Ollama
+python suite_services.py --profile gpu-nvidia n8n opencode
+# LLaMA.cpp
+python suite_services.py --profile cpp-gpu-nvidia n8n opencode
 ```
 
 > [!NOTE]
 > If you have not used your Nvidia GPU with Docker before, please follow the
 > [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.mdx).
+> [LLaMA.cpp Docker instructions](https://github.com/ggml-org/llama.cpp/blob/master/docs/docker.md)
 
-### For Docker OLLAMA with AMD GPU users on Linux
+### For Docker LLAMA with AMD GPU users
 
 ```powershell
-python suite_services.py --profile gpu-amd
+# Ollama
+python suite_services.py --profile gpu-amd n8n opencode
+# LLaMA.cpp
+python suite_services.py --profile cpp-gpu-amd n8n opencode
 ```
 
-### For OLLAMA on Mac /Apple Silicon or OLLAMA running in the Host
+### For LLAMA on Mac /Apple Silicon or OLLAMA running in the Host
 
 If you're using a Mac with an M1 or newer processor, you can't expose your GPU
 to the Docker instance, unfortunately. There are two options in this case:
@@ -353,24 +406,37 @@ to the Docker instance, unfortunately. There are two options in this case:
 1. Run ai-suite fully on CPU:
 
    ```powershell
-   python suite_services.py --profile cpu
+   # Ollama
+   python suite_services.py --profile cpu n8n opencode
+   # LLaMA.cpp
+   python suite_services.py --profile cpp-cpu n8n opencode
    ```
 
-2. Run Ollama on your Host for faster inference, and connect to that from the
+2. Run LLAMA on your Host for faster inference, and connect to that from the
    n8n instance:
 
    ```powershell
-   python suite_services.py --profile n8n
+   # Ollama
+   python suite_services.py --profile n8n opencode
+   # LLaMA.cpp
+   python suite_services.py --profile n8n opencode llama.cpp
    ```
 
-   If you want to run Ollama on your Mac, check the [Ollama homepage](https://ollama.com/)
+   If you want to run LLAMA on your Mac, check the [Ollama homepage](https://ollama.com/)
    for installation instructions.
 
-#### For users running OLLAMA on the Host
+### For users running LLAMA on the Host
 
-If you're running OLLAMA in your Docker Host (not in Docker), modify the
-OLLAMA_HOST environment variable in the n8n service configuration and update the
-x-n8n section in your .env file:
+If you're running LLAMA on your Host (not in Docker), the `suite_services.py`
+script will automatically set your `OLLAMA_HOST`/`LLAMA_ARG_HOST` environment
+variable in the .env file. Using interpolation, these settings will also be set
+for the n8n service configuration.
+
+You can manually configure the Ollama settings and update the x-n8n section in
+your .env file:
+
+<details>
+<summary>Manual Ollama host configuration</summary>
 
 ```ini
 OLLAMA_HOST=host.docker.internal:11434
@@ -393,15 +459,54 @@ x-n8n: &service-n8n
     - OLLAMA_HOST=host.docker.internal:11434
 ```
 
-### For everyone else
+</details>
 
-```powershell
-python suite_services.py --profile cpu
+The `suite_services.py` script will similiarly set the `OPENAI_API_BASE_URL`
+environment variable to use the _HOST_ and _PORT_ of the selected LLAMA LLM
+(_Ollama_/_LLaMA.cpp_). This option will enable n8n backend connections to
+LLaMA.cpp.
+
+<details>
+<summary>Manual LLaMA.cpp host configuration</summary>
+
+```ini
+LLAMA_ARG_PORT=8040
+
+# When running LLAMA.CPP in the host:
+#LLAMA_ARG_HOST=host.docker.internal
+# When running LLAMA.CPP in Docker:
+#LLAMA_ARG_HOST=0.0.0.0
+LLAMA_ARG_HOST='host.docker.internal'
+
+# Backend connect
+LLAMACPP_HOST=${LLAMA_ARG_HOST}:${LLAMA_ARG_PORT}
+
+# ... other configurations ...
+
+# Conecting to LLAMA using OpenAI API connection
+# When running OLLAMA:    ${OLLAMA_HOST}
+# When running LLAMA.CPP: ${LLAMA_ARG_HOST}:${LLAMA_ARG_PORT}
+OPENAI_API_BASE_URL='${LLAMACPP_HOST}'
 ```
 
-### The environment argument
+</details>
 
-The `suite_services.py` script supports a **private** (default) and **public**
+### For everyone else (...using CPU)
+
+```powershell
+# Ollama
+python suite_services.py --profile n8n opencode cpu
+# LLaMA.cpp
+python suite_services.py --profile n8n opencode cpp-cpu
+```
+
+### The _environment_ command argument
+
+The `--environment` command allows the installation to be defined as _private_
+(default) or _public_. A public install restricts the communication ports exposed
+to the network.
+
+The `suite_services.py` script supports the `private` (default) and `public`
 environment argument:
 
 - **private:** you are deploying the stack in a safe environment, all AI-Suite
@@ -409,17 +514,19 @@ ports are accessible
 - **public:** the stack is deployed in a public environment, all AI-Suite ports
 except _80_ and _443_ are closed
 
-`suite_services.py` ... `--environment` arguments:
+`suite_services.py` ... `--environment` argument:
 
 | Argument | Scope |
 | -----------------------: | ------: |
 | `private` | Private network |
 | `public` | Public network |
 
+Example command:
+
 The AI-Suite stack initialized with...
 
 ```powershell
-python suite_services.py --profile gpu-nvidia --environment private
+python suite_services.py --profile n8n opencode cpp-cpu --environment private
 ```
 
 is equal to being initialized with:
@@ -427,6 +534,33 @@ is equal to being initialized with:
 ```powershell
 python suite_services.py --profile gpu-nvidia
 ```
+
+### The _log_ command argument
+
+The `suite_services.py` script enables stream (console) logging and setting the
+logging level. File logging is always enabled at DEBUG and is not affected by
+this argument. The default console logging level is INFO.
+
+environment argument:
+
+`suite_services.py` ... `--log` argument:
+
+| Argument | Scope |
+| -----------------------: | ------: |
+| `OFF` | Console logging is disabled |
+| `DEBUG` | Debug logging level |
+| `INFO` | Standard output logging level |
+| `WARNING` | Warning logging level |
+| `ERROR` | Error logging level |
+| `CRITICAL` | Critical logging level |
+
+Example command:
+
+```powershell
+python suite_services.py --profile n8n opencode cpp-cpu --operation update --log DEBUG
+```
+
+---
 
 ## Deploying to the Cloud
 
@@ -487,7 +621,7 @@ sudo ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docke
 
 ## ⚡️ Quick start and usage
 
-All components of the self-hosted AI-Suite, except if running Ollama from your
+All components of the self-hosted AI-Suite, except if running LLAMA from your
 host, is installed through `suite_services.py` and managed through a Docker Compose
 file pre-configured with network and disk so there isn’t much else you need to
 install. After completing the installation steps above, follow the steps below
@@ -498,6 +632,9 @@ Use the following settings to confirm or upate n8n Credentials.
 - Local Ollama service: base URL <http://ollama:11434/> (n8n config), <http://localhost:11434/>
 (browser)
 
+- Local LLaMA.cpp service: base URL <http://llamacpp:8040/> (n8n config), <http://localhost:8040/>
+(browser)
+
 - Local QdrantApi database: base URL <http://qdrant:6333/> (n8n config), <http://localhost:6333/>
 (browser)
 
@@ -506,14 +643,46 @@ Use the following settings to confirm or upate n8n Credentials.
 
 - Google Drive: This credential is optional. Follow [this guide from n8n](https://docs.n8n.io/integrations/builtin/credentials/google/).
 
+<details>
+<summary>Full list of AI-Suite service end points:</summary>
+
+| Service | Container | Docker | Host |
+| -----------------------: | ------: | ------: | ------: |
+| `n8n` | <http://n8n:5678> | <http://host.docker.internal:5678> | <http://localhost:5678> |
+| `Open WebUI` | <http://open-webui:8080/> | <http://host.docker.internal:8080/> | <http://localhost:8080/> |
+| `Opencode` | ./opencode/run_opencode_docker.py | | |
+| `Flowise` | <http://flowise:3001/> | <http://host.docker.internal:3001/> | <http://localhost:3001/> |
+| `Open webUI MCPO` | <http://open-webui-mcpo:8090/> | <http://host.docker.internal:8090/> | <http://localhost:8090/> |
+| `Ollama` | <http://ollama:11434/> | <http://host.docker.internal:11434/> | <http://localhost:11434/> |
+| `LLaMA.cpp` | <http://llamacpp:8040> | <http://host.docker.internal:8040> | <http://localhost:8040> |
+| `QDrant` | <http://qdrant:6333/dashboard> | <http://host.docker.internal:6333/dashboard> | <http://localhost:6333/dashboard> |
+| `Subabase` | <http://supabase-kong:8000> | <http://host.docker.internal:8000> | <http://localhost:8000> |
+| `Postgres` | <http://postgres:5432> | <http://host.docker.internal:5432/> | <http://localhost:5432/> |
+| `MCP Gateway` | <http://mcp-gateway:8060/> | <http://host.docker.internal:8090/> | <http://localhost:8060/> |
+| `Open webUI Filesystem` | <http://open-webui-filesystem:8091/docs> | <http://host.docker.internal:8091/docs> | <http://localhost:8091/docs> |
+| `Redis` | <http://redis:6379/> | <http://host.docker.internal:6379/> | <http://localhost:6379/> |
+| `MinIO` | <http://minio:9001/> | <http://host.docker.internal:9001/> | <http://localhost:9001/> |
+| `Langfuse Web` | <http://langfuse-web:3000/> | <http://host.docker.internal:3000/> | <http://localhost:3000/> |
+| `Langfuse Worker` | <http://langfuse-worker:3030/> | <http://host.docker.internal:3030/> | <http://localhost:3030/> |
+| `Logflare` | <http://supabase-analytics:4000/dashboard> | <http://host.docker.internal:4000/dashboard> | <http://localhost:4000/dashboard> |
+| `ClickHouse` | <http://clickhouse:8123/> | <http://host.docker.internal:8123/> | <http://localhost:8123/> |
+| `SearXNG` | <http://searxng:8081/> | <http://host.docker.internal:8081/> | <http://localhost:8081/> |
+| `Neo4j` | <http://neo4j:7473/> | <http://host.docker.internal:7473/> | <http://localhost:7473/> |
+| `Caddy` | <http://caddy:443/> | <http://host.docker.internal:443/> | <http://localhost:443/> |
+
+</details>  
+
 > [!IMPORTANT]
 > For Supabase, _POSTGRES_HOST_ is 'db' since that is the name of the
 > service running Supabase.
 <!-- -->
 > [!NOTE]
-> If you are running OLLAMA on your Host, for the credential _Local Ollama
+> If you are running LLAMA on your Host, for the credential _Local Ollama
 > service_, set the base URL to <http://host.docker.internal:11434/> and set
-> _Local QdrantApi database_ to <http://host.docker.internal:6333/>.
+> _Local QdrantApi database_ to <http://host.docker.internal:6333/>. For a
+> LLaMA.cpp service, you can create a _Local LLaMA service_ node using the
+> connection credential <http://host.docker.internal:8040/> or simply point
+> the _Local Ollama service_ to this credential.
 >
 > Don't use _localhost_ for the redirect URI, instead, use another domain.
 > It will still work!
@@ -526,13 +695,13 @@ Use the following settings to confirm or upate n8n Credentials.
 
    - Go to <http://localhost:5678/home/credentials> to configure credentials.
    - Click on **Local QdrantApi database** and set the base URL as specified above.
-   - Click on **Local Ollama service** and set the base URL as specified above.
+   - Click on **Local Ollama/LLaMA service** and set the base URL as specified above.
    - Click on **Create credential**, enter _Postgres_ in the search field and
      follow the subsequent dialogs to setup the _Postgres account_ as specified
      above.
 
 2. Open the [Demo workflow](http://localhost:5678/workflow/srOnR8PAY3u4RSwb) and
-   confirm the credentials for _Local Ollama service_ is properly configured.
+   confirm the credentials for _Local Ollama/LLaMA service_ is properly configured.
 
 3. Select **Test workflow** to confirm the workflow is properly configured.
    If this is the first time you’re running the workflow, you may need to wait
@@ -826,11 +995,11 @@ modules described above:
 > path `/root/projects` and the resulting path is set as _work_dir_ to form the
 > OpenCode Docker exec command's _workdir=work_dir_ keyword argument.
 
-### Ollama or Llama.cpp - running on host
+### Ollama or LLaMA.cpp - running on host
 
 - **LLAMA_PATH environment variable**
 
-  - If _Ollama_ is installed in a custom location or you are using _Llama.cpp_,
+  - If _Ollama_ is installed in a custom location or you are using _LLaMA.cpp_,
     Add `LLAMA_PATH` with its absolute path (including the file name) to your
     _.env_ file.
 
@@ -841,12 +1010,12 @@ modules described above:
 
 - **LLAMACPP_MODELS_DIR environment variable**
 
-  - If you are using _Llama.cpp_ with models that were **not** downloaded with
-    that instance of _Llama.cpp_, add `LLAMACPP_MODELS_DIR` with said models path
+  - If you are using _LLaMA.cpp_ with models that were **not** downloaded with
+    that instance of _LLaMA.cpp_, add `LLAMACPP_MODELS_DIR` with said models path
     to your _.env_ file.
 
 - **LLAMACPP_SERVER_ARGS environment variable**
-  - Add _LLAMACPP_SERVER_ARGS_ with additional Llama.cpp server process start arguments
+  - Add _LLAMACPP_SERVER_ARGS_ with additional LLaMA.cpp server process start arguments
     to your _.env_ file.
 
 ## Upgrading
@@ -866,8 +1035,10 @@ as if performing a new installation - i.e. no previous installation exists.
 | `install` | New install - proceed as if performing a new installation |
 
 > [!CAUTION]
-> Named and anonymous data volumes will be deleted. Be sure to backup your data
-> to avoid data loss if your intent is to _update_ an existing installation.
+> Installation updates can impact the AI-Suite integrity. Consider backing 
+> up your volumes to enable rollback. Performing an _install_ will prune both
+> named and anonymous volumes. Volumes are not disturbed when performing
+> an _update_.
 <!-- -->
 > [!NOTE]
 > The `suite_services.py` _update_ operation argument will stop, pull the image
@@ -879,7 +1050,7 @@ as if performing a new installation - i.e. no previous installation exists.
 > containers (n8n, Open WebUI, OpenCode etc.) will be _started_. Docker Ollama
 > containers will not be started unless they are explicitly specified as a
 > profile argument.
-
+ 
 Example command to full update:
 
 ```powershell
