@@ -15,9 +15,9 @@ so they appear grouped together in Docker Desktop.
 
 This script is also used for operation commands that start, stop, stop-llama,
 pause, unpause, update and install the AI-Suite services using the optional
---operation argument. A llama (Ollama/Llama.cpp) check is performed when it is
+--operation argument. A llama (Ollama/LLaMA.cpp) check is performed when it is
 assumed llama is running from the Docker Host. If llama is determined to be installed
-but not running, an attempt to launch the Ollama/Llama.cpp service is executed
+but not running, an attempt to launch the Ollama/LLaMA.cpp service is executed
 on install, start and unpause. The check will also attempt to stop the llama service
 (in addition to stopping the AI-Suite services) when the stop-llama operational
 command is specified.
@@ -268,7 +268,7 @@ def run_command(cmd, cwd=None):
         log.error(f"Exception: {e}.")
 
 def launch_llama_process(args, llama_log):
-    """Launch Ollama/Llama.cpp server on the host"""
+    """Launch Ollama/LLaMA.cpp server on the host"""
     log_file = "".join(['>', llama_log, ' 2>&1'])
     if system == "Windows":
         win = "".join(['/c,"', llama_exe])
@@ -380,7 +380,7 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
     return model_name
 
 def check_llama_process(operation=None, env_vars={}):
-    """Check for Ollama/Llama.cpp (on host) and attempt to launch if not running."""
+    """Check for Ollama/LLaMA.cpp (on host) and attempt to launch if not running."""
     if not attempted_launch:
         log.info(f"Checking for {llama} process on host...")
     llama_running = False
@@ -1271,10 +1271,10 @@ def display_service_endpoints(profile, supabase, env_vars):
         'cpu'              : [('Ollama',                url + ':11434/')],
         'gpu-nvidia'       : [('Ollama',                url + ':11434/')],
         'gpu-amd'          : [('Ollama',                url + ':11434/')],
-        'llama.cpp'        : [('Llama.cpp' ,            url + ':8040')],
-        'cpp-cpu'          : [('Llama.cpp' ,            url + ':8040')],
-        'cpp-gpu-nvidia'   : [('Llama.cpp' ,            url + ':8040')],
-        'cpp-gpu-amd'      : [('Llama.cpp' ,            url + ':8040')]
+        'llama.cpp'        : [('LLaMA.cpp' ,            url + ':8040')],
+        'cpp-cpu'          : [('LLaMA.cpp' ,            url + ':8040')],
+        'cpp-gpu-nvidia'   : [('LLaMA.cpp' ,            url + ':8040')],
+        'cpp-gpu-amd'      : [('LLaMA.cpp' ,            url + ':8040')]
     }
     # This dictionary holds a list of container names enabled for said module
     ai_suite_containers = {
@@ -1435,7 +1435,7 @@ def main():
     name = INFO.get('name', 'placeholder')
     file = INFO.get('file', 'placeholder.py')
 
-    # Detect operational status and current llama (Ollama/Llama.cpp) configuration
+    # Detect operational status and current llama (Ollama/LLaMA.cpp) configuration
     global llama, llama_cpp
     status = None
     llama_cpp = False
@@ -1449,7 +1449,7 @@ def main():
     elif os.path.exists(env_file):
         lpv = dotenv.get_key(env_file, 'LLAMA_PATH')
         llama_cpp = lpv and os.path.basename(lpv).lower().startswith('llama-server')
-    llama = "Llama.cpp" if llama_cpp else "Ollama"
+    llama = "LLaMA.cpp" if llama_cpp else "Ollama"
 
     # Profile, environment and operation arguments
     global open_webui_all_profiles
@@ -1508,7 +1508,7 @@ def main():
 
               - LLM modules:
                 cpu gpu-nvidia gpu-amd                      Ollama CPU/GPU options running in Docker
-                cpp-cpu cpp-gpu-nvidia cpp-gpu-amd          Llama.cpp CPU/GPU options rinning in Docker
+                cpp-cpu cpp-gpu-nvidia cpp-gpu-amd          LLaMA.cpp CPU/GPU options rinning in Docker
                 ollama llama.cpp                            llama options running on the {name} Host
 
             environment arguments:
@@ -1542,7 +1542,7 @@ def main():
               ...with Ollama CPU running in Docker:
               python {file} --profile n8n opencode cpu
 
-              ...with Llama.cpp AMD GPU in Docker and on production environment:
+              ...with LLaMA.cpp AMD GPU in Docker and on production environment:
               python {file} --profile n8n opencode cpp-gpu-amd --environment public
 
             - Perform (stop, start, pause, unpause) operation...
@@ -1562,7 +1562,7 @@ def main():
               ...to install all modules and start using Ollama running on the Host:
               python {file} --operation install
 
-              ...to install all modules and start using Llama.cpp Nvidia GPU running in Docker:
+              ...to install all modules and start using LLaMA.cpp Nvidia GPU running in Docker:
               python {file} --profile ai-all cpp-gpu-nvidia --operation install
 
             '''),
@@ -1642,7 +1642,7 @@ def main():
     default_profile = False if args.profile else True
     args.profile = [] if default_profile else args.profile
 
-    # Process llama (Ollama/Llama.cpp) status checks
+    # Process llama (Ollama/LLaMA.cpp) status checks
     llama_arg = "cpu"
     conflicting_profile_arguments = []
     global llama_on_host
@@ -1655,7 +1655,7 @@ def main():
         llama_found = False
         llama_path = normalize_path(env_vars.get('LLAMA_PATH'))
         llama_cpp = any(p for p in args.profile if p == 'llama.cpp')
-        llama = "Llama.cpp" if llama_cpp else "Ollama"
+        llama = "LLaMA.cpp" if llama_cpp else "Ollama"
         if llama_path:
             llama_exe = os.path.normpath(llama_path)
             llama_app = os.path.basename(llama_exe)
@@ -1681,7 +1681,7 @@ def main():
         if (llama_cpp and not llama_app.lower().startswith('llama-server')) or \
            (not llama_cpp and not llama_app.lower().startswith('ollama')):
             llama_cpp = llama_app.lower().startswith('llama-server')
-            llama = "Llama.cpp" if llama_cpp else "Ollama"
+            llama = "LLaMA.cpp" if llama_cpp else "Ollama"
             llama_mismatch = "ollama" if llama_cpp else "llama.cpp"
             log.warning(f"The executable '{llama_app}' did not match the '{llama}' "
                         f"profile argument - argument updated to '{llama.lower()}'...")
@@ -1711,7 +1711,7 @@ def main():
         check_llama_process(args.operation, env_vars)
     else:
         llama_cpp = any(p for p in args.profile if p in llamacpp_docker_profiles)
-        llama = "Llama.cpp" if llama_cpp else "Ollama"
+        llama = "LLaMA.cpp" if llama_cpp else "Ollama"
         llama_host_var = "0.0.0.0" if llama_cpp else "ollama:${OLLAMA_PORT}"
         mod_env_vars.update({llama_host_env: llama_host_var, 'LLAMA_PATH': None})
         # Check if more than one llama CPU/GPU argument specified, use first argument
