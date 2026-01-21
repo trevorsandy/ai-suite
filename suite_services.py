@@ -667,7 +667,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
                      extra=log_bright)
             wait_with_progress(2)
         start_ai_suite(profile, environment, False)
-        display_service_endpoints(profile, supabase, env_vars)
+        display_services_endpoint(profile, supabase, env_vars)
         return
 
     if operation == 'stop':
@@ -1223,7 +1223,7 @@ def wait_with_progress(seconds: int, level=logging.INFO, color=None, width=60):
         time.sleep(0.05) # smooth updates (~20 FPS)
     print() # move to next line when done
 
-def display_service_endpoints(profile, supabase, env_vars):
+def display_services_endpoint(profile, supabase, env_vars):
     """Display AI-Suite installation or operationstatus"""
     url = 'http://localhost'
     # This dictionary holds a list of module end point (Module name, End point) touples
@@ -1422,7 +1422,7 @@ def display_service_endpoints(profile, supabase, env_vars):
             apoint_prefix, access_point)
         endpoint_style = {'prefix': endpoint_prefix, 'suffix': LSHF.suffix()}
         endpoint_style.update({'purge_msg':'True'})
-        raw_msg = ("• {:23s}{} {}").format( module_name + ":", emoji, access_point)
+        raw_msg = ("• {:23s}{} {}").format(module_name + ":", emoji, access_point)
         log.info(raw_msg, extra=endpoint_style)
     if not started_ok:
         log.info("")
@@ -1914,7 +1914,7 @@ def main():
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, build)
-    display_service_endpoints(args.profile, supabase, env_vars)
+    display_services_endpoint(args.profile, supabase, env_vars)
 
     with open('.operation', 'w') as f:
         f.write('start' + ':' + llama.lower())
