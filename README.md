@@ -1,12 +1,13 @@
 # AI-Suite
 
-**AI-Suite** is intended to be an **end-to-end path from zero to working AI workflows**
-for developers and those who want to enabe a local, private AI solution.
+**AI-Suite** is intended to provide an **end-to-end path from zero to working
+AI workflows** for developers and those who want to enable a local, private
+**AI solution**.
 
-It provides an open, curated, pre-configured Docker Compose configuration file
-that bootstraps fully featured Local AI Agents and a Low/No Code environment on
-a self-hosted n8n platform, enabling users to focus on building solutions that
-employ robust AI workflows.
+It provides an open, curated, pre-configured **Docker Compose** configuration
+file that bootstraps fully featured Local AI Agents and a Low/No Code environment
+on a self-hosted **n8n** platform, enabling users to focus on building solutions
+that employ robust AI workflows.
 
 Portions of AI-Suite extends [Cole Medin's](https://github.com/coleam00)
 [Self-hosted AI Package](https://github.com/coleam00/local-ai-packaged)
@@ -73,8 +74,8 @@ system that can generate analytical data reports in real-time.
 
 System specifications:
 
-- 32GB RAM recommended (8GB minimum)
-- 20GB free disk space
+- **32GB** RAM recommended (8GB minimum)
+- **20GB** free disk space
 
 Before you begin, make sure you have the following software installed:
 
@@ -146,7 +147,7 @@ Also consider the following optional software:
 
 3. Set the following required `.env` environment variables:
 
-  - <details>
+    <details>
     <summary>Credential environment variables</summary>
 
     If you will install **Supabase**, setup the Supabase environment variables
@@ -262,7 +263,7 @@ Also consider the following optional software:
    _Ollama_ or _LLaMA.cpp_ (depending on which LLM you are using) configuration
    settings.
 
-  - <details>
+    <details>
     <summary>Ollama .env configuration</summary>
 
     ```ini
@@ -305,7 +306,7 @@ Also consider the following optional software:
 
     </details>
 
-  - <details>
+    <details>
     <summary>LLaMA.cpp .env configuration</summary>
 
     ```ini
@@ -459,8 +460,8 @@ python suite_services.py --profile n8n opencode llama.cpp
 
 #### The _operation_ command argument
 
-This script is also used for operation commands that _start_, _stop_, _stop-llama_,
-_pause_, _unpause_, _update_ and _install_ the AI-Suite services using the optional
+There are also operation commands that _start_, _stop_, _stop-llama_, _pause_,
+_unpause_, _update_ and _install_ the AI-Suite services using the optional
 `--operation` argument. A **LLAMA** (_Ollama_/_LLaMA.cpp_) check is performed when
 it is assumed LLAMA is running from the Host. If **LLAMA** is determined to be
 installed but not running, an attempt to launch the Ollama/LLaMA.cpp service
@@ -515,7 +516,7 @@ python suite_services.py --profile gpu-amd n8n opencode
 python suite_services.py --profile cpp-gpu-amd n8n opencode
 ```
 
-#### For LLAMA on Mac /Apple Silicon or OLLAMA running in the Host
+#### For LLAMA on Mac running Apple Silicon users
 
 If you're using a Mac with an M1 or newer processor, you cannot expose your GPU
 to the Docker instance, unfortunately. There are two options in this case:
@@ -540,20 +541,21 @@ to the Docker instance, unfortunately. There are two options in this case:
    ```
 
    If you want to run LLAMA on your Mac, check the [Ollama homepage](https://ollama.com/)
+   or [LLaMA.cpp install](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)
    for installation instructions.
 
-#### For users running LLAMA on the Host
+#### For LLAMA running on the Host users
 
 If you're running LLAMA on your Host (not in Docker), the `suite_services.py`
 script will automatically set your `OLLAMA_HOST`/`LLAMA_ARG_HOST` environment
-variable in the .env file. Using interpolation, these settings will also be set
+variable in the `.env` file. Using interpolation, these settings will also be set
 for the n8n service configuration.
 
-You can manually configure the Ollama settings and update the x-n8n section in
-your .env file:
+To manually configure the **Ollama** settings and update the x-n8n section in
+your `.env` file:
 
 <details>
-<summary>Manual Ollama `.env` Host configuration</summary>
+<summary>Manual Ollama .env Host configuration</summary>
 
 ```ini
 OLLAMA_HOST=host.docker.internal:11434
@@ -581,10 +583,10 @@ x-n8n: &service-n8n
 The `suite_services.py` script will similiarly set the `OPENAI_API_BASE_URL`
 environment variable to use the _HOST_ and _PORT_ of the selected LLAMA LLM
 (_Ollama_/_LLaMA.cpp_). This option will enable n8n backend connections to
-LLaMA.cpp.
+**LLaMA.cpp**.
 
 <details>
-<summary>Manual LLaMA.cpp `.env` Host configuration</summary>
+<summary>Manual LLaMA.cpp .env Host configuration</summary>
 
 ```ini
 LLAMA_ARG_PORT=8040
@@ -616,6 +618,9 @@ python suite_services.py --profile n8n opencode cpu
 # LLaMA.cpp
 python suite_services.py --profile n8n opencode cpp-cpu
 ```
+
+> [!NOTE]
+> Script examples beyond this point will use _Ollama_ or _LLaMA.cpp_ interchangeably.
 
 #### The _environment_ command argument
 
@@ -714,7 +719,7 @@ Before running the above commands to pull the repo and install everything:
    ```
 
 3. Set up A records for your DNS provider to point your subdomains you'll set
-   up in the .env file for Caddy to the IP address of your cloud instance.
+   up in the `.env` file for Caddy to the IP address of your cloud instance.
 
    For example, A record to point n8n to [cloud instance IP] for n8n.yourdomain.com
 
@@ -738,7 +743,7 @@ sudo ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docke
 
 ## ⚡️ Quick start and usage
 
-All components of the self-hosted AI-Suite, except if running LLAMA from your
+All components of the self-hosted **AI-Suite**, except if running LLAMA from your
 host, is installed through `suite_services.py` and managed through a Docker Compose
 file pre-configured with network and disk so there isn’t much else you need to
 install. After completing the installation steps above, follow the steps below
@@ -760,34 +765,34 @@ Use the following settings to confirm or upate n8n Credentials.
 
 - Google Drive: This credential is optional. Follow [this guide from n8n](https://docs.n8n.io/integrations/builtin/credentials/google/).
 
-<details>
-<summary>Full list of AI-Suite service end points:</summary>
+- <details>
+  <summary>Full list of AI-Suite service end points:</summary>
 
-| Service | Container | Docker | Host |
-| -----------------------: | ------: | ------: | ------: |
-| `n8n` | <http://n8n:5678> | <http://host.docker.internal:5678> | <http://localhost:5678> |
-| `Open WebUI` | <http://open-webui:8080/> | <http://host.docker.internal:8080/> | <http://localhost:8080/> |
-| `Opencode` | ./opencode/run_opencode_docker.py | | |
-| `Flowise` | <http://flowise:3001/> | <http://host.docker.internal:3001/> | <http://localhost:3001/> |
-| `Open webUI MCPO` | <http://open-webui-mcpo:8090/> | <http://host.docker.internal:8090/> | <http://localhost:8090/> |
-| `Ollama` | <http://ollama:11434/> | <http://host.docker.internal:11434/> | <http://localhost:11434/> |
-| `LLaMA.cpp` | <http://llamacpp:8040> | <http://host.docker.internal:8040> | <http://localhost:8040> |
-| `QDrant` | <http://qdrant:6333/dashboard> | <http://host.docker.internal:6333/dashboard> | <http://localhost:6333/dashboard> |
-| `Subabase` | <http://supabase-kong:8000> | <http://host.docker.internal:8000> | <http://localhost:8000> |
-| `Postgres` | <http://postgres:5432> | <http://host.docker.internal:5432/> | <http://localhost:5432/> |
-| `MCP Gateway` | <http://mcp-gateway:8060/> | <http://host.docker.internal:8090/> | <http://localhost:8060/> |
-| `Open webUI Filesystem` | <http://open-webui-filesystem:8091/docs> | <http://host.docker.internal:8091/docs> | <http://localhost:8091/docs> |
-| `Redis` | <http://redis:6379/> | <http://host.docker.internal:6379/> | <http://localhost:6379/> |
-| `MinIO` | <http://minio:9001/> | <http://host.docker.internal:9001/> | <http://localhost:9001/> |
-| `Langfuse Web` | <http://langfuse-web:3000/> | <http://host.docker.internal:3000/> | <http://localhost:3000/> |
-| `Langfuse Worker` | <http://langfuse-worker:3030/> | <http://host.docker.internal:3030/> | <http://localhost:3030/> |
-| `Logflare` | <http://supabase-analytics:4000/dashboard> | <http://host.docker.internal:4000/dashboard> | <http://localhost:4000/dashboard> |
-| `ClickHouse` | <http://clickhouse:8123/> | <http://host.docker.internal:8123/> | <http://localhost:8123/> |
-| `SearXNG` | <http://searxng:8081/> | <http://host.docker.internal:8081/> | <http://localhost:8081/> |
-| `Neo4j` | <http://neo4j:7473/> | <http://host.docker.internal:7473/> | <http://localhost:7473/> |
-| `Caddy` | <http://caddy:443/> | <http://host.docker.internal:443/> | <http://localhost:443/> |
+  | Service | Container | Docker | Host |
+  | -----------------------: | ------: | ------: | ------: |
+  | `n8n` | <http://n8n:5678> | <http://host.docker.internal:5678> | <http://localhost:5678> |
+  | `Open WebUI` | <http://open-webui:8080/> | <http://host.docker.internal:8080/> | <http://localhost:8080/> |
+  | `Opencode` | ./opencode/run_opencode_docker.py | | |
+  | `Flowise` | <http://flowise:3001/> | <http://host.docker.internal:3001/> | <http://localhost:3001/> |
+  | `Open webUI MCPO` | <http://open-webui-mcpo:8090/> | <http://host.docker.internal:8090/> | <http://localhost:8090/> |
+  | `Ollama` | <http://ollama:11434/> | <http://host.docker.internal:11434/> | <http://localhost:11434/> |
+  | `LLaMA.cpp` | <http://llamacpp:8040> | <http://host.docker.internal:8040> | <http://localhost:8040> |
+  | `QDrant` | <http://qdrant:6333/dashboard> | <http://host.docker.internal:6333/dashboard> | <http://localhost:6333/dashboard> |
+  | `Subabase` | <http://supabase-kong:8000> | <http://host.docker.internal:8000> | <http://localhost:8000> |
+  | `Postgres` | <http://postgres:5432> | <http://host.docker.internal:5432/> | <http://localhost:5432/> |
+  | `MCP Gateway` | <http://mcp-gateway:8060/> | <http://host.docker.internal:8090/> | <http://localhost:8060/> |
+  | `Open webUI Filesystem` | <http://open-webui-filesystem:8091/docs> | <http://host.docker.internal:8091/docs> | <http://localhost:8091/docs> |
+  | `Redis` | <http://redis:6379/> | <http://host.docker.internal:6379/> | <http://localhost:6379/> |
+  | `MinIO` | <http://minio:9001/> | <http://host.docker.internal:9001/> | <http://localhost:9001/> |
+  | `Langfuse Web` | <http://langfuse-web:3000/> | <http://host.docker.internal:3000/> | <http://localhost:3000/> |
+  | `Langfuse Worker` | <http://langfuse-worker:3030/> | <http://host.docker.internal:3030/> | <http://localhost:3030/> |
+  | `Logflare` | <http://supabase-analytics:4000/dashboard> | <http://host.docker.internal:4000/dashboard> | <http://localhost:4000/dashboard> |
+  | `ClickHouse` | <http://clickhouse:8123/> | <http://host.docker.internal:8123/> | <http://localhost:8123/> |
+  | `SearXNG` | <http://searxng:8081/> | <http://host.docker.internal:8081/> | <http://localhost:8081/> |
+  | `Neo4j` | <http://neo4j:7473/> | <http://host.docker.internal:7473/> | <http://localhost:7473/> |
+  | `Caddy` | <http://caddy:443/> | <http://host.docker.internal:443/> | <http://localhost:443/> |
 
-</details>
+  </details>
 
 > [!IMPORTANT]
 > For **Supabase**, _POSTGRES_HOST_ is 'db' since that is the name of the
@@ -874,15 +879,15 @@ To open **OpenCode** run `./opencode/run_opencode_docker.py` from a new terminal
 
 ## Additional Configuration
 
-With n8n, you have access to over 400 integrations and a suite of basic and
-advanced AI nodes such as:
+With **n8n**, you have access to over **400** integrations and a suite of basic
+and advanced AI nodes such as:
 [AI Agent](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.agent/),
 [Text classifier](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.text-classifier/),
 and [Information Extractor](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.information-extractor/)
 nodes.
 
-To keep everything local, use the Ollama/LLaMA.cpp node for your language model
-and Qdrant as your vector store.
+To keep everything local, use the **Ollama**/**LLaMA.cpp** node for your language
+model and **Qdrant** as your vector store.
 
 > [!NOTE]
 > AI-Suite is designed to help you get started with self-hosted AI
@@ -1099,7 +1104,7 @@ modules described above:
 
 > [!NOTE]
 > It is recommended that your working project directory be within and relative to
-> the path set for `PROJECTS_PATH` in the AI-Suite .env file - see
+> the path set for `PROJECTS_PATH` in the AI-Suite `.env` file - see
 > **PROJECTS_PATH environment variable** section described above.
 >
 > **Important**: The format of the `PROJECT_PATH` entry must be the portion of
@@ -1123,23 +1128,23 @@ modules described above:
 - **OLLAMA_SERVER_ARGS environment variable**
 
   - Add _OLLAMA_SERVER_ARGS_ with additional Ollama server process start arguments
-    to your _.env_ file.
+    to your `.env` file.
 
 - **LLAMACPP_MODELS_DIR environment variable**
 
   - If you are using _LLaMA.cpp_ with models that were **not** downloaded with
     that instance of _LLaMA.cpp_, add `LLAMACPP_MODELS_DIR` with said models path
-    to your _.env_ file.
+    to your `.env` file.
 
 - **LLAMACPP_SERVER_ARGS environment variable**
   - Add _LLAMACPP_SERVER_ARGS_ with additional LLaMA.cpp server process start arguments
-    to your _.env_ file.
+    to your `.env` file.
 
 ## Upgrading
 
-To update AI-Suite images to their latest versions (n8n, Open WebUI, etc.), run
-the _update_ operation command argument optionally preceded by the specified profile
-arguments (functional modules).
+To update **AI-Suite** images to their latest versions (n8n, Open WebUI, etc.),
+run the _update_ operation command argument optionally preceded by the specified
+profile arguments (functional modules).
 Alternatively, you run the install_ operation argument to perform an update without
 the confirmation prompt. Using _install_, AI-Suite will assume you are proceeding
 as if performing a new installation - i.e. no previous installation exists.
@@ -1158,15 +1163,15 @@ as if performing a new installation - i.e. no previous installation exists.
 > an _update_.
 <!-- -->
 > [!NOTE]
-> The `suite_services.py` _update_ operation argument will stop, pull the image
-> and restart containers for the specified `--profile` arguments. However, to
-> update the entire suite, simply omit the profile arguments.
+> The `suite_services.py` _update_ operation argument will stop, pull the
+> image and restart containers for the specified `--profile` arguments.
+> However, to update the entire suite, simply omit the profile arguments.
 >
 > If no profile arguments are specified, container images for all functional
-> modules plus Docker Ollama will be _pulled_ but only functional module
-> containers (n8n, Open WebUI, OpenCode etc.) will be _started_. Docker Ollama
-> containers will not be started unless they are explicitly specified as a
-> profile argument.
+> modules plus Docker LLAMA (_Ollama_/_LLaMA.cpp_) will be _pulled_ but only
+> functional module containers (n8n, Open WebUI, OpenCode etc.) will be
+> _started_. Docker LLAMA containers will not be started unless they are
+> explicitly specified as a profile argument.
 
 Example command to full update:
 
@@ -1391,7 +1396,7 @@ Here are solutions to common issues you might encounter:
   permissions it needs to create the uwsgi.ini file.
 
 - **Files not Found in Supabase Folder** - If you get any errors around files
-  missing in the supabase/ folder like .env, docker/docker-compose.yml, etc. This
+  missing in the supabase/ folder like `.env`, docker/docker-compose.yml, etc. This
   most likely means you had a "bad" pull of the Supabase GitHub repository when
   you ran the suite_services.py script. Delete the supabase/ folder within the
   Local AI Package folder entirely and try again.
@@ -1427,6 +1432,6 @@ Useful content for deeper understanding AI concepts.
 
 ## 📜 License
 
-This project (originally curated by the n8n team, then Cole Medin, links at the
-top of the README) is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE)
-file for details.
+This project (portions of which were adapted from content produced by the n8n
+team, then Cole Medin, links at the top of the README) is licensed under the
+Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
