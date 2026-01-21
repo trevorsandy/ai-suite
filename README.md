@@ -146,7 +146,7 @@ Also consider the following optional software:
 
 3. Set the following required `.env` environment variables:
 
-   - <details>
+  - <details>
     <summary>Credential environment variables</summary>
 
     If you will install **Supabase**, setup the Supabase environment variables
@@ -262,7 +262,7 @@ Also consider the following optional software:
    _Ollama_ or _LLaMA.cpp_ (depending on which LLM you are using) configuration
    settings.
 
-   - <details>
+  - <details>
     <summary>Ollama .env configuration</summary>
 
     ```ini
@@ -305,7 +305,7 @@ Also consider the following optional software:
 
     </details>
 
-   - <details>
+  - <details>
     <summary>LLaMA.cpp .env configuration</summary>
 
     ```ini
