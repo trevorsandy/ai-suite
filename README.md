@@ -74,7 +74,7 @@ system that can generate analytical data reports in real-time.
 Before you begin, make sure you have the following software installed:
 
 - [Git](https://git-scm.com/install/) - For easy repository management.
-- [Python](https://www.python.org/downloads/) - To run the setup script.
+- [Python 3.10+](https://www.python.org/downloads/) - To run the setup script.
 
    <details>
    <summary>Import modules</summary>
@@ -117,12 +117,14 @@ Before you begin, make sure you have the following software installed:
 
    </details>
 
-Depending on your skill level, also consider the following optional tools:
+Also consider the following optional software:
 
 - [VSCode](https://code.visualstudio.com/download) - Python development.
 - [GitKraken](https://www.gitkraken.com/download-b) - Superior Git SCM platform
 
 ## Installation
+
+### Step 1: Clone the repository and set environment variables
 
 1. Clone the repository and navigate to the project directory:
 
@@ -137,128 +139,131 @@ Depending on your skill level, also consider the following optional tools:
    cp .env.example .env # update secrets and passwords inside
    ```
 
-3. Set the following required environment variables:
+3. Set the following required `.env` environment variables:
 
-   <details>
-   <summary>Credential environment variables</summary>
+   - <details>
+    <summary>Credential environment variables</summary>
 
-   If you intend to install Supabase, setup the Supabase environment variables
-   using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
+    If you will install **Supabase**, setup the Supabase environment variables
+    using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
 
-   ```ini
-   ############
-   # Generating Credentials
-   # OpenSSL: Available by default on Linux/Mac via command `openssl rand -hex 32`
-   #   For Windows, use 'WSL2', 'Git Bash' terminal installed with git or from cmd
-   #   run the command: python -c "import secrets; print(secrets.token_hex(32))"
-   #
-   # Password: Use Python command to generate 16-character strong password:
-   #   python3 -c "import secrets;import string; alphabet = string.ascii_letters + string.   digits;\
-   #               password = ''.join(secrets.choice(alphabet) for i in range(16));\
-   #               print(password)"
-   #
-   # JWT Tokens: Use https://jwtsecrets.com/#generator to generate keys and tokens
-   #   ranging from 8 to 128 characters long.
-   ############
+    ```ini
+    ############
+    # Generating Credentials
+    # OpenSSL: Available by default on Linux/Mac via command 'openssl rand -hex 32'
+    #   For Windows, use 'WSL2', 'Git Bash' terminal installed with git or from cmd
+    #   run the command: python -c "import secrets; print(secrets.token_hex(32))"
+    #
+    # Password: Use Python command to generate 16-character strong password:
+    #   python3 -c "import secrets;import string; alphabet = string.ascii_letters + string.   digits;\
+    #               password = ''.join(secrets.choice(alphabet) for i in range(16));\
+    #               print(password)"
+    #
+    # JWT Tokens: Use https://jwtsecrets.com/#generator to generate keys and tokens
+    #   ranging from 8 to 128 characters long.
+    ############
 
-   ############
-   # [required]
-   # n8n credentials - use OpenSSL for both
-   ############
+    ############
+    # [required]
+    # n8n credentials - use OpenSSL for both
+    ############
 
-   # Master key used to encrypt sensitive credentials that n8n stores
-   N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key
-   # Shared secret between n8n containers and runners sidecars
-   N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key
-   # Specific JWT secret. By default, n8n generates one on start
-   N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret
+    # Master key used to encrypt sensitive credentials that n8n stores
+    N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key
+    # Shared secret between n8n containers and runners sidecars
+    N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key
+    # Specific JWT secret. By default, n8n generates one on start
+    N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret
 
-   ############
-   # [required]
-   # Supabase Secrets
-   ############
+    ############
+    # [required]
+    # Supabase Secrets
+    ############
 
-   JWT_SECRET=your-super-secret-jwt-token-at-least-40-characters-long
-   ANON_KEY=your-super-secret-jwt-key-see-https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
-   SERVICE_ROLE_KEY=your-super-secret-jwt-key-see-https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
-   DASHBOARD_USERNAME=supabase
-   DASHBOARD_PASSWORD=your-super-secret-password
-   POOLER_TENANT_ID=your-tenant-id
+    JWT_SECRET=your-super-secret-jwt-token-at-least-40-characters-long
+    ANON_KEY=your-super-secret-jwt-key-see-https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
+    SERVICE_ROLE_KEY=your-super-secret-jwt-key-see-https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
+    DASHBOARD_USERNAME=supabase
+    DASHBOARD_PASSWORD=your-super-secret-password
+    POOLER_TENANT_ID=your-tenant-id
 
-   ############
-   # [required]
-   # PostgreSQL database user password
-   ############
+    ############
+    # [required]
+    # PostgreSQL database user password
+    ############
 
-   POSTGRES_PASSWORD=your-super-secret-postgres-password
+    POSTGRES_PASSWORD=your-super-secret-postgres-password
 
-   ############
-   # [required]
-   # Flowise - authentication configuration
-   ############
+    ############
+    # [required]
+    # Flowise - authentication configuration
+    ############
 
-   FLOWISE_PASSWORD=your-super-secret-flowise-password
+    FLOWISE_PASSWORD=your-super-secret-flowise-password
 
-   ############
-   # [required]
-   # Neo4j - username and password combination
-   ############
+    ############
+    # [required]
+    # Neo4j - username and password combination
+    ############
 
-   NEO4J_AUTH=neo4j-user/your-super-secret-password
+    NEO4J_AUTH=neo4j-user/your-super-secret-password
 
-   ############
-   # [required]
-   # Langfuse credentials
-   ############
+    ############
+    # [required]
+    # Langfuse credentials
+    ############
 
-   CLICKHOUSE_PASSWORD=your-super-secret-password-1
-   MINIO_ROOT_PASSWORD=your-super-secret-password-2
-   LANGFUSE_SALT=your-super-secret-key-1   # use OpenSSL
-   NEXTAUTH_SECRET=your-super-secret-key-2 # use OpenSSL
-   ENCRYPTION_KEY=your-super-secret-key-3  # use OpenSSL
+    CLICKHOUSE_PASSWORD=your-super-secret-password-1
+    MINIO_ROOT_PASSWORD=your-super-secret-password-2
+    LANGFUSE_SALT=your-super-secret-key-1   # use OpenSSL
+    NEXTAUTH_SECRET=your-super-secret-key-2 # use OpenSSL
+    ENCRYPTION_KEY=your-super-secret-key-3  # use OpenSSL
 
-   ############
-   # [required for production]
-   # Caddy Config
-   ############
+    ############
+    # [required for production]
+    # Caddy Config
+    ############
 
-   # N8N_HOSTNAME=n8n.yourdomain.com
-   # WEBUI_HOSTNAME=openwebui.yourdomain.com
-   # FLOWISE_HOSTNAME=flowise.yourdomain.com
-   # SUPABASE_HOSTNAME=supabase.yourdomain.com
-   # LANGFUSE_HOSTNAME=langfuse.yourdomain.com
-   # OLLAMA_HOSTNAME=ollama.yourdomain.com
-   # LLAMACPP_HOSTNAME=llama.cpp.yourdomain.com
-   # SEARXNG_HOSTNAME=searxng.yourdomain.com
-   # NEO4J_HOSTNAME=neo4j.yourdomain.com
-   # LETSENCRYPT_EMAIL=internal
+    # N8N_HOSTNAME=n8n.yourdomain.com
+    # WEBUI_HOSTNAME=openwebui.yourdomain.com
+    # FLOWISE_HOSTNAME=flowise.yourdomain.com
+    # SUPABASE_HOSTNAME=supabase.yourdomain.com
+    # LANGFUSE_HOSTNAME=langfuse.yourdomain.com
+    # OLLAMA_HOSTNAME=ollama.yourdomain.com
+    # LLAMACPP_HOSTNAME=llama.cpp.yourdomain.com
+    # SEARXNG_HOSTNAME=searxng.yourdomain.com
+    # NEO4J_HOSTNAME=neo4j.yourdomain.com
+    # LETSENCRYPT_EMAIL=internal
 
-   ...
+    ...
 
-   ############
-   # Logs - Configuration for Analytics
-   # Please refer to https://supabase.com/docs/reference/self-hosting-analytics/introduction
-   ############
+    ############
+    # Logs - Configuration for Analytics
+    # Please refer to https://supabase.com/docs/reference/self-hosting-analytics/introduction
+    ############
 
-   # Change vector.toml sinks to reflect this change
-   # these cannot be the same value
-   LOGFLARE_PUBLIC_ACCESS_TOKEN=your-super-secret-and-long-logflare-key-public
-   LOGFLARE_PRIVATE_ACCESS_TOKEN=your-super-secret-and-long-logflare-key-private
+    # Change vector.toml sinks to reflect this change
+    # these cannot be the same value
+    LOGFLARE_PUBLIC_ACCESS_TOKEN=your-super-secret-and-long-logflare-key-public
+    LOGFLARE_PRIVATE_ACCESS_TOKEN=your-super-secret-and-long-logflare-key-private
 
-   ...
-   ```
+    ...
+    ```
 
    </details>
 
-4. Review and update the other environment variables taking into account your
-   installation platform specifications. Particularly pay attention to the _Ollama_
-   or _LLaMA.cpp_ (depending on which LLM you are using) configuration settings.
+4. Review and update the other `.env` environment variables taking into account
+   your installation platform specifications. Particularly pay attention to the
+   _Ollama_ or _LLaMA.cpp_ (depending on which LLM you are using) configuration
+   settings.
 
 > [!IMPORTANT]
 > Make sure to generate secure random values for all secrets. Never use the
 > example values in production.
 
 ---
+
+### Step 2: Run the setup script
 
 **AI-Suite** uses the `suite_services.py` script for the _installation_ command
 that handles the AI-Suite functional module selection, **LLAMA** (_Ollama_/_LLaMA.cpp_)
@@ -274,14 +279,14 @@ or pausing the running suite stack and updating its container images.
 
 ---
 
-### The _profile_ command arguments
+#### The _profile_ command arguments
 
 Both installation and operation commands utilize the optional `--profile`
 arguments to specify which AI-Suite functional modules and which **LLAMA** CPU/GPU
 configuration to use. When no functional profile argument is specified, the
 default functional module `open-webui` is used, Likewise, if no CPU/GPU configuration
-profile is specified, it is assumed LLAMA is being run from the Docker Host.
-**Multiple profile arguments (functional modules) are supported**.
+profile argument is specified, it is assumed LLAMA is being run from the **Host**.
+**Multiple profile arguments for functional modules are supported**.
 
 `suite_services.py` `--profile` functional module arguments
 
@@ -322,17 +327,17 @@ python suite_services.py --profile n8n opencode gpu-nvidia
 python suite_services.py --profile n8n opencode cpp-gpu-nvidia
 ```
 
-`suite_services.py` `--profile` LLAMA running on host argument:
+`suite_services.py` `--profile` LLAMA running on Host argument:
 
 | Argument | LLAMA CPU/GPU |
 | -----------------------: | ------: |
-| `ollama` | Ollama - run on host (Default) |
-| `llama.cpp` | LLaMA.cpp - run on host |
+| `ollama` | Ollama - run on Host (Default) |
+| `llama.cpp` | LLaMA.cpp - run on Host |
 
 Example command:
 
 ```powershell
-# Ollama - As the default LLAMA option, the argument is optional
+# Ollama - As the default LLAMA option, the argument is not required
 python suite_services.py --profile n8n opencode
 # LLaMA.cpp
 python suite_services.py --profile n8n opencode llama.cpp
@@ -340,16 +345,16 @@ python suite_services.py --profile n8n opencode llama.cpp
 
 ---
 
-### The _operation_ command argument
+#### The _operation_ command argument
 
 This script is also used for operation commands that _start_, _stop_, _stop-llama_,
 _pause_, _unpause_, _update_ and _install_ the AI-Suite services using the optional
 `--operation` argument. A **LLAMA** (_Ollama_/_LLaMA.cpp_) check is performed when
-it is assumed LLAMA is running from the Docker Host. If **LLAMA** is determined
-to be installed but not running, an attempt to launch the Ollama/LLaMA.cpp service
+it is assumed LLAMA is running from the Host. If **LLAMA** is determined to be
+installed but not running, an attempt to launch the Ollama/LLaMA.cpp service
 is executed on _install_, _start_ and _unpause_. The check will also attempt to
 _stop_ the running LLAMA service (in addition to stopping the AI-Suite services)
-when the _stop-llama_ operational command is specified.
+when the _stop-llama_ operational command argument is specified.
 
 `suite_services.py` ... `--operation` argument:
 
@@ -372,10 +377,10 @@ python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 
 ---
 
-If you intend to install Supabase, before running `suite_services.py`, setup the
-Supabase environment variables using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
+If you intend to install **Supabase**, before running `suite_services.py`, setup
+the Supabase environment variables using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
 
-### For Docker LLAMA with Nvidia GPU users
+#### For Docker LLAMA with Nvidia GPU users
 
 ```powershell
 # Ollama
@@ -389,7 +394,7 @@ python suite_services.py --profile cpp-gpu-nvidia n8n opencode
 > [Ollama Docker instructions](https://github.com/ollama/ollama/blob/main/docs/docker.mdx).
 > [LLaMA.cpp Docker instructions](https://github.com/ggml-org/llama.cpp/blob/master/docs/docker.md)
 
-### For Docker LLAMA with AMD GPU users
+#### For Docker LLAMA with AMD GPU users
 
 ```powershell
 # Ollama
@@ -398,9 +403,9 @@ python suite_services.py --profile gpu-amd n8n opencode
 python suite_services.py --profile cpp-gpu-amd n8n opencode
 ```
 
-### For LLAMA on Mac /Apple Silicon or OLLAMA running in the Host
+#### For LLAMA on Mac /Apple Silicon or OLLAMA running in the Host
 
-If you're using a Mac with an M1 or newer processor, you can't expose your GPU
+If you're using a Mac with an M1 or newer processor, you cannot expose your GPU
 to the Docker instance, unfortunately. There are two options in this case:
 
 1. Run ai-suite fully on CPU:
@@ -425,7 +430,7 @@ to the Docker instance, unfortunately. There are two options in this case:
    If you want to run LLAMA on your Mac, check the [Ollama homepage](https://ollama.com/)
    for installation instructions.
 
-### For users running LLAMA on the Host
+#### For users running LLAMA on the Host
 
 If you're running LLAMA on your Host (not in Docker), the `suite_services.py`
 script will automatically set your `OLLAMA_HOST`/`LLAMA_ARG_HOST` environment
@@ -436,7 +441,7 @@ You can manually configure the Ollama settings and update the x-n8n section in
 your .env file:
 
 <details>
-<summary>Manual Ollama host configuration</summary>
+<summary>Manual Ollama `.env` Host configuration</summary>
 
 ```ini
 OLLAMA_HOST=host.docker.internal:11434
@@ -444,7 +449,7 @@ OLLAMA_HOST=host.docker.internal:11434
 
 # ... other configurations ...
 
-# When running OLLAMA in the Host and Open WebUI in Docker:
+# When running Ollama in the Host and Open WebUI in Docker:
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 #OLLAMA_BASE_URL=http://localhost:11434
 ```
@@ -467,14 +472,14 @@ environment variable to use the _HOST_ and _PORT_ of the selected LLAMA LLM
 LLaMA.cpp.
 
 <details>
-<summary>Manual LLaMA.cpp host configuration</summary>
+<summary>Manual LLaMA.cpp `.env` Host configuration</summary>
 
 ```ini
 LLAMA_ARG_PORT=8040
 
-# When running LLAMA.CPP in the host:
+# When running LLaMA.cpp in the host:
 #LLAMA_ARG_HOST=host.docker.internal
-# When running LLAMA.CPP in Docker:
+# When running LLaMA.cpp in Docker:
 #LLAMA_ARG_HOST=0.0.0.0
 LLAMA_ARG_HOST='host.docker.internal'
 
@@ -484,14 +489,14 @@ LLAMACPP_HOST=${LLAMA_ARG_HOST}:${LLAMA_ARG_PORT}
 # ... other configurations ...
 
 # Conecting to LLAMA using OpenAI API connection
-# When running OLLAMA:    ${OLLAMA_HOST}
-# When running LLAMA.CPP: ${LLAMA_ARG_HOST}:${LLAMA_ARG_PORT}
+# When running Ollama:    ${OLLAMA_HOST}
+# When running LLaMA.cpp: ${LLAMA_ARG_HOST}:${LLAMA_ARG_PORT}
 OPENAI_API_BASE_URL='${LLAMACPP_HOST}'
 ```
 
 </details>
 
-### For everyone else (...using CPU)
+#### For everyone else (...using CPU)
 
 ```powershell
 # Ollama
@@ -500,7 +505,7 @@ python suite_services.py --profile n8n opencode cpu
 python suite_services.py --profile n8n opencode cpp-cpu
 ```
 
-### The _environment_ command argument
+#### The _environment_ command argument
 
 The `--environment` command allows the installation to be defined as _private_
 (default) or _public_. A public install restricts the communication ports exposed
@@ -535,11 +540,11 @@ is equal to being initialized with:
 python suite_services.py --profile gpu-nvidia
 ```
 
-### The _log_ command argument
+#### The _log_ command argument
 
 The `suite_services.py` script enables stream (console) logging and setting the
-logging level. File logging is always enabled at DEBUG and is not affected by
-this argument. The default console logging level is INFO.
+logging level. File logging is always enabled at **DEBUG** and is not affected
+by this argument. The default console logging level is **INFO**.
 
 environment argument:
 
@@ -639,7 +644,7 @@ Use the following settings to confirm or upate n8n Credentials.
 (browser)
 
 - Postgres account: use _POSTGRES_HOST_, _POSTGRES_USER_, and _POSTGRES_PASSWORD_
-  from your .env file.
+  from your `.env` file.
 
 - Google Drive: This credential is optional. Follow [this guide from n8n](https://docs.n8n.io/integrations/builtin/credentials/google/).
 
@@ -670,10 +675,10 @@ Use the following settings to confirm or upate n8n Credentials.
 | `Neo4j` | <http://neo4j:7473/> | <http://host.docker.internal:7473/> | <http://localhost:7473/> |
 | `Caddy` | <http://caddy:443/> | <http://host.docker.internal:443/> | <http://localhost:443/> |
 
-</details>  
+</details>
 
 > [!IMPORTANT]
-> For Supabase, _POSTGRES_HOST_ is 'db' since that is the name of the
+> For **Supabase**, _POSTGRES_HOST_ is 'db' since that is the name of the
 > service running Supabase.
 <!-- -->
 > [!NOTE]
@@ -764,8 +769,8 @@ advanced AI nodes such as:
 and [Information Extractor](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.information-extractor/)
 nodes.
 
-To keep everything local, use the Ollama node for your language model and Qdrant
-as your vector store.
+To keep everything local, use the Ollama/LLaMA.cpp node for your language model
+and Qdrant as your vector store.
 
 > [!NOTE]
 > AI-Suite is designed to help you get started with self-hosted AI
@@ -1035,7 +1040,7 @@ as if performing a new installation - i.e. no previous installation exists.
 | `install` | New install - proceed as if performing a new installation |
 
 > [!CAUTION]
-> Installation updates can impact the AI-Suite integrity. Consider backing 
+> Installation updates can impact the AI-Suite integrity. Consider backing
 > up your volumes to enable rollback. Performing an _install_ will prune both
 > named and anonymous volumes. Volumes are not disturbed when performing
 > an _update_.
@@ -1050,7 +1055,7 @@ as if performing a new installation - i.e. no previous installation exists.
 > containers (n8n, Open WebUI, OpenCode etc.) will be _started_. Docker Ollama
 > containers will not be started unless they are explicitly specified as a
 > profile argument.
- 
+
 Example command to full update:
 
 ```powershell
