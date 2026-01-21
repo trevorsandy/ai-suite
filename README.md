@@ -262,6 +262,113 @@ Also consider the following optional software:
    _Ollama_ or _LLaMA.cpp_ (depending on which LLM you are using) configuration
    settings.
 
+   - <details>
+    <summary>Ollama .env configuration</summary>
+
+    ```ini
+    ############
+    # Ollama - LLM
+    ############
+
+    OLLAMA_PORT=11434
+
+    # When running Ollama in the Host:
+    #OLLAMA_HOST=host.docker.internal:11434
+    # When running Ollama in Docker:
+    #OLLAMA_HOST=ollama:11434
+    OLLAMA_HOST=host.docker.internal:11434
+
+    # Tuning
+    OLLAMA_CONTEXT_LENGTH=8192
+    OLLAMA_FLASH_ATTENTION=1
+    OLLAMA_KV_CACHE_TYPE=q4_0
+    OLLAMA_MAX_LOADED_MODELS=2
+
+    # Models
+    OLLAMA_DEFAULT_MODEL=llama3.2
+    OLLAMA_SUPPLEMENT_MODEL=qwen3:8b
+    OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+
+    # Ollama server arguments - use ollama serve --help for available 'serve' arguments
+    OLLAMA_SERVER_ARGS=serve
+
+    ############
+    # LLAMA (Ollama/LLaMA.cpp) - Shared environment variables
+    ############
+
+    # Application Installation path
+    # Set for LLaMA.cpp or if using custom Ollama installation path
+    # e.g. LLAMA_PATH=~\Projects\ai-suite\llama.cpp\bin\llama-server.exe
+    # Omit '<value>' to return 'False' when queried
+    LLAMA_PATH=
+    ```
+
+    </details>
+
+   - <details>
+    <summary>LLaMA.cpp .env configuration</summary>
+
+    ```ini
+    ############
+    # LLaMA.cpp - LLM
+    ############
+
+    LLAMA_ARG_PORT=8040
+
+    # When running LLaMA.cpp in the host:
+    #LLAMA_ARG_HOST=host.docker.internal
+    # When running LLaMA.cpp in Docker:
+    #LLAMA_ARG_HOST=0.0.0.0
+    LLAMA_ARG_HOST=0.0.0.0
+
+    # Backend connect
+    LLAMACPP_HOST=${LLAMA_ARG_HOST}:${LLAMA_ARG_PORT}
+
+    # Model names - Dictionary keys for model download identifier values below.
+    # Keys, and values below include an empty slot for a user-defined model
+    LLAMACPP_MODEL_GEMMA=gemma-4b  # Default
+    LLAMACPP_MODEL_DEEPSEEK=deepseek-7b
+    LLAMACPP_MODEL_MISTRAL=mistral-7b
+    LLAMACPP_MODEL_LLAMA=llama-8b
+    LLAMACPP_MODEL_QWEN=qwen-8b
+    LLAMACPP_MODEL_USER=
+
+    # Model download identifier - Dictionary values for model keys above.
+    # Model selected by 'best match' to LLAMACPP_MODEL_NAME
+    # To specify a local model, change '-hf' to '-m' in LLAMACPP_SERVER_ARGS below
+    # and replace the respective model id value below with 'models/<model filename>'.
+    LLAMACPP_MODEL_GEMMA_ID=ggml-org/gemma-3-4b-it-GGUF
+    LLAMACPP_MODEL_DEEPSEEK_ID=mradermacher/DeepSeek-R1-Distill-Qwen-7B-Uncensored-i1-GGUF
+    LLAMACPP_MODEL_MISTRAL_ID=bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF
+    LLAMACPP_MODEL_LLAMA_ID=bartowski/allura-forge_Llama-3.3-8B-Instruct-GGUF
+    LLAMACPP_MODEL_QWEN_ID=bartowski/Qwen_Qwen3-8B-GGUF
+    LLAMACPP_MODEL_USER_ID=
+
+    # Model and paths
+    LLAMACPP_PATH=llama.cpp
+    LLAMACPP_MODEL_NAME=${LLAMACPP_MODEL_GEMMA}  # IMPORTANT: should reasonably match Dictionary model name above.
+    LLAMACPP_MODELS_DIR=${LLAMACPP_PATH}/models
+    LLAMACPP_MODEL_PATH=${LLAMACPP_MODELS_DIR}/${LLAMACPP_MODEL_NAME}
+
+    # Model management - automatically download specified model if not downloaded.
+    LLAMA_ARG_HF_REPO=${LLAMACPP_MODEL_GEMMA_ID}
+
+    # Tuning
+    LLAMA_ARG_CTX_SIZE=8192
+    LLAMA_ARG_FLASH_ATTN=1
+    LLAMA_ARG_N_GPU_LAYERS=0
+    LLAMA_ARG_THREADS=4
+    LLAMA_ARG_MODELS_MAX=4
+
+    # LLaMA.cpp server arguments - use 'llama-server --help' for available arguments
+    # To specify a local model, append '-m' or '––model'.
+    # To auto-download model (if not already downloaded) and if LLAMA_ARG_HF_REPO is
+    # not used (commented), append '-hf' or '--hf-file'.
+    LLAMACPP_SERVER_ARGS=--jinja
+    ```
+
+    </details>
+
 > [!IMPORTANT]
 > Make sure to generate secure random values for all secrets. Never use the
 > example values in production.
