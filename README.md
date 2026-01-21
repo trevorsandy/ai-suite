@@ -71,6 +71,11 @@ system that can generate analytical data reports in real-time.
 
 ## Prerequisites
 
+System specifications:
+
+- 32GB RAM recommended (8GB minimum)
+- 20GB free disk space
+
 Before you begin, make sure you have the following software installed:
 
 - [Git](https://git-scm.com/install/) - For easy repository management.
