@@ -458,38 +458,6 @@ python suite_services.py --profile n8n opencode llama.cpp
 
 ---
 
-#### The _operation_ command argument
-
-There are also operation commands that _start_, _stop_, _stop-llama_, _pause_,
-_unpause_, _update_ and _install_ the AI-Suite services using the optional
-`--operation` argument. A **LLAMA** (_Ollama_/_LLaMA.cpp_) check is performed when
-it is assumed LLAMA is running from the Host. If **LLAMA** is determined to be
-installed but not running, an attempt to launch the Ollama/LLaMA.cpp service
-is executed on _install_, _start_ and _unpause_. The check will also attempt to
-_stop_ the running LLAMA service (in addition to stopping the AI-Suite services)
-when the _stop-llama_ operational command argument is specified.
-
-`suite_services.py` ... `--operation` argument:
-
-| Argument | Operation |
-| -----------------------: | ------: |
-| `start` | Start - start the previously stopped, specified profile containers |
-| `stop` | Stop - shut down the specified profile containers |
-| `stop-llama` | Stop - perform `stop` and shut down Ollama/LLaMA.cpp on Host |
-| `pause` | Pause - pause the specified profile containers |
-| `unpause` | Unpause - unpause the previously paused profile containers |
-
-Example command:
-
-```powershell
-# Ollama
-python suite_services.py --profile n8n opencode gpu-nvidia --operation stop
-# LLaMA.cpp
-python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
-```
-
----
-
 If you intend to install **Supabase**, before running `suite_services.py`, setup
 the Supabase environment variables using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
 
@@ -622,6 +590,40 @@ python suite_services.py --profile n8n opencode cpp-cpu
 > [!NOTE]
 > Script examples beyond this point will use _Ollama_ or _LLaMA.cpp_ interchangeably.
 
+---
+
+#### The _operation_ command argument
+
+There are also operation commands that _start_, _stop_, _stop-llama_, _pause_,
+_unpause_, _update_ and _install_ the AI-Suite services using the optional
+`--operation` argument. A **LLAMA** (_Ollama_/_LLaMA.cpp_) check is performed when
+it is assumed LLAMA is running from the Host. If **LLAMA** is determined to be
+installed but not running, an attempt to launch the Ollama/LLaMA.cpp service
+is executed on _install_, _start_ and _unpause_. The check will also attempt to
+_stop_ the running LLAMA service (in addition to stopping the AI-Suite services)
+when the _stop-llama_ operational command argument is specified.
+
+`suite_services.py` ... `--operation` argument:
+
+| Argument | Operation |
+| -----------------------: | ------: |
+| `start` | Start - start the previously stopped, specified profile containers |
+| `stop` | Stop - shut down the specified profile containers |
+| `stop-llama` | Stop - perform `stop` and shut down Ollama/LLaMA.cpp on Host |
+| `pause` | Pause - pause the specified profile containers |
+| `unpause` | Unpause - unpause the previously paused profile containers |
+
+Example command:
+
+```powershell
+# Ollama
+python suite_services.py --profile n8n opencode gpu-nvidia --operation stop
+# LLaMA.cpp
+python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
+```
+
+---
+
 #### The _environment_ command argument
 
 The `--environment` command allows the installation to be defined as _private_
@@ -686,7 +688,7 @@ python suite_services.py --profile n8n opencode cpp-cpu --operation update --log
 
 ## Deploying to the Cloud
 
-### Prerequisites for the below steps
+### Prerequisite
 
 - Linux machine (preferably Unbuntu) with Nano, Git, and Docker installed
 
@@ -749,7 +751,7 @@ file pre-configured with network and disk so there isn’t much else you need to
 install. After completing the installation steps above, follow the steps below
 to get started. First, start with **n8n**.
 
-Use the following settings to confirm or upate n8n Credentials.
+Use the following settings to confirm or upate **n8n Credentials**.
 
 - Local Ollama service: base URL <http://ollama:11434/> (n8n config), <http://localhost:11434/>
 (browser)
@@ -766,7 +768,7 @@ Use the following settings to confirm or upate n8n Credentials.
 - Google Drive: This credential is optional. Follow [this guide from n8n](https://docs.n8n.io/integrations/builtin/credentials/google/).
 
 - <details>
-  <summary>Full list of AI-Suite service end points:</summary>
+  <summary>Full list of AI-Suite service endpoints:</summary>
 
   | Service | Container | Docker | Host |
   | -----------------------: | ------: | ------: | ------: |
@@ -1153,8 +1155,8 @@ as if performing a new installation - i.e. no previous installation exists.
 
 | Argument | Operation |
 | -----------: | ------: |
-| `update` | Update - stop, pull and restart specified container images |
-| `install` | New install - proceed as if performing a new installation |
+| `update` | Update - for specified containers, stop, pull images, and restart |
+| `install` | Install - proceed as if performing a new installation |
 
 > [!CAUTION]
 > Installation updates can impact the AI-Suite integrity. Consider backing
