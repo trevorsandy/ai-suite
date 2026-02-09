@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 8, 2026
+Last Update February 9, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1860,6 +1860,7 @@ def main():
             log.debug(f" - {env}: {env_vars[env]}", extra=debug_style)
 
     # Process operation argument
+    install = False
     build = False
     if args.operation:
         if args.operation == 'stop-llama':
@@ -1930,6 +1931,22 @@ def main():
         args.profile.remove('supabase') if 'supabase' in args.profile else None
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
+
+    # Auto-configuration
+    if build:
+        insert = "Installing" if install else "Updating"
+        log.info(f"{insert} '{name}' with profile arguments: {args.profile}...")
+    if not any(p for p in args.profile if p == 'no-auto-config'):
+        config_script = os.path.join('scripts', 'auto_config.sh')
+        if os.path.exists(config_script):
+            log.info(f"Auto-configuring {name}...")
+            if system == "Windows":
+                cmd = ['bash', str(config_script)]
+            else:
+                cmd = ['bash', str(config_script)]
+            run_command(cmd)
+        else:
+            log.error(f"Auto-config script not found at {config_script}")
 
     if any(p for p in args.profile if p in n8n_all_profiles):
         env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"

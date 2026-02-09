@@ -3,7 +3,14 @@ flowise/
 supabase/
 searxng/
 neo4j/
-caddy/
+authelia/*
+!authelia/configuration.yml
+!authelia/db/schema-authelia.sh
+caddy/*
+!caddy/addons
+!caddy/Caddyfile
+nginx/*
+!nginx/addons
 llama.cpp/
 ollama/
 opencode/*
