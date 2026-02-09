@@ -94,6 +94,7 @@ def main():
            '/usr/local/bin/opencode', '.']
 
     print(f"Running launch command: {" ".join(cmd)}...")
+    cwd=None
     try:
         subprocess.run(cmd, cwd=cwd, check=True)
     except Exception as e:
