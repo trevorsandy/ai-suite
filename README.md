@@ -1396,6 +1396,56 @@ caddy:
 - [Local File Trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.localfiletrigger/)
 - [Execute Command](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.executecommand/)
 
+## Repository Structure
+
+```bash
+.
+├── assets/                              # README.md gif image
+├── caddy/                               # Caddy proxy server
+│   └── addons/
+│   └── Caddyfile                        # Caddy configuration
+├── flowise/                             # Ready-to-import Flowise workflows
+│   └── uploads/
+├── n8n/
+│   ├── data/
+│   │   ├── credentials/                 # Ready-to-import n8n credentials
+│   │   └── workflows/                   # Ready-to-import n8n workflows
+│   └── local-files/
+├── neo4j/
+│   ├── logs/
+│   └── plugins/
+├── open-webui/
+│   ├── functions/
+│   │   ├── open-webui/
+│   │   │   └── functions/               # Open WebUI functions
+│   │   └── owndev/
+│   │       ├── docs/
+│   │       ├── filters                  # Open WebUI filters
+│   │       └── pipelines/               # Open WebUI pipes
+│   ├── mcpo/
+│   │   └── config.json                  # Open WebUI MCPO configuration
+│   ├── piplines/                        # Open WebUI pipelines
+│   └── tools/                           # Open WebUI tools
+│       └── servers/                     # Open WebUI tool servers
+│           └── filesystem/              # Open WebUI filesystem tool
+├── opencode/
+│   ├── opencode.jsonc                   # OpenCode configuration
+│   └── run_opencode_docker.py           # OpenCode launch script
+├── searxng/
+│   └── settings-base.yml                # SearXNG configuration
+├── supabase/
+│   └── docker/
+│       ├── dev/
+│       ├── utils/
+│       └── volumes/
+│       └── docker-compose.yml           # Docker Compose Supabase configuration
+├── .env.example                         # Template for environment variables
+├── docker-compose.override.private.yml  # Docker Compose local configuration
+├── docker-compose.override.public.yml   # Docker Compose production configuration
+├── docker-compose.yml                   # Docker Compose AI-Suite configuration
+└── suite_services.py                    # Installation and service management script
+```
+
 ## Troubleshooting
 
 Here are solutions to common issues you might encounter:
