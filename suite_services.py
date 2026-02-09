@@ -405,7 +405,7 @@ def check_llama_process(operation=None, env_vars={}):
 
     header = "See log for details:"
     stop_llama = operation == 'stop-llama'
-    start_llama = not stop_llama and not operation in ['stop']
+    start_llama = not stop_llama and not operation in ['stop', 'pause']
     llama_log_dir = "llama.cpp" if llama_cpp else ""
     llama_log_file = os.path.join(os.getcwd(), llama_log_dir, 'llama_start.log')
 
@@ -601,23 +601,27 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
 
     docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")
     log.info(f"Writing {docker_compose_path}...")
-    with open(docker_compose_path, 'w') as f:
-        f.write(textwrap.dedent("""\
-            services:
-              open-webui-filesystem:
-                container_name: open-webui-filesystem
-                restart: unless-stopped
-                build:
-                  context: .
-                ports:
-                  - 8091:8091
-                extra_hosts:
-                  - host.docker.internal:host-gateway
-                volumes:
-                  - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp
-                environment:
-                  - PROJECTS_PATH
-            """))
+    try:
+        with open(docker_compose_path, 'w') as f:
+            f.write(textwrap.dedent("""\
+                services:
+                  open-webui-filesystem:
+                    container_name: open-webui-filesystem
+                    restart: unless-stopped
+                    build:
+                      context: .
+                    ports:
+                      - 8091:8091
+                    extra_hosts:
+                      - host.docker.internal:host-gateway
+                    volumes:
+                      - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp
+                    environment:
+                      - PROJECTS_PATH
+                """))
+    except FileNotFoundError:
+        log.error(f"Exception: File '{docker_compose_path}' not found.")
+
 def prepare_opencode_config(env_vars):
     """Set the default OpenCode model in opencode.jsonc"""
     file_path = os.path.join("opencode", "opencode.jsonc")
@@ -688,7 +692,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
                      extra=log_bright)
             wait_with_progress(2)
         start_ai_suite(profile, environment, False)
-        display_services_endpoint(profile, supabase, env_vars)
+        display_service_endpoints(profile, supabase, env_vars)
         return
 
     if operation == 'stop':
@@ -1204,7 +1208,7 @@ def configure_n8n_database_settings(supabase):
     except Exception as e:
         log.error(f"Exception: Update n8n database settings in {compose_file}: {e}")
 
-def container_is_running(container):
+def docker_container_is_running(container):
     """:return: True if container name found in output check, else False."""
     cmd = " ".join(['docker', 'ps', '-a', '--format', '"{{.Names}}"', '--filter',
                    f'name=^/{container}$'])
@@ -1311,7 +1315,7 @@ def wait_with_progress(seconds: int, level=logging.INFO, color=None, width=60):
         time.sleep(0.05) # smooth updates (~20 FPS)
     print() # move to next line when done
 
-def display_services_endpoint(profile, supabase, env_vars):
+def display_service_endpoints(profile, supabase, env_vars):
     """Display AI-Suite installation or operationstatus"""
     url = 'http://localhost'
     # This dictionary holds a list of module end point (Module name, End point) touples
@@ -1468,7 +1472,7 @@ def display_services_endpoint(profile, supabase, env_vars):
 
     failed_container_list = []
     for container in container_list:
-        if not container_is_running(container):
+        if not docker_container_is_running(container):
             failed_container_list.append(container)
 
     started_ok = len(failed_container_list) == 0
@@ -2020,7 +2024,7 @@ def main():
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, build)
-    display_services_endpoint(args.profile, supabase, env_vars)
+    display_service_endpoints(args.profile, supabase, env_vars)
 
     with open('.operation', 'w') as f:
         f.write('start' + ':' + llama.lower())
