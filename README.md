@@ -637,6 +637,8 @@ when the _stop-llama_ operational command argument is specified.
 | `stop-llama` | Stop - perform `stop` and shut down Ollama/LLaMA.cpp on Host |
 | `pause` | Pause - pause the specified profile containers |
 | `unpause` | Unpause - unpause the previously paused profile containers |
+| `backup-data` | Backup Data - backup volume mount data to backup file |
+| `restore-data` | Restore Data - restore volume mount data from backup file |
 
 Example command:
 
@@ -1185,10 +1187,45 @@ as if performing a new installation - i.e. no previous installation exists.
 
 > [!CAUTION]
 > Installation updates can impact the AI-Suite integrity. Consider backing
-> up your volumes to enable rollback. Performing an _install_ will prune both
-> named and anonymous volumes. Volumes are not disturbed when performing
-> an _update_.
-<!-- -->
+> up your volumes to enable rollback or restoration. Performing an _install_
+> will prune both named and anonymous volumes. Volumes are not disturbed when
+> performing an _update_.
+
+<details>
+<summary>AI-Suite data volume mounts:</summary>
+
+| Data Volume Mount | Mount Path | Container |
+| -----------------------: | ------: | ------: |
+| `n8n_node_data` | `/home/node/.n8n` | n8n |
+| `neo4j_data` | `/data` | neo4j |
+| `neo4j_config_data` | `/config` | neo4j |
+| `ollama_data` | `/root/.ollama` | ollama |
+| `opencode_data` | `/root/.config/opencode` | opencode |
+| `open_webui_data` | `/app/backend/data` | open-webui |
+| `open_webui_pipelines_data` | `/app/pipelines` | open-webui-pipelines |
+| `postgres_data` | `/var/lib/postgresql/data` | postgres |
+| `qdrant_data` | `/qdrant/storage` | qdrqnt |
+| `redis_valkey_data` | `/data` | redis |
+| `langfuse_clickhouse_data` | `/var/lib/clickhouse` | clickhouse |
+| `langfuse_minio_data` | `/data` | minio |
+| `llamacpp_data` | `/root/.cache` | llamacpp |
+| `caddy_data` | `/data` | caddy |
+| `caddy_config_data` | `/config` | caddy |
+| `db-config` | `/etc/postgresql-custom` | supabase-db |
+
+</details>
+
+| Argument | Operation |
+| -----------------------: | ------: |
+| `backup-data` | Backup Data - backup volume mount data to backup file |
+| `restore-data` | Restore Data - restore volume mount data from backup file |
+
+Example command for volume mount data backup:
+
+```powershell
+python suite_services.py --operation backup-data
+```
+
 > [!NOTE]
 > The `suite_services.py` _update_ operation argument will stop, pull the
 > image and restart containers for the specified `--profile` arguments.

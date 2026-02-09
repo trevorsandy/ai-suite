@@ -1,19 +1,19 @@
-volumes:
-  n8n_data:
-  n8n_worker_data:
-  ollama_data:
-  qdrant_data:
-  opencode_data:
-  open_webui_data:
-  open_webui_pipelines_data:
-  postgres_data:
-  langfuse_clickhouse_data:
-  langfuse_clickhouse_logs:
-  langfuse_minio_data:
-  llamacpp_data:
-  redis_valkey_data:
-  caddy_data:
-  caddy_config_data:
+volumes:                      # volume mount path:
+  n8n_node_data:              # /home/node/.n8n
+  neo4j_data:                 # /data
+  neo4j_config_data:          # /config
+  ollama_data:                # /root/.ollama
+  opencode_data:              # /root/.config/opencode
+  open_webui_data:            # /app/backend/data
+  open_webui_pipelines_data:  # /app/pipelines
+  postgres_data:              # /var/lib/postgresql/data
+  qdrant_data:                # /qdrant/storage
+  redis_valkey_data:          # /data
+  langfuse_clickhouse_data:   # /var/lib/clickhouse
+  langfuse_minio_data:        # /data
+  llamacpp_data:              # /root/.cache
+  caddy_data:                 # /data
+  caddy_config_data:          # /config
 
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
@@ -250,10 +250,10 @@ services:
       - 5678/tcp
       - 5679/tcp
     volumes:
-      - n8n_data:/home/node/.n8n
-      - ./n8n/local-files:/home/node/.n8n-files
       - ./n8n/data:/data
+      - ./n8n/local-files:/home/node/.n8n-files
       - ${PROJECTS_PATH:-./n8n/local-files}:/home/node/projects
+      - n8n_node_data:/home/node/.n8n
     deploy:
       resources:
         limits:
@@ -293,7 +293,7 @@ services:
     expose:
       - 5678/tcp
     volumes:
-      - n8n_worker_data:/home/node/.n8n
+      - n8n_node_data:/home/node/.n8n
     depends_on:
       n8n:
         condition: service_healthy
@@ -346,9 +346,9 @@ services:
     container_name: neo4j
     volumes:
       - ./neo4j/logs:/logs
-      - ./neo4j/config:/config
-      - ./neo4j/data:/data
       - ./neo4j/plugins:/plugins
+      - neo4j_config_data:/config
+      - neo4j_data:/data
     expose:
       - 7473/tcp
       - 7474/tcp
@@ -380,10 +380,11 @@ services:
       - WEBUI_HOSTNAME=${WEBUI_HOSTNAME:-":8002"}
       - FLOWISE_HOSTNAME=${FLOWISE_HOSTNAME:-":8003"}
       - OLLAMA_HOSTNAME=${OLLAMA_HOSTNAME:-":8004"}
-      - SUPABASE_HOSTNAME=${SUPABASE_HOSTNAME:-":8005"}
-      - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-":8006"}
-      - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8007"}
-      - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8008"}
+      - LLAMACPP_HOSTNAME=${LLAMACPP_HOSTNAME:-":8005"}
+      - SUPABASE_HOSTNAME=${SUPABASE_HOSTNAME:-":8006"}
+      - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-":8007"}
+      - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8008"}
+      - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8009"}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
     cap_drop:
       - ALL
@@ -493,7 +494,7 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     volumes:
       - langfuse_clickhouse_data:/var/lib/clickhouse
-      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+      - ./langfuse/clickhouse/logs:/var/log/clickhouse-server
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
