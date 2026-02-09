@@ -1,0 +1,74 @@
+theme: "auto"
+log:
+  level: "info"
+  format: "json"
+
+server:
+  address: "tcp://:9091/authenticate"
+  endpoints:
+    authz:
+
+totp:
+  disable: false
+  issuer: "authelia.com"
+
+identity_validation:
+  reset_password:
+    jwt_lifespan: "5 minutes"
+    jwt_algorithm: "HS256"
+    jwt_secret: '{{ env "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET" }}'
+
+authentication_backend:
+  refresh_interval: "5 minutes"
+  password_reset:
+    disable: false
+
+  file:
+    path: "/config/users_database.yml"
+    watch: false
+    search:
+      email: false
+      case_insensitive: false
+    password:
+      algorithm: "bcrypt"
+      bcrypt:
+        variant: "standard"
+        cost: 12
+
+access_control:
+  default_policy: "deny"
+  rules:
+    - domain: "supabase.example.com"
+      policy: "two_factor"
+
+session:
+  secret: '{{ env "AUTHELIA_SESSION_SECRET" }}'
+  inactivity: "10m"
+  expiration: "1h"
+  remember_me: "1M"
+  cookies:
+    - domain: "example.com"
+      authelia_url: "https://example.com/authenticate"
+      default_redirection_url: "https://supabase.example.com"
+
+regulation:
+  max_retries: 3
+  find_time: "2 minutes"
+  ban_time: "5 minutes"
+
+storage:
+  encryption_key: '{{ env "AUTHELIA_STORAGE_ENCRYPTION_KEY" }}'
+
+  postgres:
+    address: '{{ env "AUTHELIA_STORAGE_POSTGRES_ADDRESS" }}'
+    database: '{{ env "AUTHELIA_STORAGE_POSTGRES_DATABASE" }}'
+    schema: '{{ env "AUTHELIA_STORAGE_POSTGRES_SCHEMA" }}'
+    username: '{{ env "AUTHELIA_STORAGE_POSTGRES_USERNAME" }}'
+    password: '{{ env "AUTHELIA_STORAGE_POSTGRES_PASSWORD" }}'
+    timeout: "5 seconds"
+
+notifier:
+  disable_startup_check: false
+
+  filesystem:
+    filename: "/config/notification.txt"
