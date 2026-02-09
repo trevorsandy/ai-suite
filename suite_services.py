@@ -295,7 +295,7 @@ def launch_llama_process(args, llama_log):
 def check_llama_cpp_model(operation, env_vars, using_hf):
     """Check if the specified llama.cpp model exists, offer to download if not"""
     model_path = normalize_path(env_vars.get('LLAMACPP_MODEL_PATH'))
-    model_name = env_vars.get('LLAMACPP_MODEL_NAME', 'gemma-4b')
+    model_name = env_vars.get('LLAMACPP_DEFAULT_MODEL', 'gemma-4b')
     if not os.path.exists(model_path):
         proceed = True
         # Dictionary of common llama.cpp model names and their download identifiers
@@ -618,6 +618,26 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
                 environment:
                   - PROJECTS_PATH
             """))
+def prepare_opencode_config(env_vars):
+    """Set the default OpenCode model in opencode.jsonc"""
+    file_path = os.path.join("opencode", "opencode.jsonc")
+    if not os.path.exists(file_path):
+        log.error(f"File {file_path} not found.")
+        return
+    log.info(f"Setting OpenCode {llama} model in {file_path}...")
+    llm = llama.strip().lower()
+    ollama_model = env_vars.get('OLLAMA_DEFAULT_MODEL')
+    llamacpp_model = env_vars.get('LLAMACPP_DEFAULT_MODEL')
+    old_model = f"{llm}/{ollama_model}" if llama_cpp else f"{llm}/{llamacpp_model}"
+    new_model = f"{llm}/{llamacpp_model}" if llama_cpp else f"{llm}/{ollama_model}"
+    try:
+        with open(file_path, 'rb') as f:
+            content = f.read()
+        modified_content = content.replace(old_model.encode(), new_model.encode())
+        with open(file_path, 'wb') as f:
+            f.write(modified_content)
+    except Exception as e:
+        log.error(f"Exception: Configuration - {llama} model: {e}")
 
 def destroy_ai_suite(profile, install):
     """Stop and remove AI-Suite containers and volumes (using its compose file)
@@ -1469,7 +1489,7 @@ def display_services_endpoint(profile, supabase, env_vars):
 
     context_size = env_vars.get('LLAMA_ARG_CTX_SIZE') if llama_cpp else \
                    env_vars.get('OLLAMA_CONTEXT_LENGTH')
-    model_name = env_vars.get('LLAMACPP_MODEL_NAME') if llama_cpp else \
+    model_name = env_vars.get('LLAMACPP_DEFAULT_MODEL') if llama_cpp else \
                  env_vars.get('OLLAMA_DEFAULT_MODEL')
     projects_path = env_vars.get('PROJECTS_PATH')
 
@@ -1832,7 +1852,7 @@ def main():
         log.debug(f" - LLAMA_PATH: {env_vars['LLAMA_PATH']}", extra=debug_style)
     if llama_cpp:
         log.debug(f"DotEnv {llama} file updates:")
-        for env in ['LLAMACPP_MODEL_NAME', 'LLAMACPP_MODEL_PATH', 'LLAMA_ARG_HF_REPO']:
+        for env in ['LLAMACPP_DEFAULT_MODEL', 'LLAMACPP_MODEL_PATH', 'LLAMA_ARG_HF_REPO']:
             log.debug(f" - {env}: {env_vars[env]}", extra=debug_style)
 
     # Process operation argument
@@ -1930,6 +1950,12 @@ def main():
         clone_open_webui_functions_repos()
         clone_open_webui_tools_filesystem_repo()
         prepare_open_webui_tools_filesystem_env(env_vars)
+
+    # Setup OpenCode default model in opencode.jsonc
+    opencode = \
+        any(p for p in args.profile if p in ['opencode', 'ai-all'])
+    if opencode:
+        prepare_opencode_config(env_vars)
 
     # Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml
     docker_compose_include(supabase, open_webui, True)

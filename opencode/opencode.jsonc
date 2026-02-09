@@ -5,7 +5,7 @@
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Ollama (local)",
+      "name": "Ollama",
       "options": {
         "baseURL": "http://host.docker.internal:11434/v1"
       },
@@ -13,8 +13,20 @@
         "llama3.2": {
           "name": "Llama 3.2"
         },
-        "qwen3:4b-q8_0": {
-          "name": "Qwen 3.4 4b q8_0"
+        "qwen3:8b": {
+          "name": "Qwen 3.4 8b"
+        }
+      }
+    },
+    "llama.cpp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LLaMA.cpp",
+      "options": {
+        "baseURL": "http://host.docker.internal:8040/v1"
+      },
+      "models": {
+        "gemma-4b": {
+          "name": "Gemma3 4b"
         }
       }
     }
@@ -25,5 +37,5 @@
       "url": "http://host.docker.internal:8060/mcp",
       "enabled": true
     }
-  }  
+  }
 }
