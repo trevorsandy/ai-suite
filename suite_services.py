@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update January 21, 2026
+Last Update February 8, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -57,6 +57,7 @@ import sys
 import argparse
 import datetime
 import dotenv
+import gzip
 import logging
 import pathlib
 import platform
@@ -895,10 +896,13 @@ def check_and_fix_docker_compose_for_searxng():
 def convert_supabase_pooler_line_endings():
     """Convert Windows line endings to Linux/Unix/MacOS line endings."""
     if system == "Windows":
+        file_path = "supabase/docker/volumes/pooler/pooler.exs"
+        if not os.path.exists(file_path):
+            log.error(f"Pooler file not found at {file_path}")
+            return
         log.info("Converting supavisor pooler line endings...")
         CR_LF = b'\r\n'
         LF = b'\n'
-        file_path = "supabase/docker/volumes/pooler/pooler.exs"
         with open(file_path, 'rb') as f:
             content = f.read()
         modified_content = content.replace(CR_LF, LF)
@@ -1197,6 +1201,70 @@ def container_is_running(container):
     except subprocess.CalledProcessError:
         return False
 
+def docker_object_exists(object, name):
+    """Confirm Docker volume or container exist"""
+    if object not in ['container', 'volume']:
+        log.error(f"Invalid object: {object}, expected container or volume.")
+        return False
+    if not name:
+        log.error(f"Object {object} name was not specified.")
+        return False
+    cmd = ['docker', object, 'inspect', '--format', '"{{ .Name }}"', name]
+    try:
+        stdout = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+        return stdout.find(name) != 1
+    except subprocess.CalledProcessError as e:
+        log.error(e.output.decode())
+        return False
+
+def docker_volume_data(operation):
+    """Backup or restore named volume mount data to or from backup file"""
+    if not operation:
+        operation = "backup-data"
+    elif not operation in ['backup-data', 'restore-data']:
+        log.error(f"Invalid operation: {operation}, expected backup-data or restore-data.")
+        return
+
+    data_volumes = [
+        ('n8n_node_data',             '/home/node/.n8n',          'n8n'),
+        ('neo4j_data',                '/data',                    'neo4j'),
+        ('neo4j_config_data',         '/config',                  'neo4j'),
+        ('ollama_data',               '/root/.ollama',            'ollama'),
+        ('opencode_data',             '/root/.config/opencode',   'opencode'),
+        ('open_webui_data',           '/app/backend/data',        'open-webui'),
+        ('open_webui_pipelines_data', '/app/pipelines',           'open-webui-pipelines'),
+        ('postgres_data',             '/var/lib/postgresql/data', 'postgres'),
+        ('qdrant_data',               '/qdrant/storage',          'qdrqnt'),
+        ('redis_valkey_data',         '/data',                    'redis'),
+        ('langfuse_clickhouse_data',  '/var/lib/clickhouse',      'clickhouse'),
+        ('langfuse_minio_data',       '/data',                    'minio'),
+        ('llamacpp_data',             '/root/.cache',             'llamacpp'),
+        ('caddy_data',                '/data',                    'caddy'),
+        ('caddy_config_data',         '/config',                  'caddy'),
+        ('db-config',                 '/etc/postgresql-custom',   'supabase-db')
+    ]
+    restore_data = operation == 'restore-data'
+    backup_dir = os.path.join(os.getcwd(), "backup")
+    for volume, mount, container in data_volumes:
+        file_name = f"{volume}.tar.gz"
+        cmd = ["docker", "run", "--rm",
+               "--mount", f"source={volume},target={mount}",
+               "-v", f"{backup_dir}:/backup", container]
+        if restore_data:
+            backup_file = os.path.join(backup_dir, file_name)
+            if not os.path.exists(backup_file):
+                continue
+            with gzip.open(backup_file, "rb") as f:
+                data = f.read(1)
+            if len(data) == 0:
+                continue
+            cmd.extend(["tar", "-xzvf", f"/backup/{file_name}", "-C", "/"])
+        else: # backup data
+            if not docker_object_exists('volume', volume):
+                continue
+            cmd.extend(["tar", "-czvf", f"/backup/{file_name}", mount])
+        run_command(cmd)
+
 def wait_with_progress(seconds: int, level=logging.INFO, color=None, width=60):
     """Progress bar for waiting on service to initialize"""
     begin = time.monotonic()
@@ -1468,7 +1536,10 @@ def main():
     server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j', 'caddy']
     profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + \
                llama_docker_profiles + llama_host_profiles
-    operations = ['stop', 'stop-llama', 'start', 'pause', 'unpause', 'update', 'install']
+    managemant_operations = ['stop', 'stop-llama', 'start', 'pause', 'unpause']
+    installation_operations = ['update', 'install']
+    data_operations = ['backup-data', 'restore-data']
+    operations = managemant_operations + installation_operations + data_operations
     environments = ['private', 'public']
     log_levels = ['OFF', 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
     parser = argparse.ArgumentParser(
@@ -1518,7 +1589,8 @@ def main():
 
             operation arguments:
               update install                                installation options
-              stop stop-llama start pause unpause           management options
+              stop stop-llama start pause unpause           operation options
+              backup-data restore-data                      volume mount data options
 
             log arguments:
               OFF CRITICAL ERROR WARNING INFO DEBUG         console logging options
@@ -1567,6 +1639,9 @@ def main():
               ...to install all modules and start using LLaMA.cpp Nvidia GPU running in Docker:
               python {file} --profile ai-all cpp-gpu-nvidia --operation install
 
+            - Perform (backup-data, restore-data) operation...
+              ...to backup volume mount data to backup file:
+              python {file} --operation backup-data
             '''),
         epilog=textwrap.dedent(f'''\
             - Title: {INFO.get("title")}
@@ -1711,7 +1786,9 @@ def main():
                 continue
             log.debug(f" - {env}: {var}", extra=LSHF.style(logging.WARNING))
             os.environ[env] = var
-        check_llama_process(args.operation, env_vars)
+        check_llama = not args.operation in data_operations
+        if check_llama:
+            check_llama_process(args.operation, env_vars)
     else:
         llama_cpp = any(p for p in args.profile if p in llamacpp_docker_profiles)
         llama = "LLaMA.cpp" if llama_cpp else "Ollama"
@@ -1772,6 +1849,9 @@ def main():
             sys.exit(0)
         elif args.operation == 'unpause' and not status == 'pause':
             log.info(f"{name} cannot unpause as it is not paused - exiting...")
+            sys.exit(0)
+        elif args.operation in ['backup-data', 'restore-data']:
+            docker_volume_data(args.operation)
             sys.exit(0)
         if default_profile:
             args.profile = ['ai-all']
