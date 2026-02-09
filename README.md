@@ -75,34 +75,12 @@ system that can generate analytical data reports in real-time.
 System specifications:
 
 - **32GB** RAM recommended (8GB minimum)
-- **20GB** free disk space
+- **30GB** free disk space
 
 Before you begin, make sure you have the following software installed:
 
 - [Git](https://git-scm.com/install/) - For easy repository management.
 - [Python 3.10+](https://www.python.org/downloads/) - To run the setup script.
-
-   <details>
-   <summary>Import modules</summary>
-
-   ```python
-   import os
-   import sys
-   import argparse
-   import datetime
-   import dotenv
-   import logging
-   import pathlib
-   import platform
-   import re
-   import shutil
-   import subprocess
-   import textwrap
-   import time
-   ```
-
-  </details>
-
 - [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) - Required
   to setup and run all AI-Suite services.
 
@@ -256,9 +234,56 @@ Also consider the following optional software:
     ...
     ```
 
-   </details>
+    </details>
 
-4. Review and update the other `.env` environment variables taking into account
+4. Generate AI-Suite requirements.txt file and install missing Python modules
+   to ensure your environment meets the Python module dependencies.
+
+    <details>
+    <summary>Generate and install requirements.txt</summary>
+
+    Optionally, setup a Python virtual environment under `ai-suite`.
+
+    ```python
+    pip install -U virtualenv
+    ```
+
+    Unix
+
+    ```sh
+    python3 -m venv .venv
+    source ./.venv/bin/activate
+    ```
+
+    Windows
+
+    ```cmd
+    python -m venv .venv
+    ```
+
+    Powershell
+
+    ```powershell
+    .venv/Scripts/activate.ps1
+    ```
+
+    Console
+
+    ```cmd
+    .venv\Scripts\activate
+    ```
+
+    Then run the following commands from `ai-suite`:
+
+    ```powershell
+    pip install pipreqs
+    pipreqs --encoding=utf8 .
+    pip install -r requirements.txt
+    ```
+
+    </details>
+
+5. Review and update the other `.env` environment variables taking into account
    your installation platform specifications. Particularly pay attention to the
    _Ollama_ or _LLaMA.cpp_ (depending on which LLM you are using) configuration
    settings.
@@ -1175,7 +1200,7 @@ as if performing a new installation - i.e. no previous installation exists.
 > _started_. Docker LLAMA containers will not be started unless they are
 > explicitly specified as a profile argument.
 
-Example command to full update:
+Example command for full update:
 
 ```powershell
 python suite_services.py --operation update
