@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 09, 2026
+# Last Update February 12, 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # This script is adapted from Inder Singh's setup.sh shell script.
@@ -16,63 +16,65 @@ set -euo pipefail
 
 # https://stackoverflow.com/a/28085062/18954618
 : "${CI:=false}"
-: "${AIS:=false}"
-: "${AIS_LOCAL:=false}"
+: "${AC:=false}"
+: "${AC_LOCAL:=false}"
 : "${WITH_REDIS:=false}"
-: "${SUDO_USER:=""}"
+: "${SUDO_USER:="$(whoami)"}"
 
 ME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 
 # Colors
-sgr() { echo -e "\033[$*m"; }
-
+END=''
+COLOR=''
 BOLD=''
 DIM=''
 ITALIC=''
 UNDERLINE=''
-END=''
 RED=''
-RED_BG=''
+#RED_BG=''
 GREEN=''
-YELLOW=''
+#YELLOW=''
 BLUE=''
-MAGENTA=''
+#MAGENTA=''
 CYAN=''
 WHITE=''
 DIM_CYAN=''
 ITALIC_RED_BG=''
 UNDERLINE_YELLOW=''
 ME_HDR="${ME}"
-CRITICAL='CRITICAL:'
-ERROR='ERROR:'
-WARNING='WARNING:'
-INFO='INFO:'
+CRITICAL="${ME_HDR} CRITICAL:"
+ERROR="${ME_HDR} ERROR:"
+WARNING="${ME_HDR} WARNING:"
+DEBUG="${ME_HDR} DEBUG:"
+INFO="${ME_HDR} INFO:"
 
 # Check if terminal supports colors https://unix.stackexchange.com/a/10065/642181
+sgr() { [ -n "${END}" ] && echo -e "\033[$*m" || : ; }
 if [ -t 1 ]; then
     total_colors=$(tput colors)
     if [[ -n "$total_colors" && $total_colors -ge 8 ]]; then
+        END='\033[0m'
         BOLD='1;'
         DIM='2;'
         ITALIC='3;'
         UNDERLINE='4;'
         # https://stackoverflow.com/a/28938235/18954618
-        END="$(sgr '0')"
-        RED="$(sgr '31')"
-        RED_BG="$(sgr '41')" # Red background (White foreground)
-        GREEN="$(sgr '32')"
-        YELLOW="$(sgr '33')"
-        BLUE="$(sgr '34')"
-        MAGENTA="$(sgr '35')"
-        CYAN="$(sgr '36')"
-        WHITE="$(sgr '37')"
-        DIM_CYAN="$(sgr "${DIM}36")"
-        ITALIC_RED_BG="$(sgr "${ITALIC}41")"
-        UNDERLINE_YELLOW="$(sgr "${UNDERLINE}93")"
+        RED=$(sgr '31')
+        #RED_BG=$(sgr '41') # Red background (White foreground)
+        GREEN=$(sgr '32')
+        #YELLOW=$(sgr '33')
+        BLUE=$(sgr '34')
+        #MAGENTA=$(sgr '35')
+        CYAN=$(sgr '36')
+        WHITE=$(sgr '37')
+        DIM_CYAN=$(sgr "${DIM}36")
+        ITALIC_RED_BG=$(sgr "${ITALIC}41")
+        UNDERLINE_YELLOW=$(sgr "${UNDERLINE}93")
         ME_HDR="$(sgr "${ITALIC}34")${ME}${END}"
         CRITICAL="${ME_HDR} $(sgr "${BOLD}41")CRITICAL:${END}"
         ERROR="${ME_HDR} $(sgr "${BOLD}91")ERROR:${END}"
         WARNING="${ME_HDR} $(sgr "${UNDERLINE}93")WARNING:${END}"
+        DEBUG="${ME_HDR} $(sgr "${BOLD}67")DEBUG:${END}"
         INFO="${ME_HDR} $(sgr '36')INFO:${END}"
     fi
 fi
@@ -87,6 +89,9 @@ log_error() {
 log_warning() {
     echo -e "${WARNING} ${UNDERLINE_YELLOW}$1${END}"
 }
+log_debug() {
+    echo -e "${DEBUG} ${WHITE}$1${END}"
+}
 log_info() {
     echo -e "${INFO} ${DIM_CYAN}$1${END}"
 }
@@ -94,34 +99,64 @@ critical_exit() {
     log_critical "$*"
     exit 1
 }
-FNAME="supabase_setup.sh"
+FNAME="auto_config.sh"
 if [ "${ME}" = "${FNAME}" ]; then
-    [ -z "${LOG_PATH}" ] && LOG_PATH==`pwd` || :
-    LOG="$LOG_PATH/$ME.log"
-    if [ -f ${LOG} -a -r ${LOG} ]; then
-        rm ${LOG}
+    [ -z "${AC_LOG_PATH}" ] && AC_LOG_PATH="$(pwd)" || :
+    LOG="$AC_LOG_PATH/$ME.log"
+    if [ -f "${LOG}" ] && [ -r "${LOG}" ]; then
+        rm "${LOG}"
     fi
-    exec > >(tee -a ${LOG} )
-    exec 2> >(tee -a ${LOG} >&2)
+    exec > >(tee -a "${LOG}" )
+    exec 2> >(tee -a "${LOG}" >&2)
 fi
 
 # Process arguments
 usage() {
-    echo "Usage: $0 [OPTIONS]"
+    echo "Usage: [ENVIRONMENT] $0 [OPTIONS]"
     echo ""
-    echo "Setup self-hosted AI-Suite with nginx/caddy and authelia 2FA."
+    echo "Setup self-hosted AI-Suite with Caddy/Nginx proxy and Authelia 2FA"
+    echo "identity and access management."
+    echo ""
+    echo "Environment:"
+    echo "  CI:false             Non-interactive mode - e.g running a GitHub build test"
+    echo "  SUDO_USER:$(whoami)  Non-root SUDO user ID - brew does not allow installation as root user"
+    echo "  WITH_REDIS:bool      Setup Authelia to use Redis - optional if using --with-authelia option"
+    echo ""
+    echo "  Auto-configure environment variables:"
+    echo "  AC:false               Auto-Configure mode - expects required inputs using env env=input"
+    echo "  AC_LOCAL:false         Local (private) installation - * requires additional configuration"
+    echo "  AC_LOG_PATH:str        Directory path where install runtime log is deposited"
+    echo "  AC_DOMAIN:str          Domain (optional) - Required for global (public) configuration"
+    echo "  AC_USERNAME:str        User name for PROXY configuration"
+    echo "  AC_PASSWORD:str        User password for PROXY configuration"
+    echo "  AC_CONFIRM:false       Send confirmation email on user registration - ** SMTP server required"
+    echo "  AC_EMAIL:str           Email address for Authelia - required if using --with-authelia option"
+    echo "  AC_DISPLAY_NAME:str    Display name for Authelia  - required if using --with-authelia option"
+    echo "  AC_SUDO_PASSWORD:str   SUDO user password - directed to sudo using a Here string"
+    echo "  AC_SUDO_USER:str       Non-root SUDO user ID - brew does not allow installation as root user"
+    echo "  AC_WITH_REDIS:bool     Setup Authelia to use Redis - optional if using --with-authelia option"
+    echo "  AC_WITH_AUTHELIA:false Enable Authelia 2FA support"
+    echo "  AC_PROXY:caddy         Set the reverse proxy to use (Caddy or Nginx)"
+    echo ""
+    echo "  * Add your local domain to the hosts file to loop back to your machine like localhost."
+    echo "    For example: 127.0.0.1 https://supabase.local.com"
+    echo ""
+    echo "  ** If not using an SMTP server, enter any well formatted email address."
+    echo "     You can view codes sent by Authelia in ./authelia/notifications.txt."
     echo ""
     echo "Options:"
     echo "  -h, --help           Show this help message and exit"
-    echo "  --proxy PROXY        Set the reverse proxy to use (nginx or caddy). Default: caddy"
-    echo "  --with-authelia      Enable or disable Authelia 2FA support"
+    echo "  --proxy PROXY        Set the reverse proxy to use (Caddy or Nginx) - Default: Caddy"
+    echo "  --with-authelia      Enable or disable Authelia 2FA support - Default: false (disable)"
     echo ""
     echo "Examples:"
-    echo "  $0 --proxy nginx --with-authelia    # Set up Supabase with nginx and Authelia 2FA"
-    echo "  $0 --proxy caddy                    # Set up Supabase with caddy and no 2FA"
+    echo "  chmod +x $0                         # Make $0 executable"
+    echo "  $0                                  # Basic username and password authentication"
+    echo "  $0 --proxy nginx --with-authelia    # Configuration with Nginx and Authelia 2FA"
+    echo "  $0 --proxy caddy                    # Configuration with Caddy and no 2FA"
     echo ""
-    echo "For more information, visit the project repository:"
-    echo "https://github.com/trevorsandy/ai-suite"
+    echo "For more information, see README.md:"
+    echo "https://github.com/trevorsandy/ai-suite/blob/Dev/README.md"
 }
 
 has_argument() {
@@ -161,13 +196,22 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+if [ "$AC" == true ]; then
+    SUDO_USER="${AC_SUDO_USER:=${SUDO_USER}}"
+    with_authelia="${AC_WITH_AUTHELIA:=${with_authelia}}"
+    WITH_REDIS="${AC_WITH_REDIS:=${WITH_REDIS}}"
+    proxy="${AC_PROXY:=${proxy}}"
+fi
+
 if [[ "$proxy" != "caddy" && "$proxy" != "nginx" ]]; then
     critical_exit "proxy can only be caddy or nginx"
 fi
 
-log_info "${END}${GREEN}Configuration Summary"
-log_info "${END}  ${GREEN}Proxy:${END} ${WHITE}${proxy}"
-log_info "${END}  ${GREEN}Authelia 2FA:${END} ${WHITE}${with_authelia}"
+COLOR=$(sgr "${BOLD}${UNDERLINE}92")
+log_info "${END}${COLOR}Configuration Summary"
+log_info "  -${END} ${GREEN}Proxy:${END} ${WHITE}${proxy}"
+log_info "  -${END} ${GREEN}Authelia 2FA:${END} ${WHITE}${with_authelia}"
+echo -e "${INFO}\n"
 
 detect_arch() {
     case $(uname -m) in
@@ -197,67 +241,122 @@ if [[ "$arch" == "err" ]]; then critical_exit "Unsupported cpu architecture"; fi
 packages=(curl wget jq openssl git)
 
 package_is_installed() {
-  local i=1
-  type $1 >/dev/null 2>&1 || { local i=0; } # set i to 0 if not found
-  if [ "$i" == 1 ]; then
-      log_info "${END}${GREEN}✔${END} ${WHITE}${1}"
-  else
-      log_info "${END}${RED}✘${END} ${WHITE}${1}"
-  fi
-  echo "$i"
+    local i=1
+    type "$1" >/dev/null 2>&1 || { local i=0; } # set i to 0 if not found
+    if [ "$i" == 1 ]; then
+        log_info "${END}  ${GREEN}✔${END} ${WHITE}${1}"
+    else
+        log_info "${END}  ${RED}✘${END} ${WHITE}${1}"
+    fi
+    echo "$i"
 }
 
+COLOR=$(sgr "${BOLD}${UNDERLINE}95")
+echo -e "${INFO}\n"
+echo -e "${INFO} ${COLOR}Required Packages:"
 missing_packages=()
 for i in "${packages[@]}"; do
-    if [ "$(package_is_installed $i)" == 0 ]; then missing_packages+=("$i"); fi
+    if [ "$(package_is_installed "$i")" == 0 ]; then missing_packages+=("$i"); fi
 done
 packages=("${missing_packages[@]}")
 unset missing_packages
 
+is_root() { return "$(id -u "$1")" ; }
+
+privilage() {
+    local prompt
+    if prompt=$(sudo -nv 2>&1); then
+        echo "has_sudo__pass_set"
+    elif echo "$prompt" | grep -q '^sudo:'; then
+        echo "has_sudo__needs_pass"
+    else
+        echo "no_sudo"
+    fi
+}
+
+run_cmd() {
+    local cmd=$*
+    local BOLD_CYAN
+    BOLD_CYAN=$(sgr "${BOLD}36")
+    user_privilage=$(privilage)
+    case "$user_privilage" in
+    has_sudo__pass_set)
+        sudo "$cmd"
+        ;;
+    has_sudo__needs_pass)
+        echo -e "${CYAN}Supply${END} ${BOLD_CYAN}sudo${END} ${CYAN}password for command:${END} ${BLUE}sudo${END} ${WHITE}$cmd${END}"
+        sudo "$cmd"
+        ;;
+    *)
+        echo -e "${CYAN}Supply${END} ${BOLD_CYAN}root${END} ${CYAN}password for command:${END} ${BLUE}su -c${END} ${WHITE}\"$cmd\"${END}"
+        su -c "$cmd"
+        ;;
+    esac
+}
+
 if (( ${#packages[@]} != 0 )); then
-    # https://stackoverflow.com/a/18216122/18954618
-    if [ "$EUID" -ne 0 ]; then critical_exit "You must run $0 as root user to install packages." ; fi
+    install_failed=false
+
+    # https://superuser.com/questions/553932
+    if ! is_root; then
+        [ -n "${AC_SUDO_PASSWD}" ] && sudo -S -v <<<"${AC_SUDO_PASSWD}" || :
+    fi
+    unset AC_SUDO_PASSWORD
+
+    if [ -x "$(command -v apt-get)" ]; then
+        run_cmd apt-get update && apt-get install -y "${packages[@]}" apache2-utils
+
+    elif [ -x "$(command -v apk)" ]; then
+        run_cmd apk update && apk add --no-cache "${packages[@]}" apache2-utils
+
+    elif [ -x "$(command -v dnf)" ]; then
+        run_cmd dnf makecache && dnf install -y "${packages[@]}" httpd-tools
+
+    elif [ -x "$(command -v zypper)" ]; then
+        run_cmd zypper refresh && zypper install "${packages[@]}" apache2-utils
+
+    elif [ -x "$(command -v pacman)" ]; then
+        run_cmd pacman -Syu --noconfirm "${packages[@]}" apache
+
+    elif [ -x "$(command -v pkg)" ]; then
+        run_cmd pkg update && pkg install -y "${packages[@]}" apache24
+
+    elif [[ -x "$(command -v brew)" && -n "$SUDO_USER" ]]; then
+        # brew does not allow installation as root so run install as target SUDO user with SUDO privileges
+        if is_root; then
+            if is_root "$SUDO_USER"; then
+                critical_exit "Cannot run brew install! Current user ($(whoami)) and SUDO_USER ($SUDO_USER) are root!"
+            fi
+        fi
+        run_cmd -u "$SUDO_USER" brew install "${packages[@]}" httpd
+    else
+        # diff between array expansion with "@" and "*" https://linuxsimply.com/bash-scripting-tutorial/expansion/array-expansion/
+        critical_exit "Failed to install required packages. Package manager apt, apk, dnf, zypper, pacman, pkg, or brew not found."
+    fi
 
     # set -e doesn't work if any command is part of an if statement. package installation errors have to be checked https://stackoverflow.com/a/821419/18954618
     # https://unix.stackexchange.com/a/571192/642181
-    if [ -x "$(command -v apt-get)" ]; then
-        apt-get update && apt-get install -y "${packages[@]}" apache2-utils
+    # shellcheck disable=SC2181
+    if [ $? -ne 0 ]; then install_failed=true ; fi
 
-    elif [ -x "$(command -v apk)" ]; then
-        apk update && apk add --no-cache "${packages[@]}" apache2-utils
+    echo -e "${INFO} ${COLOR}Installed Packages:"
+    for i in "${packages[@]}"; do
+        package_is_installed "$i"
+    done
+    echo -e "${INFO} ${COLOR}------------------\n"
 
-    elif [ -x "$(command -v dnf)" ]; then
-        dnf makecache && dnf install -y "${packages[@]}" httpd-tools
-
-    elif [ -x "$(command -v zypper)" ]; then
-        zypper refresh && zypper install "${packages[@]}" apache2-utils
-
-    elif [ -x "$(command -v pacman)" ]; then
-        pacman -Syu --noconfirm "${packages[@]}" apache
-
-    elif [ -x "$(command -v pkg)" ]; then
-        pkg update && pkg install -y "${packages[@]}" apache24
-
-    elif [[ -x "$(command -v brew)" && -n "$SUDO_USER" ]]; then
-        # brew doesn't allow installation with sudo privileges, thats why have to run script as user who initiated this script with sudo privileges
-        sudo -u "$SUDO_USER" brew install "${packages[@]}" httpd
-    else
-        # diff between array expansion with "@" and "*" https://linuxsimply.com/bash-scripting-tutorial/expansion/array-expansion/
-        critical_exit "Failed to install packages. Package manager not found.\nSupported package managers: apt, apk, dnf, zypper, pacman, pkg, brew"
-    fi
-
-    if [ $? -ne 0 ]; then critical_exit "Failed to install packages."; fi
+    [ "$install_failed" == true ] && critical_exit "Failed to install required packages." || :
 fi
 
-github_ac="https://github.com/trevorsandy"
-repo_url="$github_ac/ai-suite"
-if [ "$AIS" == true ]; then
+repo_base="https://github.com/trevorsandy"
+repo_url="$repo_base/ai-suite"
+if [ "$AC" == true ]; then
     directory="$(pwd)"
 else
     directory="$(basename "$repo_url")"
 fi
 
-if [[ "$AIS" == true && -d "$directory" ]]; then
+if [[ "$AC" == true && -d "$directory" ]]; then
     log_info "Working directory: $directory"
 elif [ -d "$directory" ]; then
     log_info "$directory directory present, skipping git clone"
@@ -265,7 +364,7 @@ else
     git clone --depth=1 "$repo_url" "$directory"
 fi
 
-if [ "$AIS" == true ]; then
+if [ "$AC" == true ]; then
     if ! cd "$directory"; then critical_exit "Unable to access working directory."; fi
 else
     if ! cd "$directory"/docker; then critical_exit "Unable to access $directory/docker directory."; fi
@@ -273,13 +372,13 @@ fi
 if [ ! -f ".env.example" ]; then critical_exit ".env.example file not found. Exiting!"; fi
 
 download_binary() { wget "$1" -O "$2" &>/dev/null && chmod +x "$2" &>/dev/null; }
-github_ac="https://github.com/singh-inder"
+repo_base="https://github.com/singh-inder"
 url_parser_bin="./url-parser"
 yq_bin="./yq"
 
 if [ ! -x "$url_parser_bin" ]; then
-    log_info "Downloading url-parser from $github_ac/url-parser"
-    download_binary "$github_ac"/url-parser/releases/download/v1.1.0/url-parser-"$os"-"$arch" "$url_parser_bin"
+    log_info "Downloading url-parser from $repo_base/url-parser"
+    download_binary "$repo_base"/url-parser/releases/download/v1.1.0/url-parser-"$os"-"$arch" "$url_parser_bin"
 fi
 
 if [ ! -x "$yq_bin" ]; then
@@ -316,12 +415,14 @@ confirmation_prompt() {
 
 # ---------------------------------------------------------------------------
 
-# Get Domain
+# Get Supabase Domain
 domain=""
 while [ -z "$domain" ]; do
     if [ "$CI" == true ]; then
         domain="https://supabase.example.com"
-    elif [ "$AIS" == true ]; then
+    elif [ "$AC" == true ]; then
+        [ -n "$AC_DOMAIN" ] && \
+        domain="https://supabase.$AC_DOMAIN" || \
         domain="https://$SUPABASE_HOSTNAME"
     else
         read -rp "$(format_prompt "Enter your domain:") " domain
@@ -363,12 +464,12 @@ done
 # Get Username
 username=""
 if [[ "$CI" == true ]]; then username="inder"; \
-elif [[ "$AIS" == true ]]; then username="$AIS_USERNAME"; fi
+elif [[ "$AC" == true ]]; then username="$AC_USERNAME"; fi
 
 while [ -z "$username" ]; do
     read -rp "$(format_prompt "Enter username:") " username
 
-    # https://stackoverflow.com/questions/18041761/bash-need-to-test-for-alphanumeric-string
+    # https://stackoverflow.com/questions/18041761
     if [[ ! "$username" =~ ^[a-zA-Z0-9]+$ ]]; then
         log_error "Only alphabets and numbers are allowed"
         username=""
@@ -382,9 +483,9 @@ confirm_password=""
 if [[ "$CI" == true ]]; then
     password="password"
     confirm_password="password"
-elif [[ "$AIS" == true ]]; then
-    password="$AIS_PASSWORD"
-    confirm_password="$AIS_PASSWORD"
+elif [[ "$AC" == true ]]; then
+    password="$AC_PASSWORD"
+    confirm_password="$AC_PASSWORD"
 fi
 
 while [[ -z "$password" || "$password" != "$confirm_password" ]]; do
@@ -401,10 +502,10 @@ done
 # Get Auto-confirm Registered User
 auto_confirm=""
 if [[ "$CI" == true ]]; then auto_confirm="false"; \
-elif [[ "$AIS" == true ]]; then auto_confirm="$AIS_AUTO_CONFIRM"; fi
+elif [[ "$AC" == true ]]; then auto_confirm="$AC_CONFIRM"; fi
 
 while [ -z "$auto_confirm" ]; do
-    confirmation_prompt auto_confirm "Do you want to send confirmation emails to register users? If yes, you'll have to setup your own SMTP server [y/n]: "
+    confirmation_prompt auto_confirm "Do you want to send confirmation email when registering a user? If yes, you'll have to setup your own SMTP server [y/n]: "
     if [[ "$auto_confirm" == true ]]; then
         auto_confirm="false"
     elif [[ "$auto_confirm" == false ]]; then
@@ -422,38 +523,38 @@ if [[ "$with_authelia" == true ]]; then
         email="johndoe@gmail.com"
         display_name="Inder Singh"
         if [[ "$WITH_REDIS" == true ]]; then setup_redis=true; fi
-    elif [[ "$AIS" == true ]]; then
-        email="$AIS_EMAIL"
-        display_name="$AIS_DISPLAY_NAME"
+    elif [[ "$AC" == true ]]; then
+        email="$AC_EMAIL"
+        display_name="$AC_DISPLAY_NAME"
         setup_redis="$WITH_REDIS"
     fi
 
-    # Get Admin Email
+    # Get Authelia Email Address
     while [ -z "$email" ]; do
-        read -rp "$(format_prompt "Enter your email for Authelia:") " email
+        read -rp "$(format_prompt "Enter your email address for Authelia:") " email
 
         # split email string on @ symbol
         IFS="@" read -r before_at after_at <<<"$email"
 
         if [[ -z "$before_at" || -z "$after_at" ]]; then
-            log_error "Invalid email"
+            log_error "Invalid email address: $email"
             email=""
         fi
     done
 
-    # Get Display Name
+    # Get Authelia Display Name
     while [ -z "$display_name" ]; do
-        read -rp "$(format_prompt "Enter Display Name:") " display_name
+        read -rp "$(format_prompt "Enter your display name for Authelia:") " display_name
 
         if [[ ! "$display_name" =~ ^[a-zA-Z0-9[:space:]]+$ ]]; then
-            log_error "Only alphabets, numbers and spaces are allowed"
+            log_error "Only alphabets, numbers and spaces are allowed. Received $display_name"
             display_name=""
         fi
     done
 
-    # Get Setup Redis
-    while [[ "$CI" == false && "$AIS" == false && -z "$setup_redis" ]]; do
-        confirmation_prompt setup_redis "Do you want to setup redis with authelia? [y/n]: "
+    # Get Setup Authelia to use Redis
+    while [[ "$CI" == false && "$AC" == false && -z "$setup_redis" ]]; do
+        confirmation_prompt setup_redis "Do you want to setup Authelia to use Redis? [y/n]: "
     done
 fi
 
@@ -496,6 +597,25 @@ gen_token() {
 # Update .env File
 anon_token=$(gen_token "anon")
 service_role_token=$(gen_token "service_role")
+
+#log_debug ": $"
+log_debug "————————————"
+log_debug "username: $username"
+log_debug "AC: $AC"
+log_debug "AC_LOCAL: $AC_LOCAL"
+log_debug "with_authelia: $with_authelia"
+log_debug "email: $email"
+log_debug "display_name: $display_name"
+log_debug "setup_redis: $setup_redis"
+log_debug "jwt_secret: $jwt_secret"
+log_debug "anon_token: $anon_token"
+log_debug "service_role_token: $service_role_token"
+log_debug "domain: $domain"
+log_debug "auto_confirm: $auto_confirm"
+log_debug "proxy: $proxy"
+exit 0
+
+# ---------------------------------------------------------------------------
 
 sed -e "3d" \
     -e "s|POSTGRES_PASSWORD.*|POSTGRES_PASSWORD=$(gen_hex 16)|" \
@@ -581,7 +701,7 @@ else
                         .services.nginx.command=[\"/bin/bash\",\"-c\",strenv(nginx_cmd)]
                        "
 
-    if [[ "$CI" == true || "$AIS_LOCAL" == true ]]; then
+    if [[ "$CI" == true || "$AC_LOCAL" == true ]]; then
         # https://github.com/JonasAlfredsson/docker-nginx-certbot/blob/master/docs/advanced_usage.md#local-ca
         proxy_service_yaml="${proxy_service_yaml} | .services.nginx.environment.USE_LOCAL_CA=1"
     fi
@@ -668,7 +788,6 @@ if [[ "$with_authelia" == true ]]; then
          "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET": "${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}"
        }'
 
-    # TODO: add db/schema-authelia.sh to ./authelia
     authelia_docker_supabase_service_yaml='.services.db.environment.AUTHELIA_SCHEMA = strenv(authelia_schema) |
        .services.db.volumes += "./authelia/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
 
@@ -699,7 +818,7 @@ if [[ "$proxy" == "caddy" ]]; then
     import $caddy_addons_path/cors.conf
 
     {\$DOMAIN} {
-        $([[ "$CI" == true || "$AIS_LOCAL" == true ]] && echo "tls internal")
+        $([[ "$CI" == true || "$AC_LOCAL" == true ]] && echo "tls internal")
         @supa_api path /rest/v1/* /auth/v1/* /realtime/v1/* /functions/v1/* /mcp /api/mcp
 
         $([[ "$with_authelia" == true ]] && echo "@authelia path /authenticate /authenticate/*
@@ -839,25 +958,44 @@ server {
 " >"$nginx_local_template_file"
 fi
 
-unset password confirm_password
-if [ -n "$SUDO_USER" ]; then chown -R "$SUDO_USER": .; fi
-log_info "Cleaning up!"
+unset AC_PASSWORD password confirm_password
+if [ -n "$SUDO_USER" ]; then
+    log_info "Setting $(basename "$(pwd)")/* ownership to $SUDO_USER..."
+    chown -R "$SUDO_USER": .;
+fi
+
+log_info "Cleaning up..."
 for bin in "$yq_bin" "$url_parser_bin"; do rm "$bin"; done
 
 success="${GREEN}Success!${END}"
 access_message="${CYAN}To access the dashboard over the internet, ensure your firewall allows traffic on ports 80 and 443${END}"
 
-if [[ "$AIS" == true ]]; then
+edit_host_file() {
+    echo -e "\n${INFO} 👉 ${BLUE}Next steps:${END}"
+    echo "${INFO}${BLUE}1.${END} ${GREEN}Edit your hosts file so your domain will loop back to your${END}"
+    echo "${INFO}      ${GREEN}machine - just like localhost.${END}"
+    echo "${INFO}   ${BLUE}1a.${END} ${GREEN}Create a backup of the original hosts file.${END}"
+    echo "${INFO}      ${GREEN}sudo cp /etc/hosts /etc/hosts.bak${END}"
+    echo "${INFO}   ${BLUE}1b.${END} ${GREEN}Open /etc/hosts file in your editor. Here, I am using vim.${END}"
+    echo "${INFO}      ${GREEN}sudo vim /etc/hosts${END}"
+    echo "${INFO}   ${BLUE}1c.${END} ${GREEN}Add a new entry with format: 'ip-address' 'hostname-or-domain-name'.${END}"
+    echo "${INFO}      ${GREEN}127.0.0.1 https://supabase.local.com${END}"
+    echo "${INFO}      ${GREEN}Save the file and quit your editor.${END}"
+    echo ""
+}
+
+if [[ "$AC" == true ]]; then
     echo -e "\n${INFO} 🎉 ${success}"
+    if [ "${AC_LOCAL}" == true ]; then edit_host_file ; fi
     echo -e "\n${INFO} 🌐 ${access_message}\n"
     exit 0
 fi
 
 echo -e "\n${INFO} 🎉 ${success}"
 echo "${INFO} 👉 ${CYAN}Next steps:${END}"
-echo "${INFO} ${WHITE}1.${END} ${CYAN}Change into the docker directory:${END}"
-echo "${INFO}   ${WHITE}cd $directory/docker${END}"
-echo "${INFO} ${WHITE}2.${END} ${CYAN}Start the services with Docker Compose:${END}"
-echo "${INFO}   ${WHITE}docker compose up -d${END}"
-echo "${INFO} 🚀 ${GREEN}Everything should now be running!${END}"
+echo "${INFO} ${WHITE}1.${END} ${CYAN}Change into $directory:${END}"
+echo "${INFO}   ${WHITE}cd $directory${END}"
+echo "${INFO} ${WHITE}2.${END} ${CYAN}Run suite_services.py:${END}"
+echo "${INFO}   ${WHITE}python suite_services.py --profile ai-all --operation start${END}"
+echo "${INFO} 🚀 ${GREEN}Confirm everything is running from console output${END}"
 echo -e "\n${INFO} 🌐 ${access_message}\n"

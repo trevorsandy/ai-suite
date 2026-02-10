@@ -70,6 +70,12 @@ system that can generate analytical data reports in real-time.
 
 ✅ [**Caddy**](https://caddyserver.com/) - Managed HTTPS/TLS for custom domains.
 
+✅ [**Nginx**](https://nginx.org) - HTTPS/TLS server, reverse proxy, TCP/UDP
+proxy server
+
+✅ [**Authelia**](https://www.authelia.com) - Authentication and authorization
+server, identity and access management (IAM).
+
 ## Prerequisites
 
 System specifications:
@@ -709,6 +715,25 @@ Example command:
 
 ```powershell
 python suite_services.py --profile n8n opencode cpp-cpu --operation update --log DEBUG
+```
+
+#### HTTPS Reverse Proxy and Access Management
+
+By default, _self-hosted_ **AI-Suite** will configure **Caddy** (Default) or **Nginx**
+HTTPS reverse proxy and **Authelia** 2FA (Two Factor Authentication) IAM (Identity
+and Access Management) on install or update. You can disable this behaviour using
+the `no-auto-config` profile argument when running these operations.
+
+`suite_services.py` `--profile` No auto-configure argument:
+
+| Argument | Behaviour |
+| -----------------------: | ------: |
+| `no-auto-config` | Auto-configure - setup Caddy/Nginx and Authelia 2FA IAM |
+
+Example command:
+
+```powershell
+python suite_services.py --profile ai-all no-auto-config --operation update
 ```
 
 ---
@@ -1437,10 +1462,16 @@ caddy:
 
 ```bash
 .
+├── LICENSE
+├── README.md
 ├── assets/                              # README.md gif image
+├── authelia/
+│   ├── configuration.yml                # Authelia configuration
+│   └── db/                              # Authelia schema
 ├── caddy/                               # Caddy proxy server
-│   └── addons/
 │   └── Caddyfile                        # Caddy configuration
+│   └── addons/
+│       └── cors.conf                    # Caddy cors configuration
 ├── flowise/                             # Ready-to-import Flowise workflows
 │   └── uploads/
 ├── n8n/
@@ -1448,6 +1479,13 @@ caddy:
 │   │   ├── credentials/                 # Ready-to-import n8n credentials
 │   │   └── workflows/                   # Ready-to-import n8n workflows
 │   └── local-files/
+├── nginx/
+│   └── addons/                          # Nginx configuration
+│       ├── authelia-authrequest.conf
+│       ├── authelia-location.conf
+│       ├── common_proxy_headers.conf
+│       ├── cors.conf                    # Nginx cors configuration
+│       └── proxy.conf                   # Nginx proxy configuration
 ├── neo4j/
 │   ├── logs/
 │   └── plugins/
@@ -1468,6 +1506,8 @@ caddy:
 ├── opencode/
 │   ├── opencode.jsonc                   # OpenCode configuration
 │   └── run_opencode_docker.py           # OpenCode launch script
+├── scripts
+│   └── auto_config.sh                   # Proxy setup and access management script
 ├── searxng/
 │   └── settings-base.yml                # SearXNG configuration
 ├── supabase/
