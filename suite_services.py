@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 9, 2026
+Last Update February 12, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -57,6 +57,7 @@ import sys
 import argparse
 import datetime
 import dotenv
+import getpass
 import gzip
 import logging
 import pathlib
@@ -716,11 +717,13 @@ def operate_ai_suite(operation, profile, environment, env_vars):
             cmd.extend(["--profile", argument])
     cmd.extend(["-f", "docker-compose.yml", operation])
     run_command(cmd)
+    insert = operation
     if operation == 'pull':
+        insert.join(' and prune')
         cmd = ["docker", "image", "prune", "--force"]
         run_command(cmd)
     log.info("="*60, extra=LSHF.style(logging.INFO, LSHF.BLUE))
-    log.info(f"{name} services '{operation}' completed.", extra=log_bright)
+    log.info(f"{name} services image '{operation}' completed.", extra=log_bright)
 
 def start_built_container(compose_file=None, environment=None, build=False):
     """Start the locally built container services (using its compose file)."""
@@ -1523,6 +1526,194 @@ def display_service_endpoints(profile, supabase, env_vars):
             log.info("❌ {}".format(container), extra=fail_style)
     log.info("="*60, extra=line_style)
 
+def configure_ai_suite_access(env_vars:dict):
+    """Setup env_vars for self-hosted AI-Suite with Caddy/Nginx proxy and Authelia
+       2FA identity and access management.
+    """
+    ac_env_list = []
+    public = False
+    # AC env
+    log.info(f"Auto-configuring {name} access...")
+    env_vars.update({'AC': 'true'})
+    # AC_SUDO_USER env
+    default = env_vars.get('AC_SUDO_USER', getpass.getuser())
+    non_root = "WSL non-root" if system == 'Windows' else "non-root"
+    response = input(f"Enter a {non_root} sudo user (current user: {default}): ")
+    default = response if response else default
+    env_vars.update({'AC_SUDO_USER': default})
+    # AC_SUDO_PASSWORD env
+    password = getpass.getpass(f"Enter sudo password for package install: ")
+    if not password:
+        log.warning(f"A sudo password prompt will trigger on package install.")
+    ac_env_list.append("AC_SUDO_PASSWORD='{}'".format(password))
+    # AC_USERNAME env #
+    default = env_vars.get('AC_USERNAME', 'ai_suite_user')
+    response = input(f"Enter proxy user name (required: {default}): ")
+    default = response.strip() if response else default
+    env_vars.update({'AC_USERNAME': default})
+    # AC_PASSWORD env
+    password = getpass.getpass(f"Enter proxy user password (required): ")
+    if not password:
+        log.error(f"A proxy user password is required. Exiting auto-configure...")
+        return []
+    ac_env_list.append("AC_PASSWORD='{}'".format(password))
+    env_vars.update({'AC_PASSWORD': '*******'})
+    # AC_LOG_PATH
+    default = env_vars.get('AC_LOG_PATH', os.path.normpath('scripts'))
+    env_vars.update({'AC_LOG_PATH': default})
+    # AC_LOCAL env
+    default = env_vars.get('AC_LOCAL', 'false')
+    default = True if str(default).lower() == 'true' else False
+    response = input("Is this a local (private) installation? y/n ({}): "
+                     .format('y' if default else 'n'))
+    default = True if response.lower() == 'y' else default
+    env_vars.update({'AC_LOCAL': str(default)})
+    public = not default
+    # AC_DOMAIN env
+    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.com')
+    response = input(f"Enter a domain ({default}): ")
+    default = response.strip() if response else default
+    env_vars.update({'AC_DOMAIN': default})
+    # AC_CONFIRM env
+    default = env_vars.get('AC_CONFIRM', 'false')
+    default = True if str(default).lower() == 'true' else False
+    response = input("Send confirmation email on user registration? y/n ({}): "
+                     .format('y' if default else 'n'))
+    default = True if response.lower() == 'y' else default
+    env_vars.update({'AC_CONFIRM': str(default)})
+    if default:
+        # AC_EXIM_SMTP env
+        default = env_vars.get('AC_EXIM_SMTP', 'false')
+        default = True if str(default).lower() == 'true' else False
+        #response = input("Add Exim SMTP server? y/n ({}): "
+        #                 .format('y' if default else 'n'))
+        default = True if response.lower() == 'y' else default
+        #env_vars.update({'AC_EXIM_SMTP': str(default)})
+    # AC_PROXY env
+    default = env_vars.get('AC_PROXY', 'Caddy')
+    response = input(f"Enter proxy (Caddy or Nginx: {default}): ")
+    if response.strip().lower() not in ['', 'caddy', 'nginx']:
+        log.warning(f"Invalid proxy specified: {response}. Using {default}.")
+        response = None
+    default = response.strip() if response else default
+    env_vars.update({'AC_PROXY': default.lower()})
+    # AC_WITH_AUTHELIA env
+    default = env_vars.get('AC_WITH_AUTHELIA', 'false')
+    default = True if str(default).lower() == 'true' else False
+    response = input("Include Authelia 2FA (Two Factor Authentication)? y/n ({}): "
+                     .format('y' if default else 'n'))
+    with_authelia = True if response.lower() == 'y' else default
+    env_vars.update({'AC_WITH_AUTHELIA': str(with_authelia)})
+    if with_authelia:
+        # AC_EMAIL env
+        default = env_vars.get('AC_EMAIL', 'ai.suite.user@local.com')
+        response = input(f"Enter Authelia user email (required: {default}): ")
+        default = response.strip() if response else default
+        env_vars.update({'AC_EMAIL': default})
+        # AC_DISPLAY_NAME env
+        default = env_vars.get('AC_DISPLAY_NAME', f'{name} User')
+        response = input(f"Enter Authelia user display name (required: {default}): ")
+        default = response.strip() if response else default
+        env_vars.update({'AC_DISPLAY_NAME': default})
+        # AC_WITH_REDIS env
+        default = env_vars.get('AC_WITH_REDIS', ('true' if public else 'false'))
+        default = True if str(default).lower() == 'true' else False
+        response = input("Use Redis with Authelia? y/n ({}: {}): "
+                         .format('recommended' if public else 'optional',
+                                 'y' if default else 'n'))
+        default = True if response.lower() == 'y' else default
+        env_vars.update({'AC_WITH_REDIS': str(default)})
+    # Generate Auto-configure Env list
+    ac_env_prefix = 'AC_'
+    ac_env_bool = ['AC', 'AC_LOCAL', 'AC_CONFIRM', 'AC_WITH_AUTHELIA', 'AC_WITH_REDIS']
+    for env, var in env_vars.items():
+        if not var or not env.startswith(ac_env_prefix):
+            continue
+        if env == 'AC_PASSWORD':
+            continue
+        if env in ac_env_bool:
+            var = str(var).lower()
+        ac_env_var = "{}='{}'".format(env, var)
+        ac_env_list.append(ac_env_var)
+    # Display Env settings
+    header = ("{} Auto-configure Access Env Settings").format(name)
+    emoji = '🚀'
+    color = LSHF.GREEN
+    header_style = {
+        'prefix': ("{0} {1}{2}").format(
+            emoji, LSHF.prefix(color, bold=True, underline=True), header),
+        'suffix': LSHF.suffix()}
+    header_style.update({'purge_msg': 'True'})
+    line_style = LSHF.style(logging.INFO, LSHF.BLUE)
+    env_prefix = LSHF.prefix(color)
+    var_prefix = LSHF.prefix(LSHF.BLUE)
+
+    log.info("")
+    log.info("="*60, extra=line_style)
+    log.info(header, extra=header_style)
+    log.info("="*60, extra=line_style)
+
+    for env, var in env_vars.items():
+        if not env.startswith(ac_env_prefix):
+            continue
+        emoji = '🌐'
+        env_var_prefix = ("{}• {} {:18s}{}={}'{}'").format(
+            env_prefix, emoji, env, LSHF.suffix(),
+            var_prefix, var)
+        env_var_style = {'prefix': env_var_prefix, 'suffix': LSHF.suffix()}
+        env_var_style.update({'purge_msg':'True'})
+        raw_msg = ("• {} {:18s}='{}'").format(emoji, env, var)
+        log.info(raw_msg, extra=env_var_style)
+    log.info("="*60, extra=line_style)
+
+    accept = True
+    response = input(f"Are these auto-configure settings ok to continue? y/n: (y)")
+    accept = True if response.lower() == 'y' else accept if not response else False
+    if accept:
+        return ac_env_list
+    else:
+        log.info(f"Auto-configure settings rejected.")
+        return []
+
+def run_configure_ai_suite_access_command(ac_env_vars:list):
+    """Configure self-hosted AI-Suite with Caddy/Nginx proxy and Authelia 2FA
+       identity and access management.
+    """
+    if not ac_env_vars:
+        log.error(f"Auto-configure env_var list is empty!")
+        return
+    ac_script = os.path.normpath(os.path.join(".", "scripts", "auto_config.sh"))
+    if not os.path.exists(ac_script):
+        log.error(f"Auto-configure script not found at {ac_script}")
+        return
+    ac_log_path = os.path.normpath(os.path.dirname(ac_script))
+    if system == 'Windows':
+        ac_log_path = ac_log_path.replace("\\", "/")
+        ac_script = ac_script.replace("\\", "/")
+    ac_log = "".join(['>', os.path.join(ac_log_path, 'auto_config.log'), ' 2>&1'])
+    cmd = []
+    if system == "Windows":
+        cmd = ["wsl", "-e", "bash", "-c", "env"] + ac_env_vars + ["./" + ac_script]
+    else:
+        cmd = ["bash", "-c", "env"] + ac_env_vars + [ac_script]
+    cmd_msg = []
+    for element in cmd:
+        if element.split('=')[0].endswith('_PASSWORD'):
+            continue
+        cmd_msg.append(element)
+    raw_msg = " ".join([log_run_cmd, " ".join(cmd_msg)])
+    log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd_msg)))
+    try:
+        completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        if completed.returncode != 0:
+            log.error(f"Command: auto-configure: {completed.stderr}")
+        else:
+            info_style = LSHF.style(logging.INFO, LSHF.GREEN)
+            ac_log_file = os.path.join(ac_log_path, 'auto_config.sh.log')
+            log.info(f"See details in run log: {ac_log_file}", extra=info_style)
+    except Exception as e:
+        log.error(f"Exception: auto-configure: {e}.")
+
 def main():
     # Name and file globals
     global name, file
@@ -1559,7 +1750,7 @@ def main():
     agent_all_profiles = open_webui_all_profiles + ['opencode']
     server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j', 'caddy']
     profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + \
-               llama_docker_profiles + llama_host_profiles
+               llama_docker_profiles + llama_host_profiles + ['no-auto-config']
     managemant_operations = ['stop', 'stop-llama', 'start', 'pause', 'unpause']
     installation_operations = ['update', 'install']
     data_operations = ['backup-data', 'restore-data']
@@ -1602,6 +1793,7 @@ def main():
                 open-webui-all                              Open WebUI complete bundle
                 n8n-all                                     n8n, Open WebUI and selected utilities bundle
                 ai-all                                      full {name} bundle
+                no-auto-config                              do not auto-configure access on install or update
 
               - LLM modules:
                 cpu gpu-nvidia gpu-amd                      Ollama CPU/GPU options running in Docker
@@ -1656,6 +1848,9 @@ def main():
 
               ...to update all modules and restart using Ollama CPU running in Docker:
               python {file} --profile ai-all cpu --operation update
+
+              ...to update all modules but do not auto-configure access management:
+              python {file} --profile ai-all no-auto-config --operation update
 
               ...to install all modules and start using Ollama running on the Host:
               python {file} --operation install
@@ -1756,7 +1951,8 @@ def main():
         attempted_launch = False
         llama_found = False
         llama_path = normalize_path(env_vars.get('LLAMA_PATH'))
-        llama_cpp = any(p for p in args.profile if p == 'llama.cpp')
+        if any(p for p in args.profile if p == 'llama.cpp'):
+            llama_cpp = True
         llama = "LLaMA.cpp" if llama_cpp else "Ollama"
         if llama_path:
             llama_exe = os.path.normpath(llama_path)
@@ -1859,6 +2055,15 @@ def main():
         for env in ['LLAMACPP_DEFAULT_MODEL', 'LLAMACPP_MODEL_PATH', 'LLAMA_ARG_HF_REPO']:
             log.debug(f" - {env}: {env_vars[env]}", extra=debug_style)
 
+    # Auto-configuration
+    ac_env_vars = []
+    if any(p for p in args.profile if p == 'no-auto-config'):
+        ac_env_vars = configure_ai_suite_access(env_vars)
+        for env, var in env_vars.items():
+            if not env.startswith('AC_'):
+                continue
+            set_dotenv_var(env_file, env, var, None)
+
     # Process operation argument
     install = False
     build = False
@@ -1883,7 +2088,7 @@ def main():
         build = args.operation in ['update', 'install']
         if build:
             install = args.operation == 'install'
-            if args.operation == 'update':
+            if args.operation == 'update++':
                 user_confirm = input(textwrap.dedent(f"""\
                     Performing an {name} update can impact its integrity.
                     Consider backing up your data to enable rollback.
@@ -1904,10 +2109,13 @@ def main():
             docker_compose_include(True, True, False)
             destroy_ai_suite(args.profile, install)
         operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
-        if not build:
+        if build:
+            insert = "Installing" if install else "Updating"
+            log.info(f"{insert} '{name}' with profile arguments: {args.profile}...")
+        else:
             sys.exit(0)
     else:
-        raw_msg = f"{name} will perform operations similar to an update..."
+        raw_msg = f"Updating '{name}' with profile arguments: {args.profile}..."
         log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
 
     os.remove('.operation') if os.path.exists('.operation') else None
@@ -1932,21 +2140,8 @@ def main():
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
 
-    # Auto-configuration
-    if build:
-        insert = "Installing" if install else "Updating"
-        log.info(f"{insert} '{name}' with profile arguments: {args.profile}...")
-    if not any(p for p in args.profile if p == 'no-auto-config'):
-        config_script = os.path.join('scripts', 'auto_config.sh')
-        if os.path.exists(config_script):
-            log.info(f"Auto-configuring {name}...")
-            if system == "Windows":
-                cmd = ['bash', str(config_script)]
-            else:
-                cmd = ['bash', str(config_script)]
-            run_command(cmd)
-        else:
-            log.error(f"Auto-config script not found at {config_script}")
+    if ac_env_vars:
+        run_configure_ai_suite_access_command(ac_env_vars)
 
     if any(p for p in args.profile if p in n8n_all_profiles):
         env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"
