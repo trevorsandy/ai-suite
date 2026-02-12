@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 12, 2026
+Last Update February 17, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -84,6 +84,35 @@ INFO = {
 }
 
 # Logging
+# Source - https://stackoverflow.com/a/35804945
+def addLoggingLevel(levelName, levelNum, methodName=None):
+    """Adds a new logging level to the logging module and the
+       currently configured logging class.
+    """
+    if not methodName:
+        methodName = levelName.lower()
+
+    if hasattr(logging, levelName):
+       raise AttributeError('{} already defined in logging module'.format(levelName))
+    if hasattr(logging, methodName):
+       raise AttributeError('{} already defined in logging module'.format(methodName))
+    if hasattr(logging.getLoggerClass(), methodName):
+       raise AttributeError('{} already defined in logger class'.format(methodName))
+
+    def logForLevel(self, message, *args, **kwargs):
+        if self.isEnabledFor(levelNum):
+            self._log(levelNum, message, args, **kwargs)
+    def logToRoot(message, *args, **kwargs):
+        logging.log(levelNum, message, *args, **kwargs)
+
+    logging.addLevelName(levelNum, levelName)
+    setattr(logging, levelName, levelNum)
+    setattr(logging.getLoggerClass(), methodName, logForLevel)
+    setattr(logging, methodName, logToRoot)
+
+# Custom logging level
+addLoggingLevel("NOTICE", 22)
+
 class Formatter(logging.Formatter):
     """A class that formats colored logs using Select Graphic Rendition parameters."""
     FORMATS = {
@@ -101,11 +130,12 @@ class Formatter(logging.Formatter):
     WHITE   = 37
     COLOR   = {'msg': WHITE, 'level': WHITE, 'name': BLUE}
     LOG_LEVEL_COLOR = {
-        logging.CRITICAL: {'msg': RED_BG, 'level': RED_BG, 'name': BLUE} ,
-        logging.ERROR   : {'msg': RED,    'level': RED,    'name': BLUE} ,
-        logging.WARNING : {'msg': YELLOW, 'level': YELLOW, 'name': BLUE} ,
-        logging.INFO    : {'msg': CYAN,   'level': CYAN,   'name': BLUE} ,
-        logging.DEBUG   : {'msg': WHITE,  'level': WHITE,  'name': BLUE}
+        logging.CRITICAL : {'msg': RED_BG, 'level': RED_BG, 'name': BLUE} ,
+        logging.ERROR    : {'msg': RED,    'level': RED,    'name': BLUE} ,
+        logging.WARNING  : {'msg': YELLOW, 'level': YELLOW, 'name': BLUE} ,
+        logging.NOTICE   : {'msg': MAGENTA,'level': WHITE,  'name': BLUE} , # type:ignore[reportAttributeAccessIssue]
+        logging.INFO     : {'msg': CYAN,   'level': CYAN,   'name': BLUE} ,
+        logging.DEBUG    : {'msg': WHITE,  'level': WHITE,  'name': BLUE}
     }
 
     def __init__(self, fmt: str):
@@ -160,7 +190,7 @@ class Formatter(logging.Formatter):
         d['header_prefix'], d['header'], d['header_suffix'], d['msg_prefix'], d['msg']
         # Resolve format conflicts
         faint = False if faint and bright or bold else faint
-        if isinstance(level, int) and level not in [10, 20, 30, 40, 50]:
+        if isinstance(level, int) and level not in [50, 40, 30, 20, 19, 18, 10]:
             color = level
             level = logging.INFO
         # Construct a SGR dictionary with the specified arguments
@@ -188,8 +218,9 @@ class Formatter(logging.Formatter):
             style.update({'name_prefix': name_prefix})
         if level_name:
             if not level_name_prefix:
-                bold = True if level in [logging.ERROR, logging.CRITICAL, logging.DEBUG] else bold
-                underline = True if level in [logging.WARNING] else underline
+                bold_level_names = [logging.ERROR, logging.CRITICAL, logging.NOTICE, logging.DEBUG] # type:ignore[reportAttributeAccessIssue]
+                bold = True if level in bold_level_names else bold
+                underline = True if level in [logging.WARNING, logging.NOTICE] else underline # type:ignore[reportAttributeAccessIssue]
                 level_name_prefix = Formatter.prefix(level_name_color, bright, bold, faint, italic, underline)
             style.update({'level_name_prefix': level_name_prefix})
         # These (msg\header) constitute the stream message so set purge_msg to purge
@@ -221,7 +252,8 @@ class Formatter(logging.Formatter):
         if hasattr(record, 'level_name_prefix'):
             levelname_prefix = getattr(record, 'level_name_prefix')
         if not levelname_prefix:
-            bold = record.levelno in [logging.ERROR, logging.CRITICAL, logging.DEBUG]
+            bold_levelnames = [logging.ERROR, logging.CRITICAL, logging.NOTICE, logging.DEBUG] # type:ignore[reportAttributeAccessIssue]
+            bold = record.levelno in bold_levelnames
             underline = record.levelno in [logging.WARNING]
             levelname_prefix = self.prefix(color['level'], bold=bold, underline=underline)
         record.levelname = ('{0}{1}{2}').format(levelname_prefix, levelname, suffix)
@@ -342,7 +374,7 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
             if operation == 'install':
                 log.critical(response)
             else:
-                log.info("Notice: " + response, extra=LSHF.style(header=log_notice, msg=response))
+                log.notice(response) # type:ignore[reportAttributeAccessIssue]
             command_prefix = LSHF.prefix(LSHF.BLUE)
             command_model_prefix = LSHF.prefix(LSHF.BLUE, bold=True)
             llama_app_prefix = LSHF.prefix(LSHF.GREEN, bold=True)
@@ -870,8 +902,8 @@ def check_and_fix_docker_compose_for_searxng():
                     log.info("uwsgi.ini not found inside the SearXNG container - first run")
                     is_first_run = True
             else:
-                raw_msg = "No running SearXNG container found - assuming first run"
-                log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
+                msg = "No running SearXNG container found - assuming first run"
+                log.notice(msg) # type:ignore[reportAttributeAccessIssue]
                 is_first_run = True
         except Exception as e:
             log.error(f"Exception: Check Docker container running: {e} - assuming first run")
@@ -899,9 +931,9 @@ def check_and_fix_docker_compose_for_searxng():
                                 searxng_found = False
                                 log.info("SearXNG 'cap_drop:' directive temporarily commented...")
                     f.write(line)
-            raw_msg = "After the first run completes successfully, uncomment 'cap_drop:' " \
+            msg = "After the first run completes successfully, uncomment 'cap_drop:' " \
                       "in docker-compose.yml for security."
-            log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
+            log.notice(msg) # type:ignore[reportAttributeAccessIssue]
         else:
             # Read the docker-compose.yml file
             with open(docker_compose_path, 'r') as f:
@@ -1035,19 +1067,23 @@ def check_prerequisites():
         return False
     return True
 
-def get_dotenv_vars(env_file=None, force=False):
+def get_dotenv_vars(env_file=None, force=False, auto_config=False):
     """Load environment variables from .env file"""
     if env_file is None:
         env_file = os.path.join(".env")
-    if not os.path.exists(env_file):
+
+    valid_env_file = os.path.exists(env_file)
+    if not valid_env_file:
         if os.path.exists(".env.example"):
-            log.warning("The .env file was not found - creating from .env.example template...")
             shutil.copy('.env.example', '.env')
-            log.critical("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
+            if not auto_config:
+                valid_env_file = os.path.exists(env_file)
+                log.warning("The .env file was not found - it was created from .env.example template")
+                log.critical("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
         else:
-            log.critical("The .env file was not found - exiting...")
+            log.critical("The .env.example file was not found - exiting...")
         return {}
-    else:
+    elif not auto_config:
         with open(env_file, 'r') as f:
             env_content = f.read()
         default_secrets = [
@@ -1076,9 +1112,9 @@ def get_dotenv_vars(env_file=None, force=False):
             return {}
 
     env_vars = dotenv.dotenv_values(env_file)
-    path = env_vars['PROJECTS_PATH']
-    if not path:
-        path = os.path.join('~', 'projects')
+    if not valid_env_file:
+        os.remove(env_file) if os.path.exists(env_file) else None
+    path = env_vars.get('PROJECTS_PATH', os.path.join('~', 'projects'))
     env_vars['PROJECTS_PATH'] = normalize_path(path)
 
     return env_vars
@@ -1143,8 +1179,7 @@ def set_dotenv_var(env_file, env, var, header):
                         elif len(var_array) == 1:
                             mod_line = ''.join([env, '=\n'])
                         line = mod_line
-                        raw_msg = f"Value for {env} removed..."
-                        log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
+                        log.notice(f"Value for {env} removed...") # type:ignore[reportAttributeAccessIssue]
                     f.write(line)
         except FileNotFoundError:
             log.error(f"Exception: File '{env_file}' not found.")
@@ -1156,7 +1191,8 @@ def set_dotenv_var(env_file, env, var, header):
         if not header in content:
             quote_mode = "never"
             env = "".join([header, env])
-    log.info(f"Set '{env}' to '{var}' in {env_file}...")
+    msg_var = '***' if env == 'AC_PASSWORD' else var
+    log.info(f"Set '{env}' to '{msg_var}' in {env_file}...")
     dotenv.set_key(env_file, env, var, quote_mode)
 
 def configure_n8n_database_settings(supabase):
@@ -1526,115 +1562,174 @@ def display_service_endpoints(profile, supabase, env_vars):
             log.info("❌ {}".format(container), extra=fail_style)
     log.info("="*60, extra=line_style)
 
-def configure_ai_suite_access(env_vars:dict):
+def setup_ai_suite_ac_auto_config(env_vars:dict):
     """Setup env_vars for self-hosted AI-Suite with Caddy/Nginx proxy and Authelia
        2FA identity and access management.
     """
-    ac_env_list = []
+    if not env_vars:
+        log.error("The auto-configure env_vars dictionary is empty!")
+        return []
+    ac = env_vars.get('AC', 'True')
+    if ac and ac.lower() != 'true':
+        log.notice("Auto-configure is disabled. Set AC=True in .env to enable.") # type:ignore[reportAttributeAccessIssue]
+        return []
+
+    log.info(f"Auto-configuring {name} proxy and access...", extra=log_bright)
+
+    prompt = True # Set False to fully automate for debugging etc...
+    if prompt:
+        response = input(f"Use default auto-configure .env settings? y/n: (n)")
+    else:
+        response = 'y'
+    prompt = False if response.lower() == 'y' else prompt
+    response = None
     public = False
-    # AC env
-    log.info(f"Auto-configuring {name} access...")
-    env_vars.update({'AC': 'true'})
-    # AC_SUDO_USER env
+
+    # AC - bool
+    ac_env_list = ['AC=true']
+    # AC_SUDO_USER - str
     default = env_vars.get('AC_SUDO_USER', getpass.getuser())
     non_root = "WSL non-root" if system == 'Windows' else "non-root"
-    response = input(f"Enter a {non_root} sudo user (current user: {default}): ")
+    if prompt:
+        response = input(f"Enter a {non_root} sudo user (current user: {default}): ")
     default = response if response else default
     env_vars.update({'AC_SUDO_USER': default})
-    # AC_SUDO_PASSWORD env
-    password = getpass.getpass(f"Enter sudo password for package install: ")
+    # AC_SUDO_PASSWORD - str
+    if prompt:
+        password = getpass.getpass(f"Enter hidden sudo password for package install: ")
+    else:
+        password = "" # Set "password" to fully automate for debugging etc...
     if not password:
-        log.warning(f"A sudo password prompt will trigger on package install.")
-    ac_env_list.append("AC_SUDO_PASSWORD='{}'".format(password))
-    # AC_USERNAME env #
+        log.notice(f"A sudo password prompt will trigger on package install.") # type:ignore[reportAttributeAccessIssue]
+    ac_env_list.append(f'AC_SUDO_PASSWORD="{password}"')
+    password = None
+    # AC_USERNAME - str
     default = env_vars.get('AC_USERNAME', 'ai_suite_user')
-    response = input(f"Enter proxy user name (required: {default}): ")
+    change_default = True if not default.isalnum() else False
+    if prompt or change_default:
+        response = None
+        while not response:
+            response = input(f"Enter proxy user name (required: {default}): ")
+            if not response:
+                response = "AISuiteProxyUser"
+                log.notice(f"The proxy user name was auto-generated as {response} and saved to .env.") # type:ignore[reportAttributeAccessIssue]
+            if not response.isalnum():
+                log.warning(f"Only alphanumeric characters are allowed. Response: {response}.")
+                response = None
     default = response.strip() if response else default
     env_vars.update({'AC_USERNAME': default})
-    # AC_PASSWORD env
-    password = getpass.getpass(f"Enter proxy user password (required): ")
-    if not password:
-        log.error(f"A proxy user password is required. Exiting auto-configure...")
-        return []
-    ac_env_list.append("AC_PASSWORD='{}'".format(password))
-    env_vars.update({'AC_PASSWORD': '*******'})
-    # AC_LOG_PATH
-    default = env_vars.get('AC_LOG_PATH', os.path.normpath('scripts'))
+    # AC_PASSWORD - str
+    default = env_vars.get('AC_PASSWORD', '*******')
+    change_default = True if default == '*******' else False
+    if prompt or change_default:
+        password = getpass.getpass(f"Enter hidden proxy user password (required: ***): ")
+    if not password and change_default:
+        import secrets
+        password_length = 13
+        password = secrets.token_urlsafe(password_length)
+        env_vars.update({'AC_PASSWORD': password})
+        log.notice(f"The proxy user password was auto-generated and saved to .env.") # type:ignore[reportAttributeAccessIssue]
+    else:
+        password = default
+    ac_env_list.append(f'AC_PASSWORD="{password}"')
+    # AC_LOG_PATH - str
+    default = env_vars.get('AC_LOG_PATH', './scripts')
     env_vars.update({'AC_LOG_PATH': default})
-    # AC_LOCAL env
-    default = env_vars.get('AC_LOCAL', 'false')
+    # AC_LOCAL - bool
+    default = env_vars.get('AC_LOCAL', 'False')
     default = True if str(default).lower() == 'true' else False
-    response = input("Is this a local (private) installation? y/n ({}): "
-                     .format('y' if default else 'n'))
-    default = True if response.lower() == 'y' else default
+    if prompt:
+        response = input("Is this a local (private) installation? y/n ({}): "
+                         .format('y' if default else 'n'))
+    default = True if response and response.lower() == 'y' else default
     env_vars.update({'AC_LOCAL': str(default)})
     public = not default
-    # AC_DOMAIN env
-    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.com')
-    response = input(f"Enter a domain ({default}): ")
+    # AC_DOMAIN - str
+    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.pc')
+    if prompt:
+        response = input(f"Enter a domain ({default}): ")
     default = response.strip() if response else default
     env_vars.update({'AC_DOMAIN': default})
-    # AC_CONFIRM env
-    default = env_vars.get('AC_CONFIRM', 'false')
+    # AC_CONFIRM - bool
+    default = env_vars.get('AC_CONFIRM', 'False')
     default = True if str(default).lower() == 'true' else False
-    response = input("Send confirmation email on user registration? y/n ({}): "
-                     .format('y' if default else 'n'))
-    default = True if response.lower() == 'y' else default
+    if prompt:
+        response = input("Send confirmation email on user registration? y/n ({}): "
+                         .format('y' if default else 'n'))
+    default = True if response and response.lower() == 'y' else default
     env_vars.update({'AC_CONFIRM': str(default)})
+    # AC_WITH_EXIM - bool
     if default:
-        # AC_EXIM_SMTP env
-        default = env_vars.get('AC_EXIM_SMTP', 'false')
+        default = env_vars.get('AC_WITH_EXIM', 'False')
         default = True if str(default).lower() == 'true' else False
-        #response = input("Add Exim SMTP server? y/n ({}): "
-        #                 .format('y' if default else 'n'))
-        default = True if response.lower() == 'y' else default
-        #env_vars.update({'AC_EXIM_SMTP': str(default)})
-    # AC_PROXY env
+        #if prompt:
+        #.   response = input("Add Exim SMTP server? y/n ({}): "
+        #                     .format('y' if default else 'n'))
+        default = True if response and response.lower() == 'y' else default
+        #env_vars.update({'AC_WITH_EXIM': str(default)})
+    # AC_PROXY - str
     default = env_vars.get('AC_PROXY', 'Caddy')
-    response = input(f"Enter proxy (Caddy or Nginx: {default}): ")
-    if response.strip().lower() not in ['', 'caddy', 'nginx']:
-        log.warning(f"Invalid proxy specified: {response}. Using {default}.")
-        response = None
-    default = response.strip() if response else default
+    if prompt:
+        response = input(f"Enter proxy (Caddy or Nginx: {default}): ")
+    if response:
+        response = response.strip().lower()
+        if response not in ['caddy', 'nginx']:
+            log.warning(f"Invalid proxy specified: {response}. Using {default}.")
+            response = None
+    default = response if response else default
     env_vars.update({'AC_PROXY': default.lower()})
-    # AC_WITH_AUTHELIA env
-    default = env_vars.get('AC_WITH_AUTHELIA', 'false')
+    # AC_WITH_AUTHELIA - bool
+    default = env_vars.get('AC_WITH_AUTHELIA', 'False')
     default = True if str(default).lower() == 'true' else False
-    response = input("Include Authelia 2FA (Two Factor Authentication)? y/n ({}): "
-                     .format('y' if default else 'n'))
-    with_authelia = True if response.lower() == 'y' else default
+    if prompt:
+        response = input("Include Authelia 2FA (Two Factor Authentication)? y/n ({}): "
+                         .format('y' if default else 'n'))
+    with_authelia = True if response and response.lower() == 'y' else default
     env_vars.update({'AC_WITH_AUTHELIA': str(with_authelia)})
     if with_authelia:
-        # AC_EMAIL env
-        default = env_vars.get('AC_EMAIL', 'ai.suite.user@local.com')
-        response = input(f"Enter Authelia user email (required: {default}): ")
+        # AC_EMAIL - str
+        default = env_vars.get('AC_EMAIL', 'ai-suite.aisuiteautheliauser@local.pc')
+        if prompt:
+            response = input(f"Enter Authelia user email (required: {default}): ")
         default = response.strip() if response else default
         env_vars.update({'AC_EMAIL': default})
-        # AC_DISPLAY_NAME env
+        # AC_DISPLAY_NAME - str
         default = env_vars.get('AC_DISPLAY_NAME', f'{name} User')
-        response = input(f"Enter Authelia user display name (required: {default}): ")
+        change_default = True if not all(c.isalnum() or c.isspace() for c in default) else False
+        if prompt or change_default:
+            response = None
+            while not response:
+                response = input(f"Enter Authelia user display name (required: {default}): ")
+                if not response:
+                    response = "AI Suite Authelia User"
+                    log.notice(f"The Authelia user display name was auto-generated as {response} and saved to .env.") # type:ignore[reportAttributeAccessIssue]
+                if not all(c.isalnum() or c.isspace() for c in response):
+                    log.warning(f"Only alphanumeric characters and spaces are allowed. Response: {response}.")
+                    response = None
         default = response.strip() if response else default
         env_vars.update({'AC_DISPLAY_NAME': default})
-        # AC_WITH_REDIS env
-        default = env_vars.get('AC_WITH_REDIS', ('true' if public else 'false'))
+        # AC_WITH_REDIS - bool
+        default = env_vars.get('AC_WITH_REDIS', ('True' if public else 'False'))
         default = True if str(default).lower() == 'true' else False
-        response = input("Use Redis with Authelia? y/n ({}: {}): "
-                         .format('recommended' if public else 'optional',
-                                 'y' if default else 'n'))
-        default = True if response.lower() == 'y' else default
+        if prompt:
+            response = input("Use Redis with Authelia? y/n ({}{}): "
+                             .format('recommended: ' if public else '',
+                                     'y' if default else 'n'))
+        default = True if response and response.lower() == 'y' else default
         env_vars.update({'AC_WITH_REDIS': str(default)})
+
     # Generate Auto-configure Env list
     ac_env_prefix = 'AC_'
-    ac_env_bool = ['AC', 'AC_LOCAL', 'AC_CONFIRM', 'AC_WITH_AUTHELIA', 'AC_WITH_REDIS']
+    ac_env_bool = ['AC_LOCAL', 'AC_CONFIRM', 'AC_WITH_AUTHELIA', 'AC_WITH_REDIS',
+                   'AC_WITH_EXIM']
     for env, var in env_vars.items():
         if not var or not env.startswith(ac_env_prefix):
             continue
         if env == 'AC_PASSWORD':
             continue
-        if env in ac_env_bool:
-            var = str(var).lower()
-        ac_env_var = "{}='{}'".format(env, var)
-        ac_env_list.append(ac_env_var)
+        var = str(var).lower() if env in ac_env_bool else f'"{var}"'
+        ac_env_list.append('{}={}'.format(env, var))
+
     # Display Env settings
     header = ("{} Auto-configure Access Env Settings").format(name)
     emoji = '🚀'
@@ -1656,63 +1751,83 @@ def configure_ai_suite_access(env_vars:dict):
     for env, var in env_vars.items():
         if not env.startswith(ac_env_prefix):
             continue
+        if env == 'AC_PASSWORD':
+            var = '***'
         emoji = '🌐'
-        env_var_prefix = ("{}• {} {:18s}{}={}'{}'").format(
+        quoted_var = var if var.isalnum() else f"'{var}'"
+        env_var_prefix = ("{}• {} {:18s}{}={}{}").format(
             env_prefix, emoji, env, LSHF.suffix(),
-            var_prefix, var)
+            var_prefix, quoted_var)
         env_var_style = {'prefix': env_var_prefix, 'suffix': LSHF.suffix()}
         env_var_style.update({'purge_msg':'True'})
-        raw_msg = ("• {} {:18s}='{}'").format(emoji, env, var)
+        raw_msg = ("• {} {:18s}={}").format(emoji, env, quoted_var)
         log.info(raw_msg, extra=env_var_style)
     log.info("="*60, extra=line_style)
 
     accept = True
-    response = input(f"Are these auto-configure settings ok to continue? y/n: (y)")
-    accept = True if response.lower() == 'y' else accept if not response else False
+    if prompt:
+        response = input(f"Are these auto-configure settings ok to continue? y/n: (y)")
+    accept = True if response and response.lower() == 'y' else accept if not response else False
     if accept:
         return ac_env_list
     else:
-        log.info(f"Auto-configure settings rejected.")
+        info_style = LSHF.style(logging.INFO, LSHF.YELLOW)
+        log.info(f"Auto-configure proxy and access settings was not accepted.", extra=info_style)
         return []
 
-def run_configure_ai_suite_access_command(ac_env_vars:list):
+def run_ai_suite_ac_auto_config(ac_env_vars):
     """Configure self-hosted AI-Suite with Caddy/Nginx proxy and Authelia 2FA
        identity and access management.
     """
     if not ac_env_vars:
-        log.error(f"Auto-configure env_var list is empty!")
+        log.error(f"The auto-configure env_var list is empty!")
         return
-    ac_script = os.path.normpath(os.path.join(".", "scripts", "auto_config.sh"))
+    ac_script = os.path.normpath(os.path.join("scripts", "auto_config.sh"))
     if not os.path.exists(ac_script):
         log.error(f"Auto-configure script not found at {ac_script}")
         return
-    ac_log_path = os.path.normpath(os.path.dirname(ac_script))
     if system == 'Windows':
-        ac_log_path = ac_log_path.replace("\\", "/")
         ac_script = ac_script.replace("\\", "/")
-    ac_log = "".join(['>', os.path.join(ac_log_path, 'auto_config.log'), ' 2>&1'])
-    cmd = []
-    if system == "Windows":
-        cmd = ["wsl", "-e", "bash", "-c", "env"] + ac_env_vars + ["./" + ac_script]
-    else:
-        cmd = ["bash", "-c", "env"] + ac_env_vars + [ac_script]
+    ac_script = "".join(["./", ac_script])
+    ac_log_file = "".join([ac_script, ".log"])
+    ac_log = "".join([">", ac_log_file, " 2>&1"])
     cmd_msg = []
-    for element in cmd:
-        if element.split('=')[0].endswith('_PASSWORD'):
-            continue
-        cmd_msg.append(element)
+    for element in ac_env_vars:
+        array = element.split('=')
+        if array[0].endswith('_PASSWORD'):
+            cmd_msg.append(f'{array[0]}="***"')
+        else:
+            cmd_msg.append(element)
+    cmd = ["bash", "-c"]
+    if system == "Windows":
+        cmd = ["wsl", "-e"] + cmd
+    cmd_msg = cmd + [" ".join(["env"] + cmd_msg + [ac_script])]
     raw_msg = " ".join([log_run_cmd, " ".join(cmd_msg)])
     log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd_msg)))
+    cmd = cmd + [" ".join(["env"] + ac_env_vars + [ac_script])]
     try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        completed = subprocess.run(cmd, cwd=None, text=True, check=True)
         if completed.returncode != 0:
             log.error(f"Command: auto-configure: {completed.stderr}")
         else:
             info_style = LSHF.style(logging.INFO, LSHF.GREEN)
-            ac_log_file = os.path.join(ac_log_path, 'auto_config.sh.log')
             log.info(f"See details in run log: {ac_log_file}", extra=info_style)
     except Exception as e:
-        log.error(f"Exception: auto-configure: {e}.")
+        if e:
+            e_array = str(e).split(',')
+            index = 4 if system == "Windows" else 2
+            size = 5 if system == "Windows" else 3
+            e_string = e_array[index] if len(e_array) == size else ""
+            e_array = e_string.split(' ')
+            if len(e_array) >= 14:
+                e_msg = []
+                for e_item in e_array:
+                    e_pair = e_item.split('=')
+                    if e_pair[0].endswith('_PASSWORD'):
+                        e_msg.append(f'{e_pair[0]}="***"')
+                    else:
+                        e_msg.append(e_item)
+                log.error("Exception: auto-configure: {}.".format(" ".join(e_msg)))
 
 def main():
     # Name and file globals
@@ -1737,6 +1852,7 @@ def main():
     llama = "LLaMA.cpp" if llama_cpp else "Ollama"
 
     # Profile, environment and operation arguments
+    # TODO: resolve nested lists - if any
     global open_webui_all_profiles
     llama_host_profiles = ['ollama', 'llama.cpp']
     ollama_docker_profiles = ['cpu', 'gpu-nvidia', 'gpu-amd']
@@ -1752,11 +1868,13 @@ def main():
     profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + \
                llama_docker_profiles + llama_host_profiles + ['no-auto-config']
     managemant_operations = ['stop', 'stop-llama', 'start', 'pause', 'unpause']
-    installation_operations = ['update', 'install']
     data_operations = ['backup-data', 'restore-data']
-    operations = managemant_operations + installation_operations + data_operations
+    installation_operations = ['update', 'install']
+    managemant_and_data_operations = managemant_operations + data_operations
+    operations = managemant_and_data_operations + installation_operations
     environments = ['private', 'public']
-    log_levels = ['OFF', 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
+    log_levels = ['OFF', 'CRITICAL', 'ERROR', 'WARNING', 'NOTICE', 'INFO', 'DEBUG']
+    no_auto_config_list = managemant_and_data_operations + ['no-auto-config']
     parser = argparse.ArgumentParser(
         prog=f'{file}',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1809,8 +1927,7 @@ def main():
               backup-data restore-data                      volume mount data options
 
             log arguments:
-              OFF CRITICAL ERROR WARNING INFO DEBUG         console logging options
-
+              OFF CRITICAL ERROR WARNING NOTICE INFO DEBUG  console logging options
             '''),
         description=textwrap.dedent(f'''\
             {INFO.get("description")}
@@ -1858,6 +1975,9 @@ def main():
               ...to install all modules and start using LLaMA.cpp Nvidia GPU running in Docker:
               python {file} --profile ai-all cpp-gpu-nvidia --operation install
 
+              ...with debug logging enabled:
+              python {file} --profile ai-all cpp-gpu-nvidia --operation install --log debug
+
             - Perform (backup-data, restore-data) operation...
               ...to backup volume mount data to backup file:
               python {file} --operation backup-data
@@ -1887,11 +2007,14 @@ def main():
 
     args = parser.parse_args()
 
+    # Detect default profile - no arguments specified
+    default_profile = False if args.profile else True
+    args.profile = [] if default_profile else args.profile
+
     # Setup logging
-    global log, log_bright, log_run_cmd, log_notice
+    global log, log_bright, log_run_cmd
     log_bright = None
     log_run_cmd = "Running command:"
-    log_notice = "Notice:"
     log_level = logging.NOTSET
     log_handlers: list[logging.Handler] = [LFH]
     if args.log != 'OFF':
@@ -1931,13 +2054,26 @@ def main():
 
     # Load working environment variables
     mod_env_vars = {}
-    env_vars = get_dotenv_vars()
+    ac_auto_config = \
+        any(p for p in args.profile if p not in no_auto_config_list)
+    env_vars = get_dotenv_vars(auto_config=ac_auto_config)
     if not env_vars:
         sys.exit(1)
 
-    # Detect default profile - no arguments specified
-    default_profile = False if args.profile else True
-    args.profile = [] if default_profile else args.profile
+    # Access auto-configuration
+    ac_env_vars = []
+    if ac_auto_config:
+        ac_env_vars = setup_ai_suite_ac_auto_config(env_vars)
+        ac_auto_config = True if ac_env_vars else False
+    if ac_auto_config:
+        for env, var in env_vars.items():
+            if not env.startswith('AC_'):
+                continue
+            set_dotenv_var(env_file, env, var, None)
+
+    if ac_auto_config:
+        log.debug("Configure proxy, identity and access management...")
+        run_ai_suite_ac_auto_config(ac_env_vars)
 
     # Process llama (Ollama/LLaMA.cpp) status checks
     llama_arg = "cpu"
@@ -2055,15 +2191,6 @@ def main():
         for env in ['LLAMACPP_DEFAULT_MODEL', 'LLAMACPP_MODEL_PATH', 'LLAMA_ARG_HF_REPO']:
             log.debug(f" - {env}: {env_vars[env]}", extra=debug_style)
 
-    # Auto-configuration
-    ac_env_vars = []
-    if any(p for p in args.profile if p == 'no-auto-config'):
-        ac_env_vars = configure_ai_suite_access(env_vars)
-        for env, var in env_vars.items():
-            if not env.startswith('AC_'):
-                continue
-            set_dotenv_var(env_file, env, var, None)
-
     # Process operation argument
     install = False
     build = False
@@ -2115,8 +2242,7 @@ def main():
         else:
             sys.exit(0)
     else:
-        raw_msg = f"Updating '{name}' with profile arguments: {args.profile}..."
-        log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
+        log.notice(f"Updating '{name}' with profile arguments: {args.profile}...") # type:ignore[reportAttributeAccessIssue]
 
     os.remove('.operation') if os.path.exists('.operation') else None
 
@@ -2140,8 +2266,11 @@ def main():
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
 
-    if ac_env_vars:
-        run_configure_ai_suite_access_command(ac_env_vars)
+    """
+    if ac_auto_config:
+        log.info("Configure proxy, identity and access management...")
+        run_ai_suite_ac_auto_config(ac_env_vars)
+    """
 
     if any(p for p in args.profile if p in n8n_all_profiles):
         env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"

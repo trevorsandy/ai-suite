@@ -24,3 +24,5 @@ shared-backup/
 volumes/
 .env.test
 ollama_launch.vbs
+url-parser
+yq
