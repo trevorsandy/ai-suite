@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 12, 2026
+# Last Update February 13, 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # This script is adapted from Inder Singh's setup.sh shell script.
@@ -16,8 +16,6 @@ set -euo pipefail
 
 # https://stackoverflow.com/a/28085062/18954618
 : "${CI:=false}"
-: "${AC:=false}"
-: "${AC_LOCAL:=false}"
 : "${WITH_REDIS:=false}"
 : "${SUDO_USER:="$(whoami)"}"
 
@@ -99,16 +97,17 @@ critical_exit() {
     log_critical "$*"
     exit 1
 }
-FNAME="auto_config.sh"
-if [ "${ME}" = "${FNAME}" ]; then
-    [ -z "${AC_LOG_PATH}" ] && AC_LOG_PATH="$(pwd)" || :
-    LOG="$AC_LOG_PATH/$ME.log"
-    if [ -f "${LOG}" ] && [ -r "${LOG}" ]; then
-        rm "${LOG}"
-    fi
-    exec > >(tee -a "${LOG}" )
-    exec 2> >(tee -a "${LOG}" >&2)
-fi
+
+# FNAME="auto_config.sh"
+# if [ "${ME}" = "${FNAME}" ]; then
+#     [ -z "${AC_LOG_PATH}" ] && AC_LOG_PATH="$(pwd)" || :
+#     LOG="$AC_LOG_PATH/$ME.log"
+#     if [ -f "${LOG}" ] && [ -r "${LOG}" ]; then
+#         rm "${LOG}"
+#     fi
+#     exec > >(tee -a "${LOG}" )
+#     exec 2> >(tee -a "${LOG}" >&2)
+# fi
 
 # Process arguments
 usage() {
@@ -196,22 +195,35 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+if [ "$AC_LOCAL" == true ]; then
+    install_type="Private (Local)"
+else
+    install_type="Public (Global)"
+fi
 if [ "$AC" == true ]; then
     SUDO_USER="${AC_SUDO_USER:=${SUDO_USER}}"
     with_authelia="${AC_WITH_AUTHELIA:=${with_authelia}}"
     WITH_REDIS="${AC_WITH_REDIS:=${WITH_REDIS}}"
     proxy="${AC_PROXY:=${proxy}}"
+    config_mode="Auto-configuration mode"
+elif [ "$CI" == true ]; then
+    config_mode="Continuous integration mode"
+else
+    config_mode="Interactive mode"
 fi
 
 if [[ "$proxy" != "caddy" && "$proxy" != "nginx" ]]; then
-    critical_exit "proxy can only be caddy or nginx"
+    critical_exit "Only caddy or nginx proxy supported - received $proxy"
 fi
 
 COLOR=$(sgr "${BOLD}${UNDERLINE}92")
 log_info "${END}${COLOR}Configuration Summary"
 log_info "  -${END} ${GREEN}Proxy:${END} ${WHITE}${proxy}"
 log_info "  -${END} ${GREEN}Authelia 2FA:${END} ${WHITE}${with_authelia}"
-echo -e "${INFO}\n"
+log_info "  -${END} ${GREEN}Redis:${END} ${WHITE}${WITH_REDIS}"
+log_info "  -${END} ${GREEN}Setup Mode:${END} ${WHITE}${config_mode}"
+log_info "  -${END} ${GREEN}Installation:${END} ${WHITE}${install_type}"
+echo -e "${INFO}"
 
 detect_arch() {
     case $(uname -m) in
@@ -244,24 +256,23 @@ package_is_installed() {
     local i=1
     type "$1" >/dev/null 2>&1 || { local i=0; } # set i to 0 if not found
     if [ "$i" == 1 ]; then
-        log_info "${END}  ${GREEN}✔${END} ${WHITE}${1}"
+        log_info "${END} ${GREEN}✔${END} ${WHITE}${1}"
     else
-        log_info "${END}  ${RED}✘${END} ${WHITE}${1}"
+        log_info "${END} ${RED}✘${END} ${WHITE}${1}"
     fi
-    echo "$i"
+    return $i
 }
 
-COLOR=$(sgr "${BOLD}${UNDERLINE}95")
-echo -e "${INFO}\n"
-echo -e "${INFO} ${COLOR}Required Packages:"
+#COLOR=$(sgr "${BOLD}${UNDERLINE}95")
+echo -e "${INFO} ${COLOR}Required Packages:${END}"
 missing_packages=()
 for i in "${packages[@]}"; do
-    if [ "$(package_is_installed "$i")" == 0 ]; then missing_packages+=("$i"); fi
+    if package_is_installed "$i" == 0 ; then missing_packages+=("$i") ; fi
 done
 packages=("${missing_packages[@]}")
 unset missing_packages
 
-is_root() { return "$(id -u "$1")" ; }
+is_root() { if [ -n "$1" ]; then return "$(id -u "$1")" ; else return "$(id -u)" ; fi }
 
 privilage() {
     local prompt
@@ -284,11 +295,11 @@ run_cmd() {
         sudo "$cmd"
         ;;
     has_sudo__needs_pass)
-        echo -e "${CYAN}Supply${END} ${BOLD_CYAN}sudo${END} ${CYAN}password for command:${END} ${BLUE}sudo${END} ${WHITE}$cmd${END}"
+        echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}sudo${END} ${WHITE}password for command:${END} ${BLUE}sudo${END} ${WHITE}$cmd${END}"
         sudo "$cmd"
         ;;
     *)
-        echo -e "${CYAN}Supply${END} ${BOLD_CYAN}root${END} ${CYAN}password for command:${END} ${BLUE}su -c${END} ${WHITE}\"$cmd\"${END}"
+        echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}root${END} ${WHITE}password for command:${END} ${BLUE}su -c${END} ${WHITE}\"$cmd\"${END}"
         su -c "$cmd"
         ;;
     esac
@@ -298,8 +309,8 @@ if (( ${#packages[@]} != 0 )); then
     install_failed=false
 
     # https://superuser.com/questions/553932
-    if ! is_root; then
-        [ -n "${AC_SUDO_PASSWD}" ] && sudo -S -v <<<"${AC_SUDO_PASSWD}" || :
+    if ! is_root ""; then
+        [ -n "${AC_SUDO_PASSWORD}" ] && sudo -S -v <<<"${AC_SUDO_PASSWORD}" || :
     fi
     unset AC_SUDO_PASSWORD
 
@@ -339,11 +350,11 @@ if (( ${#packages[@]} != 0 )); then
     # shellcheck disable=SC2181
     if [ $? -ne 0 ]; then install_failed=true ; fi
 
-    echo -e "${INFO} ${COLOR}Installed Packages:"
+    echo -e "${INFO} ${COLOR}Installed Packages:${END}"
     for i in "${packages[@]}"; do
         package_is_installed "$i"
     done
-    echo -e "${INFO} ${COLOR}------------------\n"
+    echo -e "${INFO} ${COLOR}------------------${END}"
 
     [ "$install_failed" == true ] && critical_exit "Failed to install required packages." || :
 fi
@@ -613,6 +624,7 @@ log_debug "service_role_token: $service_role_token"
 log_debug "domain: $domain"
 log_debug "auto_confirm: $auto_confirm"
 log_debug "proxy: $proxy"
+log_debug "END TEST AC: $AC"
 exit 0
 
 # ---------------------------------------------------------------------------

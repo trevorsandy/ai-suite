@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 12, 2026
+Last Update February 13, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1082,9 +1082,7 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False):
     env_vars = dotenv.dotenv_values(env_file)
     if not valid_env_file:
         os.remove(env_file) if os.path.exists(env_file) else None
-    path = env_vars['PROJECTS_PATH']
-    if not path:
-        path = os.path.join('~', 'projects')
+    path = env_vars.get('PROJECTS_PATH', os.path.join('~', 'projects'))
     env_vars['PROJECTS_PATH'] = normalize_path(path)
 
     return env_vars
@@ -1545,14 +1543,13 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
 
     log.info(f"Auto-configuring {name} proxy and access...", extra=log_bright)
     prompt = True
-    response = input(f"Use .env default settings? y/n: (n)")
+    response = input(f"Use default auto-configure .env settings? y/n: (n)")
     prompt = False if response.lower() == 'y' else prompt
     response = None
     public = False
-    ac_env_list = []
 
     # AC - bool
-    ac_env_list.append(["AC='true'"])
+    ac_env_list = ["AC='true'"]
     # AC_SUDO_USER - str
     default = env_vars.get('AC_SUDO_USER', getpass.getuser())
     non_root = "WSL non-root" if system == 'Windows' else "non-root"
@@ -1563,7 +1560,8 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     # AC_SUDO_PASSWORD - str
     password = getpass.getpass(f"Enter sudo password for package install: ")
     if not password:
-        log.warning(f"A sudo password prompt will trigger on package install.")
+        info_style = LSHF.style(logging.INFO, LSHF.BLUE)
+        log.info(f"A sudo password prompt will trigger on package install.", extra=info_style)
     ac_env_list.append("AC_SUDO_PASSWORD='{}'".format(password))
     # AC_USERNAME - str
     default = env_vars.get('AC_USERNAME', 'ai_suite_user')
@@ -1582,7 +1580,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
             password_length = 13
             password = secrets.token_urlsafe(password_length)
             env_vars.update({'AC_PASSWORD': password})
-            info_style = LSHF.style(logging.INFO, LSHF.GREEN)
+            info_style = LSHF.style(logging.INFO, LSHF.BLUE)
             log.info(f"The proxy user password was auto-generated and saved to .env.", extra=info_style)
         else:
             password = default
@@ -1715,16 +1713,17 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     log.info("="*60, extra=line_style)
 
     accept = True
-    response = input(f"Are these auto-configure settings ok to continue? y/n: (y)")
-    accept = True if response.lower() == 'y' else accept if not response else False
+    if prompt:
+        response = input(f"Are these auto-configure settings ok to continue? y/n: (y)")
+    accept = True if response and response.lower() == 'y' else accept if not response else False
     if accept:
         return ac_env_list
     else:
         info_style = LSHF.style(logging.INFO, LSHF.YELLOW)
-        log.info(f"Auto-configure settings rejected.", extra=info_style)
+        log.info(f"Auto-configure proxy and access settings was not accepted.", extra=info_style)
         return []
 
-def run_ai_suite_ac_auto_config(ac_env_vars:list):
+def run_ai_suite_ac_auto_config(ac_env_vars):
     """Configure self-hosted AI-Suite with Caddy/Nginx proxy and Authelia 2FA
        identity and access management.
     """
@@ -1740,22 +1739,21 @@ def run_ai_suite_ac_auto_config(ac_env_vars:list):
         ac_log_path = ac_log_path.replace("\\", "/")
         ac_script = ac_script.replace("\\", "/")
     ac_log = "".join(['>', os.path.join(ac_log_path, 'auto_config.log'), ' 2>&1'])
-    cmd = []
+    cmd = ["bash", "-c", "./" + ac_script]
+    #cmd = ["bash", "-c", "env"] + ac_env_vars + ["./" + ac_script]
     if system == "Windows":
-        cmd = ["wsl", "-e", "bash", "-c", "env"] + ac_env_vars + ["./" + ac_script]
-    else:
-        cmd = ["bash", "-c", "env"] + ac_env_vars + [ac_script]
-
-    cmd = ["wsl", "-l"]
+        cmd = ["wsl", "-e"] + cmd
     cmd_msg = []
     for element in cmd:
-        if element.split('=')[0].endswith('_PASSWORD'):
-            continue
-        cmd_msg.append(element)
+        array = element.split('=')
+        if array[0].endswith('_PASSWORD'):
+            cmd_msg.append("{}='{}'".format(array[0], '***'))
+        else:
+            cmd_msg.append(element)
     raw_msg = " ".join([log_run_cmd, " ".join(cmd_msg)])
     log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd_msg)))
-    try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, check=True, shell=True)
+    try:        
+        completed = subprocess.run(cmd, cwd=None, text=True, check=True)
         if completed.returncode != 0:
             log.error(f"Command: auto-configure: {completed.stderr}")
         else:
@@ -1990,8 +1988,8 @@ def main():
     # Load working environment variables
     mod_env_vars = {}
     ac_auto_config = \
-        not any(p for p in args.profile if p not in no_auto_config_list)
-    env_vars = get_dotenv_vars(ac_auto_config)
+        any(p for p in args.profile if p not in no_auto_config_list)
+    env_vars = get_dotenv_vars(auto_config=ac_auto_config)
     if not env_vars:
         sys.exit(1)
 
@@ -2005,6 +2003,10 @@ def main():
             if not env.startswith('AC_'):
                 continue
             set_dotenv_var(env_file, env, var, None)
+
+    if ac_auto_config:
+        log.debug("Configure proxy, identity and access management...")
+        run_ai_suite_ac_auto_config(ac_env_vars)
 
     # Process llama (Ollama/LLaMA.cpp) status checks
     llama_arg = "cpu"
@@ -2198,8 +2200,11 @@ def main():
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
 
+    """     
     if ac_auto_config:
+        log.info("Configure proxy, identity and access management...")
         run_ai_suite_ac_auto_config(ac_env_vars)
+    """
 
     if any(p for p in args.profile if p in n8n_all_profiles):
         env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"
