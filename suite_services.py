@@ -1160,7 +1160,8 @@ def set_dotenv_var(env_file, env, var, header):
         if not header in content:
             quote_mode = "never"
             env = "".join([header, env])
-    log.info(f"Set '{env}' to '{var}' in {env_file}...")
+    msg_var = '***' if env == 'AC_PASSWORD' else var
+    log.info(f"Set '{env}' to '{msg_var}' in {env_file}...")
     dotenv.set_key(env_file, env, var, quote_mode)
 
 def configure_n8n_database_settings(supabase):
@@ -1549,7 +1550,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     public = False
 
     # AC - bool
-    ac_env_list = ["AC='true'"]
+    ac_env_list = ['AC=true']
     # AC_SUDO_USER - str
     default = env_vars.get('AC_SUDO_USER', getpass.getuser())
     non_root = "WSL non-root" if system == 'Windows' else "non-root"
@@ -1562,7 +1563,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     if not password:
         info_style = LSHF.style(logging.INFO, LSHF.BLUE)
         log.info(f"A sudo password prompt will trigger on package install.", extra=info_style)
-    ac_env_list.append("AC_SUDO_PASSWORD='{}'".format(password))
+    ac_env_list.append(f'AC_SUDO_PASSWORD="{password}"')
     # AC_USERNAME - str
     default = env_vars.get('AC_USERNAME', 'ai_suite_user')
     if prompt:
@@ -1571,11 +1572,11 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     env_vars.update({'AC_USERNAME': default})
     # AC_PASSWORD - str
     default = env_vars.get('AC_PASSWORD', '*******')
-    invalid_default = default == '*******'
-    if prompt or invalid_default:
+    change_default = True if default == '*******' else False
+    if prompt or change_default:
         password = getpass.getpass(f"Enter proxy user password (required: ***): ")
     if not password or password == '*******':
-        if invalid_default:
+        if change_default:
             import secrets
             password_length = 13
             password = secrets.token_urlsafe(password_length)
@@ -1586,9 +1587,9 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
             password = default
     else:
         env_vars.update({'AC_PASSWORD': '*******'})
-    ac_env_list.append("AC_PASSWORD='{}'".format(password))
+    ac_env_list.append(f'AC_PASSWORD="{password}"')
     # AC_LOG_PATH - str
-    default = env_vars.get('AC_LOG_PATH', os.path.normpath('scripts'))
+    default = env_vars.get('AC_LOG_PATH', './scripts')
     env_vars.update({'AC_LOG_PATH': default})
     # AC_LOCAL - bool
     default = env_vars.get('AC_LOCAL', 'False')
@@ -1673,10 +1674,8 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
             continue
         if env == 'AC_PASSWORD':
             continue
-        if env in ac_env_bool:
-            var = str(var).lower()
-        ac_env_var = "{}='{}'".format(env, var)
-        ac_env_list.append(ac_env_var)
+        var = str(var).lower() if env in ac_env_bool else f'"{var}"'
+        ac_env_list.append('{}={}'.format(env, var))
 
     # Display Env settings
     header = ("{} Auto-configure Access Env Settings").format(name)
@@ -1730,35 +1729,35 @@ def run_ai_suite_ac_auto_config(ac_env_vars):
     if not ac_env_vars:
         log.error(f"The auto-configure env_var list is empty!")
         return
-    ac_script = os.path.normpath(os.path.join(".", "scripts", "auto_config.sh"))
+    ac_script = os.path.normpath(os.path.join("scripts", "auto_config.sh"))
     if not os.path.exists(ac_script):
         log.error(f"Auto-configure script not found at {ac_script}")
         return
-    ac_log_path = os.path.normpath(os.path.dirname(ac_script))
     if system == 'Windows':
-        ac_log_path = ac_log_path.replace("\\", "/")
         ac_script = ac_script.replace("\\", "/")
-    ac_log = "".join(['>', os.path.join(ac_log_path, 'auto_config.log'), ' 2>&1'])
-    cmd = ["bash", "-c", "./" + ac_script]
-    #cmd = ["bash", "-c", "env"] + ac_env_vars + ["./" + ac_script]
-    if system == "Windows":
-        cmd = ["wsl", "-e"] + cmd
+    ac_script = "".join(["./", ac_script])
+    ac_log_file = "".join([ac_script, ".log"])
+    ac_log = "".join([">", ac_log_file, " 2>&1"])
     cmd_msg = []
-    for element in cmd:
+    for element in ac_env_vars:
         array = element.split('=')
         if array[0].endswith('_PASSWORD'):
-            cmd_msg.append("{}='{}'".format(array[0], '***'))
+            cmd_msg.append(f'{array[0]}="***"')
         else:
             cmd_msg.append(element)
+    cmd = ["bash", "-c"]
+    if system == "Windows":
+        cmd = ["wsl", "-e"] + cmd
+    cmd_msg = cmd + [" ".join(["env"] + cmd_msg + [ac_script])]
     raw_msg = " ".join([log_run_cmd, " ".join(cmd_msg)])
     log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd_msg)))
-    try:        
+    cmd = cmd + [" ".join(["env"] + ac_env_vars + [ac_script])]
+    try:
         completed = subprocess.run(cmd, cwd=None, text=True, check=True)
         if completed.returncode != 0:
             log.error(f"Command: auto-configure: {completed.stderr}")
         else:
             info_style = LSHF.style(logging.INFO, LSHF.GREEN)
-            ac_log_file = os.path.join(ac_log_path, 'auto_config.sh.log')
             log.info(f"See details in run log: {ac_log_file}", extra=info_style)
     except Exception as e:
         log.error(f"Exception: auto-configure: {e}.")
@@ -2200,7 +2199,7 @@ def main():
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
 
-    """     
+    """
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
         run_ai_suite_ac_auto_config(ac_env_vars)

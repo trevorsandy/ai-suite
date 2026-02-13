@@ -98,16 +98,15 @@ critical_exit() {
     exit 1
 }
 
-# FNAME="auto_config.sh"
-# if [ "${ME}" = "${FNAME}" ]; then
-#     [ -z "${AC_LOG_PATH}" ] && AC_LOG_PATH="$(pwd)" || :
-#     LOG="$AC_LOG_PATH/$ME.log"
-#     if [ -f "${LOG}" ] && [ -r "${LOG}" ]; then
-#         rm "${LOG}"
-#     fi
-#     exec > >(tee -a "${LOG}" )
-#     exec 2> >(tee -a "${LOG}" >&2)
-# fi
+if [ "${ME}" == "auto_config.sh" ]; then
+    [ -z "${AC_LOG_PATH}" ] && AC_LOG_PATH="$(pwd)" || :
+    LOG="$AC_LOG_PATH/$ME.log"
+    if [ -f "${LOG}" ] && [ -r "${LOG}" ]; then
+        rm "${LOG}"
+    fi
+    exec > >(tee -a "${LOG}" )
+    exec 2> >(tee -a "${LOG}" >&2)
+fi
 
 # Process arguments
 usage() {
@@ -174,18 +173,15 @@ while [ $# -gt 0 ]; do
         usage
         exit 0
         ;;
-
     --with-authelia)
         with_authelia=true
         ;;
-
     --proxy)
         if has_argument "$@"; then
             proxy="$(extract_argument "$@")"
             shift
         fi
         ;;
-
     *)
         echo -e "${ERROR} ${RED}Invalid option:${END} $1" >&2
         usage
@@ -195,35 +191,44 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-if [ "$AC_LOCAL" == true ]; then
-    install_type="Private (Local)"
-else
-    install_type="Public (Global)"
+if [[ "$proxy" != "caddy" && "$proxy" != "nginx" ]]; then
+    critical_exit "Only caddy or nginx proxy supported - received $proxy"
 fi
+
+ac_install_type=''
+ac_user_confirm=''
 if [ "$AC" == true ]; then
     SUDO_USER="${AC_SUDO_USER:=${SUDO_USER}}"
     with_authelia="${AC_WITH_AUTHELIA:=${with_authelia}}"
     WITH_REDIS="${AC_WITH_REDIS:=${WITH_REDIS}}"
     proxy="${AC_PROXY:=${proxy}}"
-    config_mode="Auto-configuration mode"
+    if [ "$AC_CONFIRM" == true ]; then
+        ac_user_confirm="Email notification"
+    else
+        ac_user_confirm="Default"
+    fi
+    ac_config_mode="Auto-configuration"
+    if [ "$AC_LOCAL" == true ]; then
+        ac_install_type="Private (Local)"
+    else
+        ac_install_type="Public (Global)"
+    fi
 elif [ "$CI" == true ]; then
-    config_mode="Continuous integration mode"
+    ac_config_mode="Continuous integration"
 else
-    config_mode="Interactive mode"
-fi
-
-if [[ "$proxy" != "caddy" && "$proxy" != "nginx" ]]; then
-    critical_exit "Only caddy or nginx proxy supported - received $proxy"
+    ac_config_mode="Interactive"
 fi
 
 COLOR=$(sgr "${BOLD}${UNDERLINE}92")
-log_info "${END}${COLOR}Configuration Summary"
+log_info "${END}${COLOR}Configuration Summary:"
 log_info "  -${END} ${GREEN}Proxy:${END} ${WHITE}${proxy}"
 log_info "  -${END} ${GREEN}Authelia 2FA:${END} ${WHITE}${with_authelia}"
 log_info "  -${END} ${GREEN}Redis:${END} ${WHITE}${WITH_REDIS}"
-log_info "  -${END} ${GREEN}Setup Mode:${END} ${WHITE}${config_mode}"
-log_info "  -${END} ${GREEN}Installation:${END} ${WHITE}${install_type}"
-echo -e "${INFO}"
+log_info "  -${END} ${GREEN}Setup Mode:${END} ${WHITE}${ac_config_mode}"
+[ -n "${ac_install_type}" ] && \
+log_info "  -${END} ${GREEN}Installation:${END} ${WHITE}${ac_install_type}" || :
+[ -n "${ac_user_confirm}" ] && \
+log_info "  -${END} ${GREEN}User Confirmation:${END} ${WHITE}${ac_user_confirm}" || :
 
 detect_arch() {
     case $(uname -m) in
@@ -250,29 +255,60 @@ arch="$(detect_arch)"
 if [[ "$os" == "err" ]]; then critical_exit "This script only supports linux os"; fi
 if [[ "$arch" == "err" ]]; then critical_exit "Unsupported cpu architecture"; fi
 
+is_root() {
+    if [ -n "$1" ]; then return "$(id -u "$1")"; else return "$(id -u)"; fi
+}
+
 packages=(curl wget jq openssl git)
+if [ -x "$(command -v apt-get)" ]; then
+    packages+=("apt-get:apache2-utils")
+elif [ -x "$(command -v apk)" ]; then
+    packages+=("apk:apache2-utils")
+elif [ -x "$(command -v dnf)" ]; then
+    packages+=("dnf:httpd-tools")
+elif [ -x "$(command -v zypper)" ]; then
+    packages+=("zypper:apache2-utils")
+elif [ -x "$(command -v pacman)" ]; then
+    packages+=("apt-get:apache")
+elif [ -x "$(command -v pkg)" ]; then
+    packages+=("pkg:apachew24")
+elif [ -x "$(command -v brew)" ]; then
+    # brew does not allow installation as root so run install as target SUDO user with SUDO privileges
+    if is_root; then
+        if test -n "$SUDO_USER"; then
+            if is_root "$SUDO_USER"; then
+                log_error "Current user ($(whoami)) and SUDO_USER ($SUDO_USER) is root!"
+                critical_exit "Homebrew cannot run package install as ($SUDO_USER)!"
+            fi
+        else
+            critical_exit "Homebrew cannot run package install as ($(whoami))!"
+        fi
+    fi
+    packages+=("brew:httpd")
+else
+    critical_exit "Package manager apt, apk, dnf, zypper, pacman, pkg, or brew not found."
+fi
 
 package_is_installed() {
-    local i=1
-    type "$1" >/dev/null 2>&1 || { local i=0; } # set i to 0 if not found
+    local i=1 # set i to 0 if package not found
+    package="$1"
+    case "${package_manager}" in
+    apt-get) dpkg -s apache2-utils > /dev/null 2>&1 || { local i=0; } ;;
+    apk) apk info -e apache2-utils > /dev/null 2>&1 || { local i=0; } ;;
+    dnf) dnf list installed httpd-tools &> /dev/null || { local i=0; } ;;
+    zypper) rpm -q apache2-utils > /dev/null 2>&1 || { local i=0; } ;;
+    pacman) pacman -Qi apache > /dev/null 2>&1 || { local i=0; } ;;
+    pkg) pkg info apache24 > /dev/null 2>&1 || { local i=0; } ;;
+    brew) brew list --formula | grep -qx httpd || { local i=0; } ;;
+    *) type "${package}" > /dev/null 2>&1 || { local i=0; } ;;
+    esac
     if [ "$i" == 1 ]; then
-        log_info "${END} ${GREEN}✔${END} ${WHITE}${1}"
+        log_info "${END}  ${GREEN}✔${END} ${WHITE}${package}"
     else
-        log_info "${END} ${RED}✘${END} ${WHITE}${1}"
+        log_info "${END}  ${RED}✘${END} ${WHITE}${package}"
     fi
     return $i
 }
-
-#COLOR=$(sgr "${BOLD}${UNDERLINE}95")
-echo -e "${INFO} ${COLOR}Required Packages:${END}"
-missing_packages=()
-for i in "${packages[@]}"; do
-    if package_is_installed "$i" == 0 ; then missing_packages+=("$i") ; fi
-done
-packages=("${missing_packages[@]}")
-unset missing_packages
-
-is_root() { if [ -n "$1" ]; then return "$(id -u "$1")" ; else return "$(id -u)" ; fi }
 
 privilage() {
     local prompt
@@ -295,7 +331,12 @@ run_cmd() {
         sudo "$cmd"
         ;;
     has_sudo__needs_pass)
-        echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}sudo${END} ${WHITE}password for command:${END} ${BLUE}sudo${END} ${WHITE}$cmd${END}"
+        # https://superuser.com/questions/553932
+        if [ -n "${AC_SUDO_PASSWORD}" ]; then
+            (sudo -S -v <<<"${AC_SUDO_PASSWORD}" > /dev/null 2>&1)
+        else
+            echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}sudo${END} ${WHITE}password for command:${END} ${BLUE}sudo${END} ${WHITE}$cmd${END}"
+        fi        
         sudo "$cmd"
         ;;
     *)
@@ -305,51 +346,44 @@ run_cmd() {
     esac
 }
 
+install_packages() {
+    case "${package_manager}" in
+    apt-get) run_cmd apt-get update && apt-get install -y "${packages[@]}" ;;
+    apk) run_cmd apk update && apk add --no-cache "${packages[@]}" ;;
+    dnf) run_cmd dnf makecache && dnf install -y "${packages[@]}" ;;
+    zypper) run_cmd zypper refresh && zypper install "${packages[@]}" ;;
+    pacman) run_cmd pacman -Syu --noconfirm "${packages[@]}" ;;
+    pkg) run_cmd pkg update && pkg install -y "${packages[@]}" ;;
+    brew) run_cmd -u "$SUDO_USER" brew install "${packages[@]}" ;;
+    *) critical_exit "Install packages failed! Package manager not found." ;;
+    esac
+}
+
+echo -e "${INFO} ${COLOR}Required Packages:${END}"
+missing_packages=()
+package_manager=''
+pma=()
+for i in "${packages[@]}"; do
+    package="$i"
+    IFS=':' read -r -a pma <<< "$i"
+    if (( ${#pma[@]} > 1 )); then
+        package="${pma[1]}"
+        package_manager="${pma[0]}"
+    fi
+    if package_is_installed "$package" == 0; then
+        missing_packages+=("$package")
+    fi
+done
+
+log_info "${END}${COLOR}Package Manager:"
+log_info "${END}  ${GREEN}✔${END} ${BLUE}${package_manager}"
+
+packages=("${missing_packages[@]}")
 if (( ${#packages[@]} != 0 )); then
     install_failed=false
-
-    # https://superuser.com/questions/553932
-    if ! is_root ""; then
-        [ -n "${AC_SUDO_PASSWORD}" ] && sudo -S -v <<<"${AC_SUDO_PASSWORD}" || :
-    fi
-    unset AC_SUDO_PASSWORD
-
-    if [ -x "$(command -v apt-get)" ]; then
-        run_cmd apt-get update && apt-get install -y "${packages[@]}" apache2-utils
-
-    elif [ -x "$(command -v apk)" ]; then
-        run_cmd apk update && apk add --no-cache "${packages[@]}" apache2-utils
-
-    elif [ -x "$(command -v dnf)" ]; then
-        run_cmd dnf makecache && dnf install -y "${packages[@]}" httpd-tools
-
-    elif [ -x "$(command -v zypper)" ]; then
-        run_cmd zypper refresh && zypper install "${packages[@]}" apache2-utils
-
-    elif [ -x "$(command -v pacman)" ]; then
-        run_cmd pacman -Syu --noconfirm "${packages[@]}" apache
-
-    elif [ -x "$(command -v pkg)" ]; then
-        run_cmd pkg update && pkg install -y "${packages[@]}" apache24
-
-    elif [[ -x "$(command -v brew)" && -n "$SUDO_USER" ]]; then
-        # brew does not allow installation as root so run install as target SUDO user with SUDO privileges
-        if is_root; then
-            if is_root "$SUDO_USER"; then
-                critical_exit "Cannot run brew install! Current user ($(whoami)) and SUDO_USER ($SUDO_USER) are root!"
-            fi
-        fi
-        run_cmd -u "$SUDO_USER" brew install "${packages[@]}" httpd
-    else
-        # diff between array expansion with "@" and "*" https://linuxsimply.com/bash-scripting-tutorial/expansion/array-expansion/
-        critical_exit "Failed to install required packages. Package manager apt, apk, dnf, zypper, pacman, pkg, or brew not found."
-    fi
-
     # set -e doesn't work if any command is part of an if statement. package installation errors have to be checked https://stackoverflow.com/a/821419/18954618
     # https://unix.stackexchange.com/a/571192/642181
-    # shellcheck disable=SC2181
-    if [ $? -ne 0 ]; then install_failed=true ; fi
-
+    if ! install_packages; then install_failed=true; fi
     echo -e "${INFO} ${COLOR}Installed Packages:${END}"
     for i in "${packages[@]}"; do
         package_is_installed "$i"
@@ -358,6 +392,8 @@ if (( ${#packages[@]} != 0 )); then
 
     [ "$install_failed" == true ] && critical_exit "Failed to install required packages." || :
 fi
+unset missing_packages
+unset AC_SUDO_PASSWORD
 
 repo_base="https://github.com/trevorsandy"
 repo_url="$repo_base/ai-suite"
@@ -612,8 +648,6 @@ service_role_token=$(gen_token "service_role")
 #log_debug ": $"
 log_debug "————————————"
 log_debug "username: $username"
-log_debug "AC: $AC"
-log_debug "AC_LOCAL: $AC_LOCAL"
 log_debug "with_authelia: $with_authelia"
 log_debug "email: $email"
 log_debug "display_name: $display_name"
