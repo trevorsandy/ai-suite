@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 13, 2026
+# Last Update February 15, 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # This script is adapted from Inder Singh's setup.sh shell script.
@@ -18,8 +18,6 @@ set -euo pipefail
 : "${CI:=false}"
 : "${WITH_REDIS:=false}"
 : "${SUDO_USER:="$(whoami)"}"
-
-ME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 
 # Colors
 END=''
@@ -39,12 +37,13 @@ WHITE=''
 DIM_CYAN=''
 ITALIC_RED_BG=''
 UNDERLINE_YELLOW=''
-ME_HDR="${ME}"
-CRITICAL="${ME_HDR} CRITICAL:"
-ERROR="${ME_HDR} ERROR:"
-WARNING="${ME_HDR} WARNING:"
-DEBUG="${ME_HDR} DEBUG:"
-INFO="${ME_HDR} INFO:"
+NAME="AI-Suite"
+QUESTION="${NAME} QUESTION:"
+CRITICAL="${NAME} CRITICAL:"
+ERROR="${NAME} ERROR:"
+WARNING="${NAME} WARNING:"
+DEBUG="${NAME} DEBUG:"
+INFO="${NAME} INFO:"
 
 # Check if terminal supports colors https://unix.stackexchange.com/a/10065/642181
 sgr() { [ -n "${END}" ] && echo -e "\033[$*m" || : ; }
@@ -68,12 +67,13 @@ if [ -t 1 ]; then
         DIM_CYAN=$(sgr "${DIM}36")
         ITALIC_RED_BG=$(sgr "${ITALIC}41")
         UNDERLINE_YELLOW=$(sgr "${UNDERLINE}93")
-        ME_HDR="$(sgr "${ITALIC}34")${ME}${END}"
-        CRITICAL="${ME_HDR} $(sgr "${BOLD}41")CRITICAL:${END}"
-        ERROR="${ME_HDR} $(sgr "${BOLD}91")ERROR:${END}"
-        WARNING="${ME_HDR} $(sgr "${UNDERLINE}93")WARNING:${END}"
-        DEBUG="${ME_HDR} $(sgr "${BOLD}67")DEBUG:${END}"
-        INFO="${ME_HDR} $(sgr '36')INFO:${END}"
+        NAME="$(sgr "${ITALIC}34")${NAME}${END}"
+        QUESTION="${NAME} $(sgr "${BOLD}92")QUESTION:${END}"
+        CRITICAL="${NAME} $(sgr "${BOLD}41")CRITICAL:${END}"
+        ERROR="${NAME} $(sgr "${BOLD}91")ERROR:${END}"
+        WARNING="${NAME} $(sgr "${BOLD}${UNDERLINE}93")WARNING:${END}"
+        DEBUG="${NAME} $(sgr "${BOLD}97")DEBUG:${END}"
+        INFO="${NAME} $(sgr "36")INFO:${END}"
     fi
 fi
 
@@ -98,12 +98,11 @@ critical_exit() {
     exit 1
 }
 
-if [ "${ME}" == "auto_config.sh" ]; then
+SCRIPT="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
+if [ "${SCRIPT}" == "auto_config.sh" ]; then
     [ -z "${AC_LOG_PATH}" ] && AC_LOG_PATH="$(pwd)" || :
-    LOG="$AC_LOG_PATH/$ME.log"
-    if [ -f "${LOG}" ] && [ -r "${LOG}" ]; then
-        rm "${LOG}"
-    fi
+    LOG="$AC_LOG_PATH/$SCRIPT.log"
+    if [[ -f "${LOG}" && -r "${LOG}" ]]; then rm "${LOG}"; fi
     exec > >(tee -a "${LOG}" )
     exec 2> >(tee -a "${LOG}" >&2)
 fi
@@ -121,7 +120,7 @@ usage() {
     echo "  WITH_REDIS:bool      Setup Authelia to use Redis - optional if using --with-authelia option"
     echo ""
     echo "  Auto-configure environment variables:"
-    echo "  AC:false               Auto-Configure mode - expects required inputs using env env=input"  
+    echo "  AC:false               Auto-Configure mode - expects required inputs using env env=input"
     echo "  AC_LOCAL:false         Local (private) installation - * requires additional configuration"
     echo "  AC_LOG_PATH:str        Directory path where install runtime log is deposited"
     echo "  AC_DOMAIN:str          Domain (optional) - Required for global (public) configuration"
@@ -134,7 +133,7 @@ usage() {
     echo "  AC_SUDO_USER:str       Non-root SUDO user ID - brew does not allow installation as root user"
     echo "  AC_PROXY:caddy         Set the reverse proxy to use (Caddy or Nginx)"
     echo "  AC_WITH_AUTHELIA:false Enable Authelia 2FA support"
-    echo "  AC_WITH_REDIS:false    Setup Authelia to use Redis - recommended if AC_WITH_AUTHELIA and not AC_LOCAL"    
+    echo "  AC_WITH_REDIS:false    Setup Authelia to use Redis - recommended if AC_WITH_AUTHELIA and not AC_LOCAL"
     echo ""
     echo "  * Add your local domain to the hosts file to loop back to your machine like localhost."
     echo "    For example: 127.0.0.1 https://supabase.local.com"
@@ -328,7 +327,7 @@ run_cmd() {
     user_privilage=$(privilage)
     case "$user_privilage" in
     has_sudo__pass_set)
-        sudo "$cmd"
+        sudo $cmd
         ;;
     has_sudo__needs_pass)
         # https://superuser.com/questions/553932
@@ -336,8 +335,8 @@ run_cmd() {
             (sudo -S -v <<<"${AC_SUDO_PASSWORD}" > /dev/null 2>&1)
         else
             echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}sudo${END} ${WHITE}password for command:${END} ${BLUE}sudo${END} ${WHITE}$cmd${END}"
-        fi        
-        sudo "$cmd"
+        fi
+        sudo $cmd
         ;;
     *)
         echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}root${END} ${WHITE}password for command:${END} ${BLUE}su -c${END} ${WHITE}\"$cmd\"${END}"
@@ -348,18 +347,39 @@ run_cmd() {
 
 install_packages() {
     case "${package_manager}" in
-    apt-get) run_cmd apt-get update && apt-get install -y "${packages[@]}" ;;
-    apk) run_cmd apk update && apk add --no-cache "${packages[@]}" ;;
-    dnf) run_cmd dnf makecache && dnf install -y "${packages[@]}" ;;
-    zypper) run_cmd zypper refresh && zypper install "${packages[@]}" ;;
-    pacman) run_cmd pacman -Syu --noconfirm "${packages[@]}" ;;
-    pkg) run_cmd pkg update && pkg install -y "${packages[@]}" ;;
-    brew) run_cmd -u "$SUDO_USER" brew install "${packages[@]}" ;;
-    *) critical_exit "Install packages failed! Package manager not found." ;;
+    apt-get)
+        run_cmd apt-get update
+        run_cmd export DEBIAN_FRONTEND="noninteractive" apt-get install -y "${packages[@]}"
+        ;;
+    apk)
+        run_cmd apk update
+        run_cmd add --no-cache "${packages[@]}"
+        ;;
+    dnf)
+        run_cmd dnf makecache
+        run_cmd dnf install -y "${packages[@]}"
+        ;;
+    zypper)
+        run_cmd zypper refresh
+        run_cmd zypper install "${packages[@]}"
+        ;;
+    pacman)
+        run_cmd pacman -Syu --noconfirm "${packages[@]}"
+        ;;
+    pkg)
+        run_cmd pkg update
+        run_cmd pkg install -y "${packages[@]}"
+        ;;
+    brew)
+        run_cmd -u "$SUDO_USER" brew install "${packages[@]}"
+        ;;
+    *) 
+        critical_exit "Install packages failed! Package manager not found."
+        ;;
     esac
 }
 
-echo -e "${INFO} ${COLOR}Required Packages:${END}"
+log_info "${END}${COLOR}Required Packages:"
 missing_packages=()
 package_manager=''
 pma=()
@@ -380,23 +400,21 @@ log_info "${END}  ${GREEN}✔${END} ${BLUE}${package_manager}"
 
 packages=("${missing_packages[@]}")
 if (( ${#packages[@]} != 0 )); then
-    install_failed=false
-    # set -e doesn't work if any command is part of an if statement. package installation errors have to be checked https://stackoverflow.com/a/821419/18954618
     # https://unix.stackexchange.com/a/571192/642181
-    if ! install_packages; then install_failed=true; fi
-    echo -e "${INFO} ${COLOR}Installed Packages:${END}"
-    for i in "${packages[@]}"; do
-        package_is_installed "$i"
-    done
-    echo -e "${INFO} ${COLOR}------------------${END}"
-
-    [ "$install_failed" == true ] && critical_exit "Failed to install required packages." || :
+    if install_packages; then
+        log_info "${END}${COLOR}Installed Packages:"
+        for i in "${packages[@]}"; do
+            package_is_installed "$i"
+        done
+    else
+        critical_exit "Failed to install required packages."
+    fi
 fi
 unset missing_packages
 unset AC_SUDO_PASSWORD
 
 repo_base="https://github.com/trevorsandy"
-repo_url="$repo_base/ai-suite"
+repo_url="${repo_base}/ai-suite"
 if [ "$AC" == true ]; then
     directory="$(pwd)"
 else
@@ -424,18 +442,24 @@ url_parser_bin="./url-parser"
 yq_bin="./yq"
 
 if [ ! -x "$url_parser_bin" ]; then
-    log_info "Downloading url-parser from $repo_base/url-parser"
-    download_binary "$repo_base"/url-parser/releases/download/v1.1.0/url-parser-"$os"-"$arch" "$url_parser_bin"
+    log_info "Downloading url-parser from ${repo_base}/url-parser..."
+    download_binary "${repo_base}"/url-parser/releases/download/v1.1.0/url-parser-"$os"-"$arch" "$url_parser_bin"
 fi
 
 if [ ! -x "$yq_bin" ]; then
-    log_info "Downloading yq from https://github.com/mikefarah/yq"
+    log_info "Downloading yq from https://github.com/mikefarah/yq..."
     download_binary https://github.com/mikefarah/yq/releases/download/v4.45.4/yq_"$os"_"$arch" "$yq_bin"
 fi
 
-echo -e "---------------------------------------------------------------------------\n"
+log_info "${END}${COLOR}Downloaded Binaries:"
+if test -x "$url_parser_bin"; then DL_STAT="${GREEN}✔"; else DL_STAT="${RED}✘"; fi
+log_info "${END}  ${DL_STAT}${END} ${WHITE}url_parser":
+if test -x "$yq_bin"; then DL_STAT="${GREEN}✔"; else DL_STAT="${RED}✘"; fi
+log_info "${END}  ${DL_STAT}${END} ${WHITE}yq"
 
-format_prompt() { echo -e "${GREEN}$1${END}"; }
+log_info "${END}${GREEN}-------------------------------------------------------"
+
+format_prompt() { echo -e "${QUESTION} ${GREEN}$1${END}"; }
 
 confirmation_prompt() {
     local variable_to_update_name="$1"
@@ -462,51 +486,97 @@ confirmation_prompt() {
 
 # ---------------------------------------------------------------------------
 
-# Get Supabase Domain
-domain=""
-while [ -z "$domain" ]; do
-    if [ "$CI" == true ]; then
-        domain="https://supabase.example.com"
-    elif [ "$AC" == true ]; then
-        [ -n "$AC_DOMAIN" ] && \
-        domain="https://supabase.$AC_DOMAIN" || \
-        domain="https://$SUPABASE_HOSTNAME"
-    else
-        read -rp "$(format_prompt "Enter your domain:") " domain
-    fi
+# Populate hostname
+N8N_HOSTNAME=''
+WEBUI_HOSTNAME=''
+FLOWISE_HOSTNAME=''
+SUPABASE_HOSTNAME=''
+LANGFUSE_HOSTNAME=''
+OLLAMA_HOSTNAME=''
+LLAMACPP_HOSTNAME=''
+SEARXNG_HOSTNAME=''
+NEO4J_HOSTNAME=''
+# url_parser --url argument and options:
+# --url: URL to parse. (e.g., https://subdomain.example.com:1234/path/to/resource?user=123#section1)
+# host: Host with port number if present (e.g., subdomain.example.com:1234)
+# hostWithoutPort: Host without port number (eg., subdomain.example.com)
+# scheme: URL scheme (e.g., https)
+# subdomain: Subdomain (e.g., subdomain)
+# domain: Domain name (e.g., example)
+# tld: Top-level domain (e.g., com)
+# port: Port (if specified, e.g., 8080)
+# path: URL path (e.g., /path/to/resource)
+# fragment: URL Fragment (e.g., section1)
+# registeredDomain: Registered domain from host (e.g., example.com)
+# query.<parameter>: The value of the user query parameter (e.g., query.user: 123).
+set_hostname() {
+    local hostname_variable="$1"
+    local subdomain="$2"
+    local scheme="https"
+    local url=""
 
-    if ! protocol="$("$url_parser_bin" --url "$domain" --get scheme 2>/dev/null)"; then
-        log_error "Could not extract protocol from domain: $domain.\n"
-        domain=""
-        continue
-    fi
-
-    if ! host="$("$url_parser_bin" --url "$domain" --get host 2>/dev/null)"; then
-        log_error "Could not extract host from domain: $domain.\n"
-        domain=""
-        continue
-    fi
-
-    if [[ "$with_authelia" == true ]]; then
-        # cookies.authelia_url needs to be https https://www.authelia.com/configuration/session/introduction/#authelia_url
-        if [[ "$protocol" != "https" ]]; then
-            log_error "As you have enabled --with-authelia flag, the domain protocol must be https"
-            domain=""
+    while [ -z "$url" ]; do
+        if [ "$CI" == true ]; then
+            if test -z "$subdomain"; then subdomain="supabase"; fi
+            url="$scheme://$subdomain.example.com"
+        elif [ "$AC" == true ]; then
+            if test -z "$subdomain"; then subdomain="n8n"; fi
+            url="$scheme://$subdomain.${AC_DOMAIN:-"local.pc"}"
         else
-            if
-                ! registered_domain="$("$url_parser_bin" --url "$domain" --get registeredDomain 2>/dev/null)" || [ -z "$registered_domain" ] ||
-                    [ "$registered_domain" = "." ]
-            then
-                log_error "Could not extract root domain from $domain.\n"
-                domain=""
-            fi
+            read -rp "$(format_prompt "Enter your hostname URL:") " url
         fi
 
-    elif [[ "$protocol" != "http" && "$protocol" != "https" ]]; then
-        log_error "Domain protocol must be http or https\n"
-        domain=""
+        if ! protocol="$("$url_parser_bin" --url "$url" --get scheme 2>/dev/null)"; then
+            log_error "Could not extract protocol from hostname URL: $url."
+            url=""
+            continue
+        fi
+
+        if ! host="$("$url_parser_bin" --url "$url" --get host 2>/dev/null)"; then
+            log_error "Could not extract host from hostname URL: $url."
+            url=""
+            continue
+        fi
+
+        if [[ "$with_authelia" == true ]]; then
+            # cookies.authelia_url needs to be https https://www.authelia.com/configuration/session/introduction/#authelia_url
+            if [[ "$protocol" != "https" ]]; then
+                log_error "As --with-authelia is enabled, the hostname URL protocol must be https."
+                url=""
+            else
+                if
+                    ! registered_domain="$("$url_parser_bin" --url "$url" --get registeredDomain 2>/dev/null)" || [ -z "$registered_domain" ] ||
+                        [ "$registered_domain" = "." ]
+                then
+                    log_error "Could not extract the registered domain from $url."
+                    url=""
+                fi
+            fi
+
+        elif [[ "$protocol" != "http" && "$protocol" != "https" ]]; then
+            log_error "The hostname URL protocol must be http or https"
+            url=""
+        fi
+    done
+
+    if [ -n "$url" ]; then
+        if test -n "$hostname_variable"; then
+           eval "$hostname_variable=$url"
+        else
+            N8N_HOSTNAME=${protocol}://n8n.${registered_domain}
+            WEBUI_HOSTNAME=${protocol}://openwebui.${registered_domain}
+            FLOWISE_HOSTNAME=${protocol}://flowise.${registered_domain}
+            SUPABASE_HOSTNAME=${protocol}://supabase.${registered_domain}
+            LANGFUSE_HOSTNAME=${protocol}://langfuse.${registered_domain}
+            OLLAMA_HOSTNAME=${protocol}://ollama.${registered_domain}
+            LLAMACPP_HOSTNAME=${protocol}://llamacpp.${registered_domain}
+            SEARXNG_HOSTNAME=${protocol}://searxng.${registered_domain}
+            NEO4J_HOSTNAME=${protocol}://neo4j.${registered_domain}
+        fi
     fi
-done
+}
+
+set_hostname "" "" # "HOSTNAME variable" "subdomain"
 
 # Get Username
 username=""
@@ -518,7 +588,7 @@ while [ -z "$username" ]; do
 
     # https://stackoverflow.com/questions/18041761
     if [[ ! "$username" =~ ^[a-zA-Z0-9]+$ ]]; then
-        log_error "Only alphabets and numbers are allowed"
+        log_warning "Only alphanumeric characters are allowed. Your rsponse: $username"
         username=""
     fi
     # read command automatically trims leading & trailing whitespace. No need to handle it separately
@@ -594,7 +664,7 @@ if [[ "$with_authelia" == true ]]; then
         read -rp "$(format_prompt "Enter your display name for Authelia:") " display_name
 
         if [[ ! "$display_name" =~ ^[a-zA-Z0-9[:space:]]+$ ]]; then
-            log_error "Only alphabets, numbers and spaces are allowed. Received $display_name"
+            log_warning "Only alphanumeric characters and spaces are allowed. Your rsponse: $display_name"
             display_name=""
         fi
     done
@@ -641,13 +711,16 @@ gen_token() {
     printf '%s' "${signed_content}.${signature}"
 }
 
-# Update .env File
 anon_token=$(gen_token "anon")
 service_role_token=$(gen_token "service_role")
 
-#log_debug ": $"
-log_debug "————————————"
+# ---------------------------------------------------------------------------
+
+#--log_debug ": $"------
+log_debug "BEGIN DEBUG———————"
 log_debug "username: $username"
+log_debug "proxy: $proxy"
+log_debug "auto_confirm: $auto_confirm"
 log_debug "with_authelia: $with_authelia"
 log_debug "email: $email"
 log_debug "display_name: $display_name"
@@ -655,14 +728,26 @@ log_debug "setup_redis: $setup_redis"
 log_debug "jwt_secret: $jwt_secret"
 log_debug "anon_token: $anon_token"
 log_debug "service_role_token: $service_role_token"
-log_debug "domain: $domain"
-log_debug "auto_confirm: $auto_confirm"
-log_debug "proxy: $proxy"
-log_debug "END TEST AC: $AC"
+log_debug "host Supabase): $host"
+log_debug "protocol: $protocol"
+log_debug "registered_domain: $registered_domain"
+log_debug "N8N_HOSTNAME: $N8N_HOSTNAME"
+log_debug "WEBUI_HOSTNAME: $WEBUI_HOSTNAME"
+log_debug "FLOWISE_HOSTNAME: $FLOWISE_HOSTNAME"
+log_debug "SUPABASE_HOSTNAME: $SUPABASE_HOSTNAME"
+log_debug "LANGFUSE_HOSTNAME: $LANGFUSE_HOSTNAME"
+log_debug "OLLAMA_HOSTNAME: $OLLAMA_HOSTNAME"
+log_debug "LLAMACPP_HOSTNAME: $LLAMACPP_HOSTNAME"
+log_debug "SEARXNG_HOSTNAME: $SEARXNG_HOSTNAME"
+log_debug "NEO4J_HOSTNAME: $NEO4J_HOSTNAME"
+log_debug "END DEBUG—————————"
 exit 0
+#-----------------------
 
-# ---------------------------------------------------------------------------
-
+# Create .env file from .env.example template
+# TODO - extend to all .env credentials (n8n, PostgreSQL, Flowise, Neo4j, Langfuse, Caddy/Nginx...)
+# Initial pass:    .env.example >.env
+# Subsequent pass: .env >.env
 sed -e "3d" \
     -e "s|POSTGRES_PASSWORD.*|POSTGRES_PASSWORD=$(gen_hex 16)|" \
     -e "s|JWT_SECRET.*|JWT_SECRET=$jwt_secret|" \
@@ -672,13 +757,24 @@ sed -e "3d" \
     -e "s|SECRET_KEY_BASE.*|SECRET_KEY_BASE=$(gen_hex 32)|" \
     -e "s|VAULT_ENC_KEY.*|VAULT_ENC_KEY=$(gen_hex 16)|" \
     -e "s|PG_META_CRYPTO_KEY.*|PG_META_CRYPTO_KEY=$(gen_hex 16)|" \
-    -e "s|API_EXTERNAL_URL.*|API_EXTERNAL_URL=$domain/goapi|" \
-    -e "s|SUPABASE_PUBLIC_URL.*|SUPABASE_PUBLIC_URL=$domain|" \
+    -e "s|API_EXTERNAL_URL.*|API_EXTERNAL_URL=$SUPABASE_HOSTNAME/goapi|" \
+    -e "s|SUPABASE_PUBLIC_URL.*|SUPABASE_PUBLIC_URL=$SUPABASE_HOSTNAME|" \
+    -e "s|# N8N_HOSTNAME.*|N8N_HOSTNAME=$protocol://n8n.\$AC_DOMAIN|" \
+    -e "s|# WEBUI_HOSTNAME.*|WEBUI_HOSTNAME=$protocol://openwebui.\$AC_DOMAIN|" \
+    -e "s|# FLOWISE_HOSTNAME.*|FLOWISE_HOSTNAME=$protocol://flowise.\$AC_DOMAIN|" \
+    -e "s|# SUPABASE_HOSTNAME.*|SUPABASE_HOSTNAME=$protocol://supabase.\$AC_DOMAIN|" \
+    -e "s|# LANGFUSE_HOSTNAME.*|LANGFUSE_HOSTNAME=$protocol://langfuse.\$AC_DOMAIN|" \
+    -e "s|# OLLAMA_HOSTNAME.*|OLLAMA_HOSTNAME=$protocol://ollama.\$AC_DOMAIN|" \
+    -e "s|# LLAMACPP_HOSTNAME.*|LLAMACPP_HOSTNAME=$protocol://llamacpp.\$AC_DOMAIN|" \
+    -e "s|# SEARXNG_HOSTNAME.*|SEARXNG_HOSTNAME=$protocol://searxng.\$AC_DOMAIN|" \
+    -e "s|# NEO4J_HOSTNAME.*|NEO4J_HOSTNAME=$protocol://neo4j.\$AC_DOMAIN|" \
+    -e "s|# LETSENCRYPT_EMAIL.*|LETSENCRYPT_EMAIL=\$AC_EMAIL|" \
     -e "s|ENABLE_EMAIL_AUTOCONFIRM.*|ENABLE_EMAIL_AUTOCONFIRM=$auto_confirm|" \
     -e "s|S3_PROTOCOL_ACCESS_KEY_ID.*|S3_PROTOCOL_ACCESS_KEY_ID=$(gen_hex 16)|" \
     -e "s|S3_PROTOCOL_ACCESS_KEY_SECRET.*|S3_PROTOCOL_ACCESS_KEY_SECRET=$(gen_hex 32)|" \
     -e "s|MINIO_ROOT_PASSWORD.*|MINIO_ROOT_PASSWORD=$(gen_hex 16)|" .env.example >.env
 
+# Update yaml file usung yq package
 update_yaml_file() {
     # https://github.com/mikefarah/yq/issues/465#issuecomment-2265381565
     sed -i '/^\r\{0,1\}$/s// #BLANK_LINE/' "$2"
@@ -686,9 +782,7 @@ update_yaml_file() {
     sed -i "s/ *#BLANK_LINE//g" "$2"
 }
 
-compose_file="docker-compose.yml"
-
-# Add env vars in .env file
+# Create env_vars list to append .env file
 env_vars=""
 update_env_vars() {
     for env_key_value in "$@"; do
@@ -706,7 +800,7 @@ if [[ "$with_authelia" == true ]]; then
     proxy_service_yaml="${proxy_service_yaml} | .services.$proxy.depends_on.authelia.condition=\"service_healthy\""
 fi
 
-# DEFINE Caddyfile
+# DEFINE Caddyfile and Caddy Docker service insert
 if [[ "$proxy" == "caddy" ]]; then
     caddy_local_volume="./caddy"
     caddyfile_local="$caddy_local_volume/Caddyfile"
@@ -722,7 +816,7 @@ if [[ "$proxy" == "caddy" ]]; then
                                                  \"$caddy_local_volume/addons:$caddy_addons_path\",
                                                  \"caddy_data:/data\",
                                                  \"caddy_config_data:/config\"]"
-# DEFINE nginx.template
+# DEFINE nginx.template and Nginx Docker service insert
 else
     update_env_vars "NGINX_SERVER_NAME=$host"
     # docker compose nginx service command directive. Passed via yq strenv
@@ -779,6 +873,7 @@ if [[ "$with_authelia" == false ]]; then
 fi
 
 # WRITE PROXY service to docker-compose.yml file
+compose_file="docker-compose.yml"
 nginx_cmd="${nginx_cmd:=""}" update_yaml_file "$proxy_service_yaml" "$compose_file"
 
 # AUTHELIA configuration
@@ -842,8 +937,9 @@ if [[ "$with_authelia" == true ]]; then
         authelia_docker_service_yaml="${authelia_docker_service_yaml}|.services.authelia.depends_on.redis.condition=\"service_healthy\""
     fi
 
-    # WRITE AUTHELIA configuration.yml file
-    host="$host" registered_domain="$registered_domain" authelia_url="$domain"/authenticate redirect_url="$domain" \
+    # WRITE AUTHELIA configuration.yml file (Supabase target)
+    # TODO - add other target modules
+    host="$host" registered_domain="$registered_domain" authelia_url="$SUPABASE_HOSTNAME"/authenticate redirect_url="$SUPABASE_HOSTNAME" \
         update_yaml_file "$authelia_config_file_yaml" "./authelia/configuration.yml"
 
     # WRITE AUTHELIA service to docker-compose.yml file
@@ -853,7 +949,7 @@ if [[ "$with_authelia" == true ]]; then
     authelia_schema="authelia" update_yaml_file "$authelia_docker_supabase_service_yaml" "./supabase/$compose_file"
 fi
 
-# WRITE env_vars to .env
+# WRITE env_vars to .env file
 echo -e "$env_vars" >>.env
 
 # WRITE LOCAL Caddyfile

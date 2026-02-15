@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 13, 2026
+Last Update February 15, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -84,6 +84,35 @@ INFO = {
 }
 
 # Logging
+# Source - https://stackoverflow.com/a/35804945
+def addLoggingLevel(levelName, levelNum, methodName=None):
+    """Adds a new logging level to the logging module and the
+       currently configured logging class.
+    """
+    if not methodName:
+        methodName = levelName.lower()
+
+    if hasattr(logging, levelName):
+       raise AttributeError('{} already defined in logging module'.format(levelName))
+    if hasattr(logging, methodName):
+       raise AttributeError('{} already defined in logging module'.format(methodName))
+    if hasattr(logging.getLoggerClass(), methodName):
+       raise AttributeError('{} already defined in logger class'.format(methodName))
+
+    def logForLevel(self, message, *args, **kwargs):
+        if self.isEnabledFor(levelNum):
+            self._log(levelNum, message, args, **kwargs)
+    def logToRoot(message, *args, **kwargs):
+        logging.log(levelNum, message, *args, **kwargs)
+
+    logging.addLevelName(levelNum, levelName)
+    setattr(logging, levelName, levelNum)
+    setattr(logging.getLoggerClass(), methodName, logForLevel)
+    setattr(logging, methodName, logToRoot)
+
+# Custom logging level
+addLoggingLevel("NOTICE", 22)
+
 class Formatter(logging.Formatter):
     """A class that formats colored logs using Select Graphic Rendition parameters."""
     FORMATS = {
@@ -101,11 +130,12 @@ class Formatter(logging.Formatter):
     WHITE   = 37
     COLOR   = {'msg': WHITE, 'level': WHITE, 'name': BLUE}
     LOG_LEVEL_COLOR = {
-        logging.CRITICAL: {'msg': RED_BG, 'level': RED_BG, 'name': BLUE} ,
-        logging.ERROR   : {'msg': RED,    'level': RED,    'name': BLUE} ,
-        logging.WARNING : {'msg': YELLOW, 'level': YELLOW, 'name': BLUE} ,
-        logging.INFO    : {'msg': CYAN,   'level': CYAN,   'name': BLUE} ,
-        logging.DEBUG   : {'msg': WHITE,  'level': WHITE,  'name': BLUE}
+        logging.CRITICAL : {'msg': RED_BG, 'level': RED_BG, 'name': BLUE} ,
+        logging.ERROR    : {'msg': RED,    'level': RED,    'name': BLUE} ,
+        logging.WARNING  : {'msg': YELLOW, 'level': YELLOW, 'name': BLUE} ,
+        logging.NOTICE   : {'msg': MAGENTA,'level': WHITE,  'name': BLUE} , # type:ignore[reportAttributeAccessIssue]
+        logging.INFO     : {'msg': CYAN,   'level': CYAN,   'name': BLUE} ,
+        logging.DEBUG    : {'msg': WHITE,  'level': WHITE,  'name': BLUE}
     }
 
     def __init__(self, fmt: str):
@@ -160,7 +190,7 @@ class Formatter(logging.Formatter):
         d['header_prefix'], d['header'], d['header_suffix'], d['msg_prefix'], d['msg']
         # Resolve format conflicts
         faint = False if faint and bright or bold else faint
-        if isinstance(level, int) and level not in [10, 20, 30, 40, 50]:
+        if isinstance(level, int) and level not in [50, 40, 30, 20, 19, 18, 10]:
             color = level
             level = logging.INFO
         # Construct a SGR dictionary with the specified arguments
@@ -188,8 +218,9 @@ class Formatter(logging.Formatter):
             style.update({'name_prefix': name_prefix})
         if level_name:
             if not level_name_prefix:
-                bold = True if level in [logging.ERROR, logging.CRITICAL, logging.DEBUG] else bold
-                underline = True if level in [logging.WARNING] else underline
+                bold_level_names = [logging.ERROR, logging.CRITICAL, logging.NOTICE, logging.DEBUG] # type:ignore[reportAttributeAccessIssue]
+                bold = True if level in bold_level_names else bold
+                underline = True if level in [logging.WARNING, logging.NOTICE] else underline # type:ignore[reportAttributeAccessIssue]
                 level_name_prefix = Formatter.prefix(level_name_color, bright, bold, faint, italic, underline)
             style.update({'level_name_prefix': level_name_prefix})
         # These (msg\header) constitute the stream message so set purge_msg to purge
@@ -221,7 +252,8 @@ class Formatter(logging.Formatter):
         if hasattr(record, 'level_name_prefix'):
             levelname_prefix = getattr(record, 'level_name_prefix')
         if not levelname_prefix:
-            bold = record.levelno in [logging.ERROR, logging.CRITICAL, logging.DEBUG]
+            bold_levelnames = [logging.ERROR, logging.CRITICAL, logging.NOTICE, logging.DEBUG] # type:ignore[reportAttributeAccessIssue]
+            bold = record.levelno in bold_levelnames
             underline = record.levelno in [logging.WARNING]
             levelname_prefix = self.prefix(color['level'], bold=bold, underline=underline)
         record.levelname = ('{0}{1}{2}').format(levelname_prefix, levelname, suffix)
@@ -342,7 +374,7 @@ def check_llama_cpp_model(operation, env_vars, using_hf):
             if operation == 'install':
                 log.critical(response)
             else:
-                log.info("Notice: " + response, extra=LSHF.style(header=log_notice, msg=response))
+                log.notice(response) # type:ignore[reportAttributeAccessIssue]
             command_prefix = LSHF.prefix(LSHF.BLUE)
             command_model_prefix = LSHF.prefix(LSHF.BLUE, bold=True)
             llama_app_prefix = LSHF.prefix(LSHF.GREEN, bold=True)
@@ -870,8 +902,8 @@ def check_and_fix_docker_compose_for_searxng():
                     log.info("uwsgi.ini not found inside the SearXNG container - first run")
                     is_first_run = True
             else:
-                raw_msg = "No running SearXNG container found - assuming first run"
-                log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
+                msg = "No running SearXNG container found - assuming first run"
+                log.notice(msg) # type:ignore[reportAttributeAccessIssue]
                 is_first_run = True
         except Exception as e:
             log.error(f"Exception: Check Docker container running: {e} - assuming first run")
@@ -899,9 +931,9 @@ def check_and_fix_docker_compose_for_searxng():
                                 searxng_found = False
                                 log.info("SearXNG 'cap_drop:' directive temporarily commented...")
                     f.write(line)
-            raw_msg = "After the first run completes successfully, uncomment 'cap_drop:' " \
+            msg = "After the first run completes successfully, uncomment 'cap_drop:' " \
                       "in docker-compose.yml for security."
-            log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
+            log.notice(msg) # type:ignore[reportAttributeAccessIssue]
         else:
             # Read the docker-compose.yml file
             with open(docker_compose_path, 'r') as f:
@@ -1147,8 +1179,7 @@ def set_dotenv_var(env_file, env, var, header):
                         elif len(var_array) == 1:
                             mod_line = ''.join([env, '=\n'])
                         line = mod_line
-                        raw_msg = f"Value for {env} removed..."
-                        log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
+                        log.notice(f"Value for {env} removed...") # type:ignore[reportAttributeAccessIssue]
                     f.write(line)
         except FileNotFoundError:
             log.error(f"Exception: File '{env_file}' not found.")
@@ -1540,11 +1571,16 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         return []
     ac = env_vars.get('AC', 'True')
     if ac and ac.lower() != 'true':
+        log.notice("Auto-configure is disabled. Set AC=True in .env to enable.") # type:ignore[reportAttributeAccessIssue]
         return []
 
     log.info(f"Auto-configuring {name} proxy and access...", extra=log_bright)
-    prompt = True
-    response = input(f"Use default auto-configure .env settings? y/n: (n)")
+    
+    prompt = True # Set False to fully automate for debugging etc... 
+    if prompt:
+        response = input(f"Use default auto-configure .env settings? y/n: (n)")
+    else:
+        response = 'y'
     prompt = False if response.lower() == 'y' else prompt
     response = None
     public = False
@@ -1559,15 +1595,27 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     default = response if response else default
     env_vars.update({'AC_SUDO_USER': default})
     # AC_SUDO_PASSWORD - str
-    password = getpass.getpass(f"Enter sudo password for package install: ")
+    if prompt:
+        password = getpass.getpass(f"Enter sudo password for package install: ")
+    else:
+        password = "" # Set "password" to fully automate for debugging etc...
     if not password:
-        info_style = LSHF.style(logging.INFO, LSHF.BLUE)
-        log.info(f"A sudo password prompt will trigger on package install.", extra=info_style)
+        log.notice(f"A sudo password prompt will trigger on package install.") # type:ignore[reportAttributeAccessIssue]
     ac_env_list.append(f'AC_SUDO_PASSWORD="{password}"')
+    password = None
     # AC_USERNAME - str
     default = env_vars.get('AC_USERNAME', 'ai_suite_user')
-    if prompt:
-        response = input(f"Enter proxy user name (required: {default}): ")
+    change_default = True if not default.isalnum() else False
+    if prompt or change_default:
+        response = None
+        while not response:
+            response = input(f"Enter proxy user name (required: {default}): ")
+            if not response:
+                response = "AISuiteProxyUser"
+                log.notice(f"The proxy user name was auto-generated as {response} and saved to .env.") # type:ignore[reportAttributeAccessIssue]
+            if not response.isalnum():
+                log.warning(f"Only alphanumeric characters are allowed. Response: {response}.")
+                response = None
     default = response.strip() if response else default
     env_vars.update({'AC_USERNAME': default})
     # AC_PASSWORD - str
@@ -1575,18 +1623,14 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     change_default = True if default == '*******' else False
     if prompt or change_default:
         password = getpass.getpass(f"Enter proxy user password (required: ***): ")
-    if not password or password == '*******':
-        if change_default:
-            import secrets
-            password_length = 13
-            password = secrets.token_urlsafe(password_length)
-            env_vars.update({'AC_PASSWORD': password})
-            info_style = LSHF.style(logging.INFO, LSHF.BLUE)
-            log.info(f"The proxy user password was auto-generated and saved to .env.", extra=info_style)
-        else:
-            password = default
+    if not password and change_default:
+        import secrets
+        password_length = 13
+        password = secrets.token_urlsafe(password_length)
+        env_vars.update({'AC_PASSWORD': password})
+        log.notice(f"The proxy user password was auto-generated and saved to .env.") # type:ignore[reportAttributeAccessIssue]
     else:
-        env_vars.update({'AC_PASSWORD': '*******'})
+        password = default
     ac_env_list.append(f'AC_PASSWORD="{password}"')
     # AC_LOG_PATH - str
     default = env_vars.get('AC_LOG_PATH', './scripts')
@@ -1601,7 +1645,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     env_vars.update({'AC_LOCAL': str(default)})
     public = not default
     # AC_DOMAIN - str
-    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.com')
+    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.pc')
     if prompt:
         response = input(f"Enter a domain ({default}): ")
     default = response.strip() if response else default
@@ -1644,15 +1688,24 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     env_vars.update({'AC_WITH_AUTHELIA': str(with_authelia)})
     if with_authelia:
         # AC_EMAIL - str
-        default = env_vars.get('AC_EMAIL', 'ai.suite.user@local.com')
+        default = env_vars.get('AC_EMAIL', 'ai-suite.aisuiteautheliauser@local.pc')
         if prompt:
             response = input(f"Enter Authelia user email (required: {default}): ")
         default = response.strip() if response else default
         env_vars.update({'AC_EMAIL': default})
         # AC_DISPLAY_NAME - str
         default = env_vars.get('AC_DISPLAY_NAME', f'{name} User')
-        if prompt:
-            response = input(f"Enter Authelia user display name (required: {default}): ")
+        change_default = True if not all(c.isalnum() or c.isspace() for c in default) else False
+        if prompt or change_default:
+            response = None
+            while not response:
+                response = input(f"Enter Authelia user display name (required: {default}): ")
+                if not response:
+                    response = "AI Suite Authelia User"
+                    log.notice(f"The Authelia user display name was auto-generated as {response} and saved to .env.") # type:ignore[reportAttributeAccessIssue]
+                if not all(c.isalnum() or c.isspace() for c in response):
+                    log.warning(f"Only alphanumeric characters and spaces are allowed. Response: {response}.")
+                    response = None
         default = response.strip() if response else default
         env_vars.update({'AC_DISPLAY_NAME': default})
         # AC_WITH_REDIS - bool
@@ -1806,7 +1859,7 @@ def main():
     managemant_and_data_operations = managemant_operations + data_operations
     operations = managemant_and_data_operations + installation_operations
     environments = ['private', 'public']
-    log_levels = ['OFF', 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
+    log_levels = ['OFF', 'CRITICAL', 'ERROR', 'WARNING', 'NOTICE', 'INFO', 'DEBUG']
     no_auto_config_list = managemant_and_data_operations + ['no-auto-config']
     parser = argparse.ArgumentParser(
         prog=f'{file}',
@@ -1860,8 +1913,7 @@ def main():
               backup-data restore-data                      volume mount data options
 
             log arguments:
-              OFF CRITICAL ERROR WARNING INFO DEBUG         console logging options
-
+              OFF CRITICAL ERROR WARNING NOTICE INFO DEBUG  console logging options
             '''),
         description=textwrap.dedent(f'''\
             {INFO.get("description")}
@@ -1909,6 +1961,9 @@ def main():
               ...to install all modules and start using LLaMA.cpp Nvidia GPU running in Docker:
               python {file} --profile ai-all cpp-gpu-nvidia --operation install
 
+              ...with debug logging enabled:
+              python {file} --profile ai-all cpp-gpu-nvidia --operation install --log debug
+
             - Perform (backup-data, restore-data) operation...
               ...to backup volume mount data to backup file:
               python {file} --operation backup-data
@@ -1943,10 +1998,9 @@ def main():
     args.profile = [] if default_profile else args.profile
 
     # Setup logging
-    global log, log_bright, log_run_cmd, log_notice
+    global log, log_bright, log_run_cmd
     log_bright = None
     log_run_cmd = "Running command:"
-    log_notice = "Notice:"
     log_level = logging.NOTSET
     log_handlers: list[logging.Handler] = [LFH]
     if args.log != 'OFF':
@@ -2174,8 +2228,7 @@ def main():
         else:
             sys.exit(0)
     else:
-        raw_msg = f"Updating '{name}' with profile arguments: {args.profile}..."
-        log.info(" ".join([log_notice, raw_msg]), extra=LSHF.style(header=log_notice, msg=raw_msg))
+        log.notice(f"Updating '{name}' with profile arguments: {args.profile}...") # type:ignore[reportAttributeAccessIssue]
 
     os.remove('.operation') if os.path.exists('.operation') else None
 
