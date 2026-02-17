@@ -1575,8 +1575,9 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         return []
 
     log.info(f"Auto-configuring {name} proxy and access...", extra=log_bright)
-
-    prompt = True # Set False to fully automate for debugging etc...
+    
+    password = "" # Set "password" to fully automate when debugging etc...
+    prompt = True # Set False to bypass prompts when debugging etc...
     if prompt:
         response = input(f"Use default auto-configure .env settings? y/n: (n)")
     else:
@@ -1593,12 +1594,10 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     if prompt:
         response = input(f"Enter a {non_root} sudo user (current user: {default}): ")
     default = response if response else default
-    env_vars.update({'AC_SUDO_USER': default})
+    ac_env_list.append(f'AC_SUDO_USER="{default}"')
     # AC_SUDO_PASSWORD - str
     if prompt:
-        password = getpass.getpass(f"Enter hidden sudo password for package install: ")
-    else:
-        password = "" # Set "password" to fully automate for debugging etc...
+        password = getpass.getpass(f"Enter hidden sudo password for package install: ")       
     if not password:
         log.notice(f"A sudo password prompt will trigger on package install.") # type:ignore[reportAttributeAccessIssue]
     ac_env_list.append(f'AC_SUDO_PASSWORD="{password}"')
@@ -1617,7 +1616,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
                 log.warning(f"Only alphanumeric characters are allowed. Response: {response}.")
                 response = None
     default = response.strip() if response else default
-    env_vars.update({'AC_USERNAME': default})
+    ac_env_list.append(f'AC_USERNAME="{default}"')
     # AC_PASSWORD - str
     default = env_vars.get('AC_PASSWORD', '*******')
     change_default = True if default == '*******' else False
@@ -1627,14 +1626,14 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         import secrets
         password_length = 13
         password = secrets.token_urlsafe(password_length)
-        env_vars.update({'AC_PASSWORD': password})
+        ac_env_list.append(f'AC_PASSWORD="{password}"')
         log.notice(f"The proxy user password was auto-generated and saved to .env.") # type:ignore[reportAttributeAccessIssue]
     else:
         password = default
     ac_env_list.append(f'AC_PASSWORD="{password}"')
     # AC_LOG_PATH - str
-    default = env_vars.get('AC_LOG_PATH', './scripts')
-    env_vars.update({'AC_LOG_PATH': default})
+    default = env_vars.get('AC_LOG_PATH', './access')
+    ac_env_list.append(f'AC_LOG_PATH="{default}"')
     # AC_LOCAL - bool
     default = env_vars.get('AC_LOCAL', 'False')
     default = True if str(default).lower() == 'true' else False
@@ -1642,14 +1641,14 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         response = input("Is this a local (private) installation? y/n ({}): "
                          .format('y' if default else 'n'))
     default = True if response and response.lower() == 'y' else default
-    env_vars.update({'AC_LOCAL': str(default)})
+    ac_env_list.append(f'AC_LOCAL={str(default).lower()}')
     public = not default
     # AC_DOMAIN - str
     default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.pc')
     if prompt:
         response = input(f"Enter a domain ({default}): ")
     default = response.strip() if response else default
-    env_vars.update({'AC_DOMAIN': default})
+    ac_env_list.append(f'AC_DOMAIN="{default}"')
     # AC_CONFIRM - bool
     default = env_vars.get('AC_CONFIRM', 'False')
     default = True if str(default).lower() == 'true' else False
@@ -1657,7 +1656,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         response = input("Send confirmation email on user registration? y/n ({}): "
                          .format('y' if default else 'n'))
     default = True if response and response.lower() == 'y' else default
-    env_vars.update({'AC_CONFIRM': str(default)})
+    ac_env_list.append(f'AC_CONFIRM={str(default).lower()}')
     # AC_WITH_EXIM - bool
     if default:
         default = env_vars.get('AC_WITH_EXIM', 'False')
@@ -1666,7 +1665,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         #.   response = input("Add Exim SMTP server? y/n ({}): "
         #                     .format('y' if default else 'n'))
         default = True if response and response.lower() == 'y' else default
-        #env_vars.update({'AC_WITH_EXIM': str(default)})
+        #ac_env_list.append(f'AC_WITH_EXIM={str(default).lower()}')
     # AC_PROXY - str
     default = env_vars.get('AC_PROXY', 'Caddy')
     if prompt:
@@ -1677,22 +1676,22 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
             log.warning(f"Invalid proxy specified: {response}. Using {default}.")
             response = None
     default = response if response else default
-    env_vars.update({'AC_PROXY': default.lower()})
+    ac_env_list.append(f'AC_PROXY="{default.lower()}"')
     # AC_WITH_AUTHELIA - bool
     default = env_vars.get('AC_WITH_AUTHELIA', 'False')
     default = True if str(default).lower() == 'true' else False
     if prompt:
         response = input("Include Authelia 2FA (Two Factor Authentication)? y/n ({}): "
                          .format('y' if default else 'n'))
-    with_authelia = True if response and response.lower() == 'y' else default
-    env_vars.update({'AC_WITH_AUTHELIA': str(with_authelia)})
-    if with_authelia:
+    default = True if response and response.lower() == 'y' else default
+    ac_env_list.append(f'AC_WITH_AUTHELIA={str(default).lower()}')
+    if default:
         # AC_EMAIL - str
         default = env_vars.get('AC_EMAIL', 'ai-suite.aisuiteautheliauser@local.pc')
         if prompt:
             response = input(f"Enter Authelia user email (required: {default}): ")
         default = response.strip() if response else default
-        env_vars.update({'AC_EMAIL': default})
+        ac_env_list.append(f'AC_EMAIL="{default}"')
         # AC_DISPLAY_NAME - str
         default = env_vars.get('AC_DISPLAY_NAME', f'{name} User')
         change_default = True if not all(c.isalnum() or c.isspace() for c in default) else False
@@ -1707,7 +1706,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
                     log.warning(f"Only alphanumeric characters and spaces are allowed. Response: {response}.")
                     response = None
         default = response.strip() if response else default
-        env_vars.update({'AC_DISPLAY_NAME': default})
+        ac_env_list.append(f'AC_DISPLAY_NAME="{default}"')
         # AC_WITH_REDIS - bool
         default = env_vars.get('AC_WITH_REDIS', ('True' if public else 'False'))
         default = True if str(default).lower() == 'true' else False
@@ -1716,19 +1715,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
                              .format('recommended: ' if public else '',
                                      'y' if default else 'n'))
         default = True if response and response.lower() == 'y' else default
-        env_vars.update({'AC_WITH_REDIS': str(default)})
-
-    # Generate Auto-configure Env list
-    ac_env_prefix = 'AC_'
-    ac_env_bool = ['AC_LOCAL', 'AC_CONFIRM', 'AC_WITH_AUTHELIA', 'AC_WITH_REDIS',
-                   'AC_WITH_EXIM']
-    for env, var in env_vars.items():
-        if not var or not env.startswith(ac_env_prefix):
-            continue
-        if env == 'AC_PASSWORD':
-            continue
-        var = str(var).lower() if env in ac_env_bool else f'"{var}"'
-        ac_env_list.append('{}={}'.format(env, var))
+        ac_env_list.append(f'AC_WITH_REDIS={str(default).lower()}')
 
     # Display Env settings
     header = ("{} Auto-configure Access Env Settings").format(name)
@@ -1748,19 +1735,17 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     log.info(header, extra=header_style)
     log.info("="*60, extra=line_style)
 
-    for env, var in env_vars.items():
-        if not env.startswith(ac_env_prefix):
-            continue
-        if env == 'AC_PASSWORD':
-            var = '***'
+    for env_item in ac_env_list:
+        env_pair = env_item.split('=')
+        if env_pair[0].endswith('_PASSWORD'):
+            env_pair[1] = '***'            
         emoji = '🌐'
-        quoted_var = var if var.isalnum() else f"'{var}'"
         env_var_prefix = ("{}• {} {:18s}{}={}{}").format(
-            env_prefix, emoji, env, LSHF.suffix(),
-            var_prefix, quoted_var)
+            env_prefix, emoji, env_pair[0], LSHF.suffix(),
+            var_prefix, env_pair[1])
         env_var_style = {'prefix': env_var_prefix, 'suffix': LSHF.suffix()}
         env_var_style.update({'purge_msg':'True'})
-        raw_msg = ("• {} {:18s}={}").format(emoji, env, quoted_var)
+        raw_msg = ("• {} {:18s}={}").format(emoji, env_pair[0], env_pair[1])
         log.info(raw_msg, extra=env_var_style)
     log.info("="*60, extra=line_style)
 
@@ -1782,7 +1767,7 @@ def run_ai_suite_ac_auto_config(ac_env_vars):
     if not ac_env_vars:
         log.error(f"The auto-configure env_var list is empty!")
         return
-    ac_script = os.path.normpath(os.path.join("scripts", "auto_config.sh"))
+    ac_script = os.path.normpath(os.path.join("access", "auto_config.sh"))
     if not os.path.exists(ac_script):
         log.error(f"Auto-configure script not found at {ac_script}")
         return
@@ -1814,14 +1799,13 @@ def run_ai_suite_ac_auto_config(ac_env_vars):
             log.info(f"See details in run log: {ac_log_file}", extra=info_style)
     except Exception as e:
         if e:
-            e_array = str(e).split(',')
-            index = 4 if system == "Windows" else 2
-            size = 5 if system == "Windows" else 3
-            e_string = e_array[index] if len(e_array) == size else ""
-            e_array = e_string.split(' ')
-            if len(e_array) >= 14:
+            e_list = str(e).split(',')
+            if len(e_list) == len(cmd):
+                e_string = str(e_list[-1:])
+                e_list = e_string.split(' ')
+            if len(e_list) >= len(ac_env_vars):
                 e_msg = []
-                for e_item in e_array:
+                for e_item in e_list:
                     e_pair = e_item.split('=')
                     if e_pair[0].endswith('_PASSWORD'):
                         e_msg.append(f'{e_pair[0]}="***"')
@@ -2065,15 +2049,18 @@ def main():
     if ac_auto_config:
         ac_env_vars = setup_ai_suite_ac_auto_config(env_vars)
         ac_auto_config = True if ac_env_vars else False
+    """ 'AC_' .env vars updated at run_ai_suite_ac_auto_config
     if ac_auto_config:
         for env, var in env_vars.items():
             if not env.startswith('AC_'):
                 continue
             set_dotenv_var(env_file, env, var, None)
-
-    if ac_auto_config:
-        log.debug("Configure proxy, identity and access management...")
+    """
+    if ac_auto_config:  # TEMP: Relocation from below during Dev
+        log.debug("TEMP: Configure proxy, identity and access management...")
         run_ai_suite_ac_auto_config(ac_env_vars)
+        log.debug("TEMP: Finished!")
+        sys.exit(0) # TEMP: End here in case no breakpoints set...
 
     # Process llama (Ollama/LLaMA.cpp) status checks
     llama_arg = "cpu"
@@ -2266,7 +2253,7 @@ def main():
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
 
-    """
+    """ TEMP: Moved to '# Access auto-configuration' above during Dev
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
         run_ai_suite_ac_auto_config(ac_env_vars)

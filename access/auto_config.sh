@@ -80,7 +80,8 @@ if [ -t 1 ]; then
         ITALIC_RED_BG=$(sgr "${ITALIC}41")
         UNDERLINE_YELLOW=$(sgr "${UNDERLINE}93")
         COLON="${END}$(sgr "97"):"
-        NAME="$(sgr "${ITALIC}34")${NAME%?}${COLON}${END}"
+        HEADER="$(sgr "${BOLD}${UNDERLINE}92")"
+        NAME="$(sgr "${ITALIC}94")${NAME%?}${COLON}${END}"
         NOTICE="${NAME} $(sgr "${BOLD}95")NOTICE${END}"
         QUESTION="${NAME} $(sgr "${BOLD}92")QUESTION${END}"
         CRITICAL="${NAME} $(sgr "${BOLD}41")CRITICAL${END}"
@@ -124,24 +125,31 @@ fi
 # Capture elapsed execution time
 # shellcheck disable=SC2329
 finish_elapsed_time() {
-  set +x
-  ELAPSED="$((SECONDS / 3600))hrs $(((SECONDS / 60) % 60))min $((SECONDS % 60))sec"
-  echo -e "${INFO} ${CYAN}Elapsed time:${END} ${GREEN}$ELAPSED${END}"
-  echo -e "${INFO} ${GREEN}-------------------------------------------${END}"
+    set +x
+    ELAPSED="$((SECONDS / 3600))hrs $(((SECONDS / 60) % 60))min $((SECONDS % 60))sec"
+    echo -e "${INFO} ${CYAN}Elapsed time:${END} ${GREEN}$ELAPSED${END}"
+    echo -e "${INFO} ${GREEN}-------------------------------------------${END}"
 }
 
 # shellcheck disable=SC2329
 finish () {
-    log_info "${HEADER}Configuration Finished"
-    #-------------------------------------------
-    binaries=()
-    for bin in "$yq_bin" "$url_parser_bin"; do [ -f "$bin" ] && binaries+=("$bin") || : ; done
-    if (( ${#binaries[@]} != 0 )); then log_info "Cleaning up downloaded binaries..." ; fi
-    for bin in "${binaries[@]}"; do
-        log_info "  ✘ $(basename "${bin}")"
-        (rm "$bin" > /dev/null 2>&1)
-    done
+    vars=(AC_SUDO_PASSWORD AC_PASSWORD password confirm_password)
+    for var in "${vars[@]}"; do [ -v "$var" ] && unset "$var" ; done
 
+    if [ "$success" ]; then
+        HEADER="${END}✅ ${HEADER}"
+        status="Finished"
+        binaries=()
+        for bin in "$yq_bin" "$url_parser_bin"; do [ -f "$bin" ] && binaries+=("$bin") ; done
+        if (( ${#binaries[@]} != 0 )); then log_info "Clean downloaded binaries..." ; fi
+        for bin in "${binaries[@]}"; do log_info "  ✘ $(basename "${bin}")"; (rm "$bin"); done
+    else
+        HEADER="${END}❌ $(sgr "${UNDERLINE}91")"
+        status="Terminated"
+    fi
+
+    log_info "${HEADER}Configuration ${status}"
+    #-------------------------------------------
     finish_elapsed_time
 
     # Clean SGR color sequence codes from the log file..."
@@ -153,9 +161,9 @@ finish () {
     # /               delimeter '/'
     # \x1b            match the SGR escape sequence '\x1b' before the color or attribute code
     # \[              matches the first open bracket - escape '\[' to distinguish from regex [
-    # [0-79;]\{1,11\} matches '1 to 12' of any character in '012345679;' - escape '\{' the curly braces
+    # [0-79;]\{1,11\} matches '1 to 11' of any character in '012345679;' - escape '\{' the curly braces
     #                 to keep the shell from mangling them - replace '.' by '[0-79;]' for more accuracy
-    #                 we have 12 times due to bold, dim, italic and underline
+    #                 we have 11 times due to bold, dim, italic, underline and color * 2 plus reset * 1
     # m               match the SGR escape sequence reset character 'm' - this trails the color code
     # //              empty string between delimeters '/' to replace everything with
     # g               match globally - i.e., multiple times per line
@@ -220,10 +228,11 @@ has_argument() {
 
 extract_argument() { echo "${2:-${1#*=}}"; }
 
+proxy="caddy"
+success=false
+with_authelia=false
 url_parser_bin="./url-parser"
 yq_bin="./yq"
-with_authelia=false
-proxy="caddy"
 
 trap finish EXIT
 
@@ -259,6 +268,7 @@ fi
 ac_install_type=''
 ac_user_confirm=''
 using_sudo_user=false
+
 if [ "$AC" == true ]; then
     SUDO_USER="${AC_SUDO_USER:=${SUDO_USER}}"
     with_authelia="${AC_WITH_AUTHELIA:=${with_authelia}}"
@@ -281,7 +291,6 @@ else
     ac_config_mode="Interactive"
 fi
 
-HEADER=$(sgr "${BOLD}${UNDERLINE}92")
 log_info "${HEADER}Configuration Summary"
 #-------------------------------------------
 log_info "${WHITE}  -${END} ${GREEN}Proxy:${END} ${WHITE}${proxy}"
@@ -318,9 +327,7 @@ arch="$(detect_arch)"
 if [[ "$os" == "err" ]]; then critical_exit "This script only supports linux os. On Windows use WSL"; fi
 if [[ "$arch" == "err" ]]; then critical_exit "Unsupported cpu architecture"; fi
 
-is_root() {
-    if [ -n "$1" ]; then return "$(id -u "$1")"; else return "$(id -u)"; fi
-}
+is_root() { if [ -n "$1" ]; then return "$(id -u "$1")"; else return "$(id -u)"; fi }
 
 packages=(curl wget jq openssl git)
 if [ -x "$(command -v apt-get)" ]; then
@@ -507,6 +514,8 @@ else
 fi
 if [ ! -f ".env.example" ]; then critical_exit ".env.example file not found. Exiting!"; fi
 
+log_info "${HEADER}Downloaded Binaries"
+#-------------------------------------------
 download_binary() { wget "$1" -O "$2" &>/dev/null && chmod +x "$2" &>/dev/null; }
 repo_base="https://github.com/singh-inder"
 
@@ -520,8 +529,6 @@ if [ ! -x "$yq_bin" ]; then
     download_binary https://github.com/mikefarah/yq/releases/download/v4.45.4/yq_"$os"_"$arch" "$yq_bin"
 fi
 
-log_info "${HEADER}Downloaded Binaries"
-#-------------------------------------------
 dl_stat () { if test -x "$1"; then echo "${GREEN}  ✔"; else echo "${RED}  ✘"; fi }
 log_info "$(dl_stat "$url_parser_bin")${END} ${WHITE}url_parser"
 log_info "$(dl_stat "$yq_bin") ${WHITE}yq"
@@ -549,6 +556,11 @@ confirmation_prompt() {
 
     # Use eval to dynamically assign the new value to the variable name. This indirectly updates the variable in the caller's scope.
     if [ -n "$answer" ]; then eval "$variable_to_update_name=$answer"; fi
+}
+
+elide() {
+    echo "$@" | \
+    awk -v max=35 '{ if (length($0) > max) print substr($0, 1, max-3) "..."; else print; }'
 }
 
 # Populate module hostname (URL)
@@ -773,8 +785,9 @@ fi
 
 log_info "${HEADER}Process Credentials"
 #-------------------------------------------
-# in caddy basic_auth, hashed password is loaded in memory
-# in nginx basic_auth, websites slows down a lot if bcrypt rounds number is high as the hashed password file is checked again and again on every request.
+# In caddy basic_auth, hashed password is loaded in memory
+# In nginx basic_auth, websites slows down a lot if bcrypt rounds number is
+# high as the hashed password file is checked again and again on every request.
 # This is only applicable when using basic_auth, not with authelia
 bcrypt_rounds=12
 if [[ "$proxy" == "nginx" && "$with_authelia" == false ]]; then bcrypt_rounds=6; fi
@@ -812,9 +825,9 @@ service_role_token=$(gen_token "service_role")
 
 #-------------------------------------------
 
-log_info "${WHITE}  -${END} ${GREEN}jwt_secret:${END} ${WHITE}$jwt_secret"
-log_info "${WHITE}  -${END} ${GREEN}anon_token:${END} ${WHITE}$anon_token"
-log_info "${WHITE}  -${END} ${GREEN}service_role_token:${END} ${WHITE}$service_role_token"
+log_info "${WHITE}  -${END} ${GREEN}jwt_secret:${END} ${WHITE}$(elide "$jwt_secret")"
+log_info "${WHITE}  -${END} ${GREEN}anon_token:${END} ${WHITE}$(elide "$anon_token")"
+log_info "${WHITE}  -${END} ${GREEN}service_role_token:${END} ${WHITE}$(elide "$service_role_token")"
 
 log_info "${WHITE}  -${END} ${GREEN}sudo_user:${END} ${WHITE}${SUDO_USER}"
 log_info "${WHITE}  -${END} ${GREEN}using_sudo_user:${END} ${WHITE}$using_sudo_user"
@@ -833,10 +846,8 @@ log_info "${HEADER}Create .env File"
 #-------------------------------------------
 yml_bool() { echo "$(tr '[:lower:]' '[:upper:]' <<< "${1:0:1}")${1:1}" ; }
 
-log_debug "BEGIN DEBUG———————"
-log_debug "yaml bool true: $(yml_bool 'true')"
-log_debug "yaml bool false: $(yml_bool 'false')"
-log_debug "END DEBUG—————————"
+#log_debug "BEGIN DEBUG———————"
+#log_debug "END DEBUG—————————"
 
 sed -e "3d" \
     -e "s|POSTGRES_PASSWORD.*|POSTGRES_PASSWORD=$(gen_hex 16)|" \
@@ -858,18 +869,18 @@ sed -e "3d" \
 if [[ "$AC" == true ]]; then
 sed -i \
     -e "s|^AC=.*|AC=$(yml_bool "${AC}")|" \
-    -e "s|^AC_SUDO_USER.*|AC_SUDO_USER=${AC_SUDO_USER}|" \
-    -e "s|^AC_DOMAIN.*|AC_DOMAIN=${AC_DOMAIN}|" \
-    -e "s|^AC_LOCAL.*|AC_LOCAL=$(yml_bool "${AC_LOCAL}")|" \
-    -e "s|^AC_PROXY.*|AC_PROXY=${AC_PROXY}|" \
-    -e "s|^AC_USERNAME.*|AC_USERNAME=${AC_USERNAME}|" \
-    -e "s|^AC_PASSWORD.*|AC_PASSWORD=${AC_PASSWORD}|" \
-    -e "s|^AC_CONFIRM.*|AC_CONFIRM=$(yml_bool "${AC_CONFIRM}")|" \
-    -e "s|^AC_WITH_AUTHELIA.*|AC_WITH_AUTHELIA=$(yml_bool "${AC_WITH_AUTHELIA}")|" \
-    -e "s|^AC_EMAIL.*|AC_EMAIL=${AC_EMAIL}|" \
-    -e "s|^AC_DISPLAY_NAME.*|AC_DISPLAY_NAME=${AC_DISPLAY_NAME}|" \
-    -e "s|^AC_WITH_REDIS.*|AC_WITH_REDIS=$(yml_bool "${AC_WITH_REDIS}")|" \
-    -e "s|^AC_LOG_PATH.*|AC_LOG_PATH=${AC_LOG_PATH}|" \
+    -e "s|AC_SUDO_USER.*|AC_SUDO_USER=${AC_SUDO_USER}|" \
+    -e "s|AC_DOMAIN.*|AC_DOMAIN=${AC_DOMAIN}|" \
+    -e "s|AC_LOCAL.*|AC_LOCAL=$(yml_bool "${AC_LOCAL}")|" \
+    -e "s|AC_PROXY.*|AC_PROXY=${AC_PROXY}|" \
+    -e "s|AC_USERNAME.*|AC_USERNAME=${AC_USERNAME}|" \
+    -e "s|AC_PASSWORD.*|AC_PASSWORD=${AC_PASSWORD}|" \
+    -e "s|AC_CONFIRM.*|AC_CONFIRM=$(yml_bool "${AC_CONFIRM}")|" \
+    -e "s|AC_WITH_AUTHELIA.*|AC_WITH_AUTHELIA=$(yml_bool "${AC_WITH_AUTHELIA}")|" \
+    -e "s|AC_EMAIL.*|AC_EMAIL=${AC_EMAIL}|" \
+    -e "s|AC_DISPLAY_NAME.*|AC_DISPLAY_NAME=${AC_DISPLAY_NAME}|" \
+    -e "s|AC_WITH_REDIS.*|AC_WITH_REDIS=$(yml_bool "${AC_WITH_REDIS}")|" \
+    -e "s|AC_LOG_PATH.*|AC_LOG_PATH=${AC_LOG_PATH}|" \
     -e "s|# N8N_HOSTNAME.*|N8N_HOSTNAME=$protocol://n8n.\${AC_DOMAIN}|" \
     -e "s|# WEBUI_HOSTNAME.*|WEBUI_HOSTNAME=$protocol://openwebui.\${AC_DOMAIN}|" \
     -e "s|# FLOWISE_HOSTNAME.*|FLOWISE_HOSTNAME=$protocol://flowise.\${AC_DOMAIN}|" \
@@ -1240,22 +1251,29 @@ server {
 " >"$nginx_local_template_file"
 fi
 
-unset AC_PASSWORD password confirm_password
 if [ "$using_sudo_user" == true ]; then
     log_info "${WHITE}  -${END} ${GREEN}Setting $(basename "$(pwd)")/* ownership to $SUDO_USER..."
     #-------------------------------------------
     chown -R "$SUDO_USER": .;
 fi
 
-global_access="\
-${INFO} 🌐 ${BLUE}To access ${NAME} from the internet,${END} \
-${INFO}${BLUE}ensure your firewall allows traffic on ports${END} \
-${WHITE}80${END} ${BLUE}and${END} ${WHITE}443${END}"
+log_info "${END}🎉 ${HEADER}Success!"
+#-------------------------------------------
+success=true
+
+if [[ "$AC" != true ]]; then
+    echo -e "${INFO} 👉 ${BOLD_MAGENTA}Next steps:${END}"
+    echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Change into $directory:${END}"
+    echo -e "${INFO}   ${WHITE}cd $directory${END}"
+    echo -e "${INFO} ${BLUE}2.${END} ${GREEN}Run suite_services.py:${END}"
+    echo -e "${INFO}   ${WHITE}python suite_services.py --profile ai-all --operation start${END}"
+    echo -e "${INFO} 🚀 ${GREEN}Confirm everything is running from the console output${END}"
+fi
 
 edit_host_file() {
     [ "$AC" == true ] && \
     echo -e "${INFO} 👉 ${BOLD_MAGENTA}Next steps:${END}" || :
-    echo -e "${INFO}${BLUE} 1.${END} ${GREEN}Edit your hosts file so your domain will loop back to your${END}"
+    echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Edit your hosts file so your domain will loop back to your${END}"
     echo -e "${INFO}     ${GREEN}machine - just like localhost.${END}"
     echo -e "${INFO}   ${BLUE}1a.${END} ${GREEN}Create a backup of the original hosts file.${END}"
     echo -e "${INFO}      ${WHITE}sudo cp /etc/hosts /etc/hosts.bak${END}"
@@ -1268,17 +1286,12 @@ edit_host_file() {
     echo -e "${INFO} 🚀 ${GREEN}Confirm everything is running.${END}"
 }
 
-log_info "${END}🎉 ${HEADER}Success!"
-#-------------------------------------------
-if [[ "$AC" != true ]]; then
-    echo -e "${INFO} 👉 ${BOLD_MAGENTA}Next steps:${END}"
-    echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Change into $directory:${END}"
-    echo -e "${INFO}   ${WHITE}cd $directory${END}"
-    echo -e "${INFO} ${BLUE}2.${END} ${GREEN}Run suite_services.py:${END}"
-    echo -e "${INFO}   ${WHITE}python suite_services.py --profile ai-all --operation start${END}"
-    echo -e "${INFO} 🚀 ${GREEN}Confirm everything is running from the console output${END}"
-fi
+global_access="\
+${BLUE}To access ${NAME} from the internet,${END} \
+${BLUE}ensure your firewall allows traffic on ports${END} \
+${WHITE}80${END} ${BLUE}and${END} ${WHITE}443${END}"
+
 [ "${AC_LOCAL}" == true ] && edit_host_file || \
-echo -e "${global_access}"
+echo -e "${INFO} 🌐 $global_access"
 
 exit 0
