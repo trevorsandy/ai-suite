@@ -223,7 +223,7 @@ services:
 
   n8n-import:
     profiles: ["n8n", "n8n-all", "ai-all"]
-    <<: *service-n8n
+    !!merge <<: *service-n8n
     container_name: n8n-import
     entrypoint: /bin/sh
     command:
@@ -243,7 +243,7 @@ services:
 
   n8n:
     profiles: ["n8n", "n8n-all", "ai-all"]
-    <<: *service-n8n
+    !!merge <<: *service-n8n
     container_name: n8n
     restart: unless-stopped
     expose:
@@ -276,7 +276,7 @@ services:
 
   n8n-runner:
     profiles: ["n8n", "n8n-all", "ai-all"]
-    <<: *service-n8n-runner
+    !!merge <<: *service-n8n-runner
     container_name: n8n-runner
     restart: unless-stopped
     environment:
@@ -287,7 +287,7 @@ services:
 
   n8n-worker:
     profiles: ["n8n", "n8n-all", "ai-all"]
-    <<: *service-n8n
+    !!merge <<: *service-n8n
     container_name: n8n-worker
     command: worker
     expose:
@@ -297,11 +297,11 @@ services:
     depends_on:
       n8n:
         condition: service_healthy
-      <<: *depends-on-defaults
+      !!merge <<: *depends-on-defaults
 
   n8n-worker-runner:
     profiles: ["n8n", "n8n-all", "ai-all"]
-    <<: *service-n8n-runner
+    !!merge <<: *service-n8n-runner
     container_name: n8n-worker-runner
     restart: unless-stopped
     environment:
@@ -396,6 +396,30 @@ services:
         max-size: "1m"
         max-file: "1"
 
+  authelia:
+    profiles: ["caddy", "ai-all"]
+    container_name: authelia
+    image: authelia/authelia:4.38
+    volumes:
+      - ./access/authelia:/config
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - 9091
+    restart: unless-stopped
+    healthcheck:
+      disable: false
+    environment:
+      AUTHELIA_STORAGE_POSTGRES_ADDRESS: tcp://db:5432
+      AUTHELIA_STORAGE_POSTGRES_USERNAME: postgres
+      AUTHELIA_STORAGE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHELIA_STORAGE_POSTGRES_DATABASE: ${POSTGRES_DB}
+      AUTHELIA_STORAGE_POSTGRES_SCHEMA: authelia
+      AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:?error}
+      AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:?error}
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}
+
   langfuse-worker:
     profiles: ["langfuse", "ai-all"]
     image: langfuse/langfuse-worker:3
@@ -465,7 +489,7 @@ services:
     expose:
       - 3000/tcp
     environment:
-      <<: *langfuse-worker-env
+      !!merge <<: *langfuse-worker-env
       NEXTAUTH_URL: http://localhost:3002
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
@@ -579,11 +603,11 @@ services:
 
   ollama-cpu:
     profiles: ["cpu"]
-    <<: *service-ollama
+    !!merge <<: *service-ollama
 
   ollama-gpu:
     profiles: ["gpu-nvidia"]
-    <<: *service-ollama
+    !!merge <<: *service-ollama
     deploy:
       resources:
         reservations:
@@ -594,7 +618,7 @@ services:
 
   ollama-gpu-amd:
     profiles: ["gpu-amd"]
-    <<: *service-ollama
+    !!merge <<: *service-ollama
     image: ollama/ollama:rocm
     devices:
       - "/dev/kfd"
@@ -602,31 +626,31 @@ services:
 
   ollama-pull-llama-cpu:
     profiles: ["cpu"]
-    <<: *init-ollama
+    !!merge <<: *init-ollama
     depends_on:
       - ollama-cpu
 
   ollama-pull-llama-gpu:
     profiles: ["gpu-nvidia"]
-    <<: *init-ollama
+    !!merge <<: *init-ollama
     depends_on:
       - ollama-gpu
 
   ollama-pull-llama-gpu-amd:
     profiles: ["gpu-amd"]
-    <<: *init-ollama
+    !!merge <<: *init-ollama
     image: ollama/ollama:rocm
     depends_on:
       - ollama-gpu-amd
 
   llamacpp-cpu:
     profiles: ["cpp-cpu"]
-    <<: *service-llamacpp
+    !!merge <<: *service-llamacpp
     image: ghcr.io/ggml-org/llama.cpp:server
 
   llamacpp-gpu:
     profiles: ["cpp-gpu-nvidia"]
-    <<: *service-llamacpp
+    !!merge <<: *service-llamacpp
     image: ghcr.io/ggml-org/llama.cpp:server-cuda
     deploy:
       resources:
@@ -638,8 +662,42 @@ services:
 
   llamacpp-gpu-amd:
     profiles: ["cpp-gpu-amd"]
-    <<: *service-llamacpp
+    !!merge <<: *service-llamacpp
     image: ghcr.io/ggml-org/llama.cpp:server-rocm
     devices:
       - "/dev/kfd"
       - "/dev/dri"
+  nginx:
+    profiles:
+      - nginx
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80/tcp
+      - 443:443/tcp
+    depends_on:
+      kong:
+        condition: service_healthy
+      authelia:
+        condition: service_healthy
+    image: jonasal/nginx-certbot:6.0.1-nginx1.29.5
+    environment:
+      NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?error}
+      CERTBOT_EMAIL: ${AC_EMAIL:?error}
+      USE_LOCAL_CA: 1
+    volumes:
+      - ./access/nginx:/etc/nginx/user_conf.d
+      - ./access/nginx/letsencrypt:/etc/letsencrypt
+    command:
+      - /bin/bash
+      - -c
+      - |
+        envsubst '$${NGINX_SERVER_NAME}' < /etc/nginx/user_conf.d/nginx.template > /etc/nginx/user_conf.d/nginx.conf \
+        && /scripts/start_nginx_certbot.sh
+  ngnix:
+    expose:
+      - 81/tcp
+      - 443/tcp
+      - 443/udp
+      - 80/tcp
+    TZ: France/Paris

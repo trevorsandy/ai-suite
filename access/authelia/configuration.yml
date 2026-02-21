@@ -38,9 +38,22 @@ authentication_backend:
 access_control:
   default_policy: "deny"
   rules:
+    - domain: "open-webui.example.com"
+      policy: "two_factor"
+    - domain: "n8n.example.com"
+      policy: "two_factor"
+    - domain: "flowise.example.com"
+      policy: "two_factor"
+    - domain: "langfuse-web.example.com"
+      policy: "two_factor"
     - domain: "supabase.example.com"
       policy: "two_factor"
-
+    - domain: "searxng.example.com"
+      policy: "two_factor"
+    - domain: "neo4j.example.com"
+      policy: "two_factor"
+    - domain: "llama.example.com"
+      policy: "two_factor"
 session:
   secret: '{{ env "AUTHELIA_SESSION_SECRET" }}'
   inactivity: "10m"

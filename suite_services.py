@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 17, 2026
+Last Update February 19, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1277,7 +1277,7 @@ def docker_object_exists(object, name):
         stdout = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
         return stdout.find(name) != 1
     except subprocess.CalledProcessError as e:
-        log.error(e.output.decode())
+        log.error(e.stderr)
         return False
 
 def docker_volume_data(operation):
@@ -1589,21 +1589,30 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     # AC - bool
     ac_env_list = ['AC=true']
     # AC_SUDO_USER - str
-    default = env_vars.get('AC_SUDO_USER', getpass.getuser())
-    non_root = "WSL non-root" if system == 'Windows' else "non-root"
+    sudo_user = getpass.getuser()
+    non_root = "non-root"
+    if system == "Windows":
+        non_root = " ".join(["WSL", non_root])
+        cmd = ["wsl", "-e", "bash", "-c", "whoami"]  
+        try:
+            completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            sudo_user = completed.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            log.error(f"Exception: WSL whoami: {e.stderr}")
+    default = env_vars.get('AC_SUDO_USER', sudo_user)
     if prompt:
         response = input(f"Enter a {non_root} sudo user (current user: {default}): ")
     default = response if response else default
     ac_env_list.append(f'AC_SUDO_USER="{default}"')
     # AC_SUDO_PASSWORD - str
     if prompt:
-        password = getpass.getpass(f"Enter hidden sudo password for package install: ")       
+        password = getpass.getpass(f"Enter hidden sudo password for package install: ")
     if not password:
         log.notice(f"A sudo password prompt will trigger on package install.") # type:ignore[reportAttributeAccessIssue]
     ac_env_list.append(f'AC_SUDO_PASSWORD="{password}"')
     password = None
     # AC_USERNAME - str
-    default = env_vars.get('AC_USERNAME', 'ai_suite_user')
+    default = env_vars.get('AC_USERNAME', 'AISuiteProxyUser')
     change_default = True if not default.isalnum() else False
     if prompt or change_default:
         response = None
@@ -1626,7 +1635,6 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         import secrets
         password_length = 13
         password = secrets.token_urlsafe(password_length)
-        ac_env_list.append(f'AC_PASSWORD="{password}"')
         log.notice(f"The proxy user password was auto-generated and saved to .env.") # type:ignore[reportAttributeAccessIssue]
     else:
         password = default
@@ -1738,7 +1746,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     for env_item in ac_env_list:
         env_pair = env_item.split('=')
         if env_pair[0].endswith('_PASSWORD'):
-            env_pair[1] = '***'            
+            env_pair[1] = '***'
         emoji = '🌐'
         env_var_prefix = ("{}• {} {:18s}{}={}{}").format(
             env_prefix, emoji, env_pair[0], LSHF.suffix(),
@@ -1832,7 +1840,8 @@ def main():
             llama_cpp = op_array[1].strip() == 'llama.cpp'
     elif os.path.exists(env_file):
         lpv = dotenv.get_key(env_file, 'LLAMA_PATH')
-        llama_cpp = lpv and os.path.basename(lpv).lower().startswith('llama-server')
+        if lpv:
+            llama_cpp = True if os.path.basename(lpv).lower().startswith('llama-server') else False
     llama = "LLaMA.cpp" if llama_cpp else "Ollama"
 
     # Profile, environment and operation arguments
@@ -2049,15 +2058,18 @@ def main():
     if ac_auto_config:
         ac_env_vars = setup_ai_suite_ac_auto_config(env_vars)
         ac_auto_config = True if ac_env_vars else False
-    """ 'AC_' .env vars updated at run_ai_suite_ac_auto_config
-    if ac_auto_config:
-        for env, var in env_vars.items():
-            if not env.startswith('AC_'):
-                continue
-            set_dotenv_var(env_file, env, var, None)
-    """
+    for element in ac_env_vars:
+        if element.startswith('AC_PROXY='):
+            array = element.split('=')
+            if array[1]:
+                args.profile.append([array[1]])
+            break
+    
+    supabase=True
     if ac_auto_config:  # TEMP: Relocation from below during Dev
         log.debug("TEMP: Configure proxy, identity and access management...")
+        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
+        ac_env_vars.append(f'AC_SUPABASE={str(supabase).lower()}')
         run_ai_suite_ac_auto_config(ac_env_vars)
         log.debug("TEMP: Finished!")
         sys.exit(0) # TEMP: End here in case no breakpoints set...
@@ -2256,6 +2268,8 @@ def main():
     """ TEMP: Moved to '# Access auto-configuration' above during Dev
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
+        ac_env_list.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
+        ac_env_list.append(f'AC_SUPABASE={str(supabase).lower()}')
         run_ai_suite_ac_auto_config(ac_env_vars)
     """
 

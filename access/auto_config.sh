@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 17, 2026
+# Last Update February 21, 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # This script is adapted from Inder Singh's setup.sh shell script.
@@ -18,6 +18,7 @@ set -euo pipefail
 : "${CI:=false}"
 : "${WITH_REDIS:=false}"
 : "${SUDO_USER:="$(whoami)"}"
+: "${DEBUG_OFF:=true}"
 
 # Reset BASH time counter
 SECONDS=0
@@ -26,6 +27,7 @@ SECONDS=0
 SGR=''
 END=''
 HEADER=''
+BODY='  - '
 BOLD=''
 DIM=''
 ITALIC=''
@@ -43,7 +45,7 @@ BOLD_MAGENTA=''
 ITALIC_RED_BG=''
 UNDERLINE_YELLOW=''
 COLON=":"
-NAME="AI-Suite:"
+NAME="${AC_NAME:="AI-Suite"}:"
 NOTICE="${NAME} NOTICE"
 QUESTION="${NAME} QUESTION"
 CRITICAL="${NAME} CRITICAL"
@@ -81,6 +83,7 @@ if [ -t 1 ]; then
         UNDERLINE_YELLOW=$(sgr "${UNDERLINE}93")
         COLON="${END}$(sgr "97"):"
         HEADER="$(sgr "${BOLD}${UNDERLINE}92")"
+        BODY="$(sgr "37")  -${END} $(sgr "32")"
         NAME="$(sgr "${ITALIC}94")${NAME%?}${COLON}${END}"
         NOTICE="${NAME} $(sgr "${BOLD}95")NOTICE${END}"
         QUESTION="${NAME} $(sgr "${BOLD}92")QUESTION${END}"
@@ -103,6 +106,7 @@ log_warning() {
     echo -e "${WARNING} $(is_sgr "${1}" "${UNDERLINE_YELLOW}")$1${END}"
 }
 log_debug() {
+    test "$DEBUG_OFF" == true && return
     echo -e "${DEBUG} $(is_sgr "${1}" "${WHITE}")$1${END}"
 }
 log_info() {
@@ -142,7 +146,7 @@ finish () {
         binaries=()
         for bin in "$yq_bin" "$url_parser_bin"; do [ -f "$bin" ] && binaries+=("$bin") ; done
         if (( ${#binaries[@]} != 0 )); then log_info "Clean downloaded binaries..." ; fi
-        for bin in "${binaries[@]}"; do log_info "  ✘ $(basename "${bin}")"; (rm "$bin"); done
+        #for bin in "${binaries[@]}"; do log_info "  ✘ $(basename "${bin}")"; (rm "$bin"); done
     else
         HEADER="${END}❌ $(sgr "${UNDERLINE}91")"
         status="Terminated"
@@ -176,7 +180,7 @@ finish () {
 usage() {
     echo "Usage: [ENVIRONMENT] $0 [OPTIONS]"
     echo ""
-    echo "Setup self-hosted AI-Suite with Caddy/Nginx proxy and Authelia 2FA"
+    echo "Setup self-hosted $AC_NAME with Caddy/Nginx proxy and Authelia 2FA"
     echo "identity and access management with auto-generated credentials."
     echo ""
     echo "Environment:"
@@ -231,8 +235,8 @@ extract_argument() { echo "${2:-${1#*=}}"; }
 proxy="caddy"
 success=false
 with_authelia=false
-url_parser_bin="./url-parser"
-yq_bin="./yq"
+url_parser_bin="./access/url-parser"
+yq_bin="./access/yq"
 
 trap finish EXIT
 
@@ -293,14 +297,14 @@ fi
 
 log_info "${HEADER}Configuration Summary"
 #-------------------------------------------
-log_info "${WHITE}  -${END} ${GREEN}Proxy:${END} ${WHITE}${proxy}"
-log_info "${WHITE}  -${END} ${GREEN}Authelia 2FA:${END} ${WHITE}${with_authelia}"
-log_info "${WHITE}  -${END} ${GREEN}Redis:${END} ${WHITE}${WITH_REDIS}"
-log_info "${WHITE}  -${END} ${GREEN}Setup Mode:${END} ${WHITE}${ac_config_mode}"
+log_info "${BODY}Proxy:${END} ${WHITE}${proxy}"
+log_info "${BODY}Authelia 2FA:${END} ${WHITE}${with_authelia}"
+log_info "${BODY}Redis:${END} ${WHITE}${WITH_REDIS}"
+log_info "${BODY}Setup Mode:${END} ${WHITE}${ac_config_mode}"
 [ -n "${ac_install_type}" ] && \
-log_info "${WHITE}  -${END} ${GREEN}Installation:${END} ${WHITE}${ac_install_type}" || :
+log_info "${BODY}Installation:${END} ${WHITE}${ac_install_type}" || :
 [ -n "${ac_user_confirm}" ] && \
-log_info "${WHITE}  -${END} ${GREEN}User Confirmation:${END} ${WHITE}${ac_user_confirm}" || :
+log_info "${BODY}User Confirmation:${END} ${WHITE}${ac_user_confirm}" || :
 
 detect_arch() {
     case $(uname -m) in
@@ -316,6 +320,7 @@ detect_arch() {
 detect_os() {
     case $(uname | tr '[:upper:]' '[:lower:]') in
     linux*) echo "linux" ;;
+    windows*) echo "err" ;;
     # darwin*) echo "darwin" ;;
     *) echo "err" ;;
     esac
@@ -393,14 +398,32 @@ privilage() {
 }
 
 run_cmd() {
+    local fn
     local cmd=$*
-    local BOLD_CYAN
+    test "$1" == "write_to_hosts" && fn=$(declare -F "$1"); cmd=$1
+    # https://stackoverflow.com/a/63221401
+    if [[ -n "$fn" ]]; then
+        shift
+        local vars=("$@")
+        fn=$(declare -f "$fn")
+        for var in "${vars[@]}"; do
+            test -z "$(declare -p "$var" 2> /dev/null)" && continue
+            local val="${!var}"     # get the value of the varable represented by $v
+            val="${val//\"/\\\"}"   # escape double-quotes
+            val="${val//\\/\\\\\\}" # escape backslashes
+            log_debug "var: ${var}, val: ${val}"
+            # shellcheck disable=SC2086
+            fn="$(echo "$fn" | sed -r 's|\$'$var'|'"$val"'|g')" # replace instances of variable with value
+        done
+        log_debug "$fn"
+    fi
+    local BOLD_CYAN 
     BOLD_CYAN=$(sgr "${BOLD}36")
     user_privilage=$(privilage)
     case "$user_privilage" in
     has_sudo__pass_set)
         # shellcheck disable=SC2086
-        sudo $cmd
+        if test -z "$fn"; then sudo $cmd; else sudo bash -c "$fn; $cmd"; fi
         ;;
     has_sudo__needs_pass)
         # https://superuser.com/questions/553932
@@ -410,11 +433,11 @@ run_cmd() {
             echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}sudo${END} ${WHITE}password for command:${END} ${BLUE}sudo${END} ${WHITE}$cmd${END}"
         fi
         # shellcheck disable=SC2086
-        sudo $cmd
+        if test -z "$fn"; then sudo $cmd; else sudo bash -c "$fn; $cmd"; fi
         ;;
     *)
         echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}root${END} ${WHITE}password for command:${END} ${BLUE}su -c${END} ${WHITE}\"$cmd\"${END}"
-        su -c "$cmd"
+        if test -z "$fn"; then su -c "$cmd"; else su bash -c "$fn; $cmd"; fi
         ;;
     esac
 }
@@ -456,6 +479,11 @@ install_packages() {
 
 log_info "${HEADER}Required Packages"
 #-------------------------------------------
+if command -v docker &> /dev/null; then
+    log_info "${GREEN}  ✔${END} ${WHITE}Docker"
+else
+    log_info "${RED}  ✘${END} ${WHITE}Docker"
+fi
 missing_packages=()
 package_manager=''
 pma=()
@@ -489,7 +517,6 @@ if (( ${#packages[@]} != 0 )); then
         critical_exit "Failed to install required packages."
     fi
 fi
-unset AC_SUDO_PASSWORD
 
 repo_base="https://github.com/trevorsandy"
 repo_url="${repo_base}/ai-suite"
@@ -563,12 +590,18 @@ elide() {
     awk -v max=35 '{ if (length($0) > max) print substr($0, 1, max-3) "..."; else print; }'
 }
 
+to_upper() { echo "$1" | awk '{print toupper($0)}' ; }
+
 # Populate module hostname (URL)
-log_info "${HEADER}Populate Hostnames"
+log_info "${HEADER}Populate Domain Names"
 #-------------------------------------------
-N8N_HOSTNAME=''
-SUPABASE_HOSTNAME=''
-subdomains=(n8n openwebui flowise supabase langfuse searxng neo4j ollama llamacpp)
+N8N_DOMAIN=''
+LLAMA_DOMAIN=''
+OLLAMA_DOMAIN=''
+LLAMACPP_DOMAIN=''
+SUPABASE_DOMAIN=''
+# Modules listedd in reverse order
+subdomains=(open-webui n8n flowise supabase langfuse searxng neo4j llamacpp ollama)
 # url_parser --url argument and options:
 # --url: URL to parse. (e.g., https://subdomain.example.com:1234/path/resource?user=123#section1)
 # host: Host with port number if present (e.g., subdomain.example.com:1234)
@@ -589,7 +622,7 @@ set_hostname_url() {
     local url=""
 
     while [ -z "$url" ]; do
-        if test -z "$subdomain"; then subdomain="${subdomains[3]}"; fi
+        if test -z "$subdomain"; then subdomain="${subdomains[0]}"; fi
         if [ "$CI" == true ]; then
             url="$scheme://$subdomain.example.com"
         elif [ "$AC" == true ]; then
@@ -635,16 +668,15 @@ set_hostname_url() {
 
     if [[ -n "$protocol" && -n "$host" ]]; then
         if test -n "$hostname_variable"; then
-            url="${protocol}://${host}"
-            eval "$hostname_variable=$url"
-            echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$hostname_variable:${END} ${WHITE}$url${END}"
+            eval "$hostname_variable=${host}"
+            # echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$hostname_variable:${END} ${WHITE}${host}${END}"
         elif test -n "$registered_domain"; then
             for subdomain in "${subdomains[@]}"; do
-                if test "$subdomain" == "openwebui"; then sub="webui"; else sub="$subdomain"; fi
-                hostname_variable="$(echo "${sub}_HOSTNAME" | awk '{print toupper($0)}')"
-                url="${protocol}://${subdomain}.${registered_domain}"
-                echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$hostname_variable:${END} ${WHITE}$url${END}"
-                eval "$hostname_variable=$url"
+                if test "$subdomain" == "open-webui"; then sub="webui"; else sub="$subdomain"; fi
+                hostname_variable="$(to_upper "${sub}_DOMAIN")"
+                host_name="${subdomain}.${registered_domain}"
+                # echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$hostname_variable:${END} ${WHITE}${host_name}${END}"
+                eval "$hostname_variable=$host_name"
             done
         else
             critical_exit "Failed to get registered domain from hostname URL."
@@ -654,28 +686,29 @@ set_hostname_url() {
     fi
 }
 
-# If 'HOSTNAME variable' 'subdomain' arguments are empty,
-# all AI Suite module hostnames will be populated.
+# If 'module_DOMAIN' 'subdomain' arguments are empty, all AI Suite domains will be populated.
 set_hostname_url "" ""
 
-log_info "${WHITE}  -${END} ${GREEN}protocol:${END} ${WHITE}$protocol"
-log_info "${WHITE}  -${END} ${GREEN}host (${subdomains[3]}):${END} ${WHITE}$host"
-log_info "${WHITE}  -${END} ${GREEN}registered_domain:${END} ${WHITE}$registered_domain"
+log_info "${BODY}protocol:${END} ${WHITE}$protocol"
+log_info "${BODY}host (${AC_NAME}):${END} ${WHITE}$host"
+log_info "${BODY}registered_domain:${END} ${WHITE}$registered_domain"
 
-log_info "${WHITE}  -${END} ${GREEN}SUPABASE_PUBLIC_URL:${END} ${WHITE}$protocol://$host"
+log_info "${BODY}SUPABASE_PUBLIC_URL:${END} ${WHITE}$protocol://$SUPABASE_DOMAIN"
+log_info "${BODY}N8N WEBHOOK_URL:${END} ${WHITE}$protocol://$N8N_DOMAIN"
 
+if [[ "$AC_LLAMACPP" == true ]]; then
+    LLAMA_DOMAIN="$LLAMACPP_DOMAIN"
+else
+    LLAMA_DOMAIN="$OLLAMA_DOMAIN"
+fi
+log_info "${BODY}LLAMA_DOMAIN:${END} ${WHITE}$LLAMA_DOMAIN"
+
+# Confirm host domain names were populated
 if [[ "$AC" == true ]]; then
-log_info "${WHITE}  -${END} ${GREEN}WEBHOOK_URL:${END} ${WHITE}$N8N_HOSTNAME"
-
-log_info "${WHITE}  -${END} ${GREEN}N8N_HOSTNAME:${END} ${WHITE}$N8N_HOSTNAME"
-log_info "${WHITE}  -${END} ${GREEN}WEBUI_HOSTNAME:${END} ${WHITE}$WEBUI_HOSTNAME"
-log_info "${WHITE}  -${END} ${GREEN}FLOWISE_HOSTNAME:${END} ${WHITE}$FLOWISE_HOSTNAME"
-log_info "${WHITE}  -${END} ${GREEN}SUPABASE_HOSTNAME:${END} ${WHITE}$SUPABASE_HOSTNAME"
-log_info "${WHITE}  -${END} ${GREEN}LANGFUSE_HOSTNAME:${END} ${WHITE}$LANGFUSE_HOSTNAME"
-log_info "${WHITE}  -${END} ${GREEN}SEARXNG_HOSTNAME:${END} ${WHITE}$SEARXNG_HOSTNAME"
-log_info "${WHITE}  -${END} ${GREEN}NEO4J_HOSTNAME:${END} ${WHITE}$NEO4J_HOSTNAME"
-log_info "${WHITE}  -${END} ${GREEN}OLLAMA_HOSTNAME:${END} ${WHITE}$OLLAMA_HOSTNAME"
-log_info "${WHITE}  -${END} ${GREEN}LLAMACPP_HOSTNAME:${END} ${WHITE}$LLAMACPP_HOSTNAME"
+    for sub in "${subdomains[@]}"; do
+        var=$(to_upper "$(test "$sub" == "open-webui" && echo "webui" || echo "$sub")_DOMAIN")
+        [ -v "$var" ] && echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}${var}:${END} ${WHITE}${!var}${END}"
+    done
 fi
 
 #-------------------------------------------
@@ -825,20 +858,20 @@ service_role_token=$(gen_token "service_role")
 
 #-------------------------------------------
 
-log_info "${WHITE}  -${END} ${GREEN}jwt_secret:${END} ${WHITE}$(elide "$jwt_secret")"
-log_info "${WHITE}  -${END} ${GREEN}anon_token:${END} ${WHITE}$(elide "$anon_token")"
-log_info "${WHITE}  -${END} ${GREEN}service_role_token:${END} ${WHITE}$(elide "$service_role_token")"
+log_info "${BODY}jwt_secret:${END} ${WHITE}$(elide "$jwt_secret")"
+log_info "${BODY}anon_token:${END} ${WHITE}$(elide "$anon_token")"
+log_info "${BODY}service_role_token:${END} ${WHITE}$(elide "$service_role_token")"
 
-log_info "${WHITE}  -${END} ${GREEN}sudo_user:${END} ${WHITE}${SUDO_USER}"
-log_info "${WHITE}  -${END} ${GREEN}using_sudo_user:${END} ${WHITE}$using_sudo_user"
+log_info "${BODY}sudo_user:${END} ${WHITE}${SUDO_USER}"
+log_info "${BODY}using_sudo_user:${END} ${WHITE}$using_sudo_user"
 
-log_info "${WHITE}  -${END} ${GREEN}proxy:${END} ${WHITE}$proxy"
-log_info "${WHITE}  -${END} ${GREEN}auto_confirm:${END} ${WHITE}$auto_confirm"
-log_info "${WHITE}  -${END} ${GREEN}with_authelia:${END} ${WHITE}$with_authelia"
-log_info "${WHITE}  -${END} ${GREEN}setup_redis:${END} ${WHITE}$setup_redis"
-log_info "${WHITE}  -${END} ${GREEN}username:${END} ${WHITE}$username"
-log_info "${WHITE}  -${END} ${GREEN}display_name:${END} ${WHITE}$display_name"
-log_info "${WHITE}  -${END} ${GREEN}email:${END} ${WHITE}$email"
+log_info "${BODY}proxy:${END} ${WHITE}$proxy"
+log_info "${BODY}auto_confirm:${END} ${WHITE}$auto_confirm"
+log_info "${BODY}with_authelia:${END} ${WHITE}$with_authelia"
+log_info "${BODY}setup_redis:${END} ${WHITE}$setup_redis"
+log_info "${BODY}username:${END} ${WHITE}$username"
+log_info "${BODY}display_name:${END} ${WHITE}$display_name"
+log_info "${BODY}email:${END} ${WHITE}$email"
 
 # Create .env file from .env.example template
 # TODO - extend to all .env credentials (n8n, PostgreSQL, Flowise, Neo4j, Langfuse, Caddy/Nginx...)
@@ -846,27 +879,41 @@ log_info "${HEADER}Create .env File"
 #-------------------------------------------
 yml_bool() { echo "$(tr '[:lower:]' '[:upper:]' <<< "${1:0:1}")${1:1}" ; }
 
-#log_debug "BEGIN DEBUG———————"
-#log_debug "END DEBUG—————————"
-
 sed -e "3d" \
     -e "s|POSTGRES_PASSWORD.*|POSTGRES_PASSWORD=$(gen_hex 16)|" \
     -e "s|JWT_SECRET.*|JWT_SECRET=$jwt_secret|" \
     -e "s|ANON_KEY.*|ANON_KEY=$anon_token|" \
     -e "s|SERVICE_ROLE_KEY.*|SERVICE_ROLE_KEY=$service_role_token|" \
-    -e "s|DASHBOARD_PASSWORD.*|DASHBOARD_PASSWORD=not_being_used|" \
+    -e "s|DASHBOARD_USERNAME.*|DASHBOARD_USERNAME=supabase|" \
+    -e "s|DASHBOARD_PASSWORD.*|DASHBOARD_PASSWORD=not_used|" \
     -e "s|SECRET_KEY_BASE.*|SECRET_KEY_BASE=$(gen_hex 32)|" \
     -e "s|VAULT_ENC_KEY.*|VAULT_ENC_KEY=$(gen_hex 16)|" \
     -e "s|PG_META_CRYPTO_KEY.*|PG_META_CRYPTO_KEY=$(gen_hex 16)|" \
-    -e "s|API_EXTERNAL_URL.*|API_EXTERNAL_URL=$protocol://$host/goapi|" \
-    -e "s|SUPABASE_PUBLIC_URL.*|SUPABASE_PUBLIC_URL=$protocol://$host|" \
+    -e "s|API_EXTERNAL_URL.*|API_EXTERNAL_URL=$protocol://$SUPABASE_DOMAIN/goapi|" \
+    -e "s|SUPABASE_PUBLIC_URL.*|SUPABASE_PUBLIC_URL=$protocol://$SUPABASE_DOMAIN|" \
     -e "s|ENABLE_EMAIL_AUTOCONFIRM.*|ENABLE_EMAIL_AUTOCONFIRM=$auto_confirm|" \
+    -e "s|POOLER_TENANT_ID.*|POOLER_TENANT_ID=1100|" \
+    -e "s|LOGFLARE_PUBLIC_ACCESS_TOKEN.*|LOGFLARE_PUBLIC_ACCESS_TOKEN=$(gen_hex 16)|" \
+    -e "s|LOGFLARE_PRIVATE_ACCESS_TOKEN.*|LOGFLARE_PRIVATE_ACCESS_TOKEN=$(gen_hex 16)|" \
     -e "s|S3_PROTOCOL_ACCESS_KEY_ID.*|S3_PROTOCOL_ACCESS_KEY_ID=$(gen_hex 16)|" \
     -e "s|S3_PROTOCOL_ACCESS_KEY_SECRET.*|S3_PROTOCOL_ACCESS_KEY_SECRET=$(gen_hex 32)|" \
     -e "s|MINIO_ROOT_PASSWORD.*|MINIO_ROOT_PASSWORD=$(gen_hex 16)|" \
+    -e "s|SMTP_PASS.*|SMTP_PASS=$(gen_hex 16)|" \
     .env.example >.env
 
 if [[ "$AC" == true ]]; then
+sed -i \
+    -e "s|N8N_ENCRYPTION_KEY.*|N8N_ENCRYPTION_KEY=$(gen_hex 32)|" \
+    -e "s|N8N_RUNNERS_AUTH_TOKEN.*|N8N_RUNNERS_AUTH_TOKEN=$(gen_hex 32)|" \
+    -e "s|N8N_USER_MANAGEMENT_JWT_SECRET.*|N8N_USER_MANAGEMENT_JWT_SECRET=$(gen_hex 32)|" \
+    -e "s|FLOWISE_PASSWORD.*|FLOWISE_PASSWORD=$(gen_hex 16)|" \
+    -e "s|NEO4J_AUTH.*|NEO4J_AUTH=neo4j/$(gen_hex 16)|" \
+    -e "s|CLICKHOUSE_PASSWORD.*|CLICKHOUSE_PASSWORD=$(gen_hex 16)|" \
+    -e "s|LANGFUSE_SALT.*|LANGFUSE_SALT=$(gen_hex 16)|" \
+    -e "s|NEXTAUTH_SECRET.*|NEXTAUTH_SECRET=$(gen_hex 16)|" \
+    -e "s|ENCRYPTION_KEY.*|ENCRYPTION_KEY=$(gen_hex 16)|" \
+    .env
+
 sed -i \
     -e "s|^AC=.*|AC=$(yml_bool "${AC}")|" \
     -e "s|AC_SUDO_USER.*|AC_SUDO_USER=${AC_SUDO_USER}|" \
@@ -881,17 +928,17 @@ sed -i \
     -e "s|AC_DISPLAY_NAME.*|AC_DISPLAY_NAME=${AC_DISPLAY_NAME}|" \
     -e "s|AC_WITH_REDIS.*|AC_WITH_REDIS=$(yml_bool "${AC_WITH_REDIS}")|" \
     -e "s|AC_LOG_PATH.*|AC_LOG_PATH=${AC_LOG_PATH}|" \
-    -e "s|# N8N_HOSTNAME.*|N8N_HOSTNAME=$protocol://n8n.\${AC_DOMAIN}|" \
-    -e "s|# WEBUI_HOSTNAME.*|WEBUI_HOSTNAME=$protocol://openwebui.\${AC_DOMAIN}|" \
-    -e "s|# FLOWISE_HOSTNAME.*|FLOWISE_HOSTNAME=$protocol://flowise.\${AC_DOMAIN}|" \
-    -e "s|# SUPABASE_HOSTNAME.*|SUPABASE_HOSTNAME=$protocol://supabase.\${AC_DOMAIN}|" \
-    -e "s|# LANGFUSE_HOSTNAME.*|LANGFUSE_HOSTNAME=$protocol://langfuse.\${AC_DOMAIN}|" \
-    -e "s|# SEARXNG_HOSTNAME.*|SEARXNG_HOSTNAME=$protocol://searxng.\${AC_DOMAIN}|" \
-    -e "s|# NEO4J_HOSTNAME.*|NEO4J_HOSTNAME=$protocol://neo4j.\${AC_DOMAIN}|" \
-    -e "s|# OLLAMA_HOSTNAME.*|OLLAMA_HOSTNAME=$protocol://ollama.\${AC_DOMAIN}|" \
-    -e "s|# LLAMACPP_HOSTNAME.*|LLAMACPP_HOSTNAME=$protocol://llamacpp.\${AC_DOMAIN}|" \
+    -e "s|# WEBUI_HOSTNAME.*|WEBUI_HOSTNAME=openwebui.\${AC_DOMAIN}|" \
+    -e "s|# N8N_HOSTNAME.*|N8N_HOSTNAME=n8n.\${AC_DOMAIN}|" \
+    -e "s|# FLOWISE_HOSTNAME.*|FLOWISE_HOSTNAME=flowise.\${AC_DOMAIN}|" \
+    -e "s|# SUPABASE_HOSTNAME.*|SUPABASE_HOSTNAME=supabase.\${AC_DOMAIN}|" \
+    -e "s|# LANGFUSE_HOSTNAME.*|LANGFUSE_HOSTNAME=langfuse.\${AC_DOMAIN}|" \
+    -e "s|# SEARXNG_HOSTNAME.*|SEARXNG_HOSTNAME=searxng.\${AC_DOMAIN}|" \
+    -e "s|# NEO4J_HOSTNAME.*|NEO4J_HOSTNAME=neo4j.\${AC_DOMAIN}|" \
+    -e "s|# OLLAMA_HOSTNAME.*|OLLAMA_HOSTNAME=ollama.\${AC_DOMAIN}|" \
+    -e "s|# LLAMACPP_HOSTNAME.*|LLAMACPP_HOSTNAME=llamacpp.\${AC_DOMAIN}|" \
+    -e "s|# WEBHOOK_URL=.*|WEBHOOK_URL=$protocol://\${N8N_HOSTNAME}|" \
     -e "s|# LETSENCRYPT_EMAIL.*|LETSENCRYPT_EMAIL=\${AC_EMAIL}|" \
-    -e "s|# WEBHOOK_URL=.*|WEBHOOK_URL=\${N8N_HOSTNAME}|" \
     .env
 fi
 
@@ -904,52 +951,48 @@ update_yaml_file() {
 }
 
 # Create env_vars list to append .env file
-env_vars=""
+env_vars=()
 update_env_vars() {
     for env_key_value in "$@"; do
-        env_vars="${env_vars}\n$env_key_value"
+        env_vars+=("$env_key_value")
     done
 }
 
 log_info "${HEADER}Configure Proxy Service"
 #-------------------------------------------
 # DEFINE PROXY service
-proxy_service_yaml=".services.$proxy.container_name=\"$proxy-container\" |
+proxy_service_yaml=".services.$proxy.profiles=[\"$proxy\"] |
+.services.$proxy.container_name=\"$proxy\" |
 .services.$proxy.restart=\"unless-stopped\" |
-.services.$proxy.ports=[\"80:80\",\"443:443\",\"443:443/udp\"] |
-.services.$proxy.depends_on.kong.condition=\"service_healthy\"
+.services.$proxy.ports=[\"80:80/tcp\",\"443:443/tcp\"]
 "
+if [[ "$AC_SUPABASE" == true ]]; then
+    proxy_service_yaml="${proxy_service_yaml} | .services.$proxy.depends_on.kong.condition=\"service_healthy\""
+fi
+
 if [[ "$with_authelia" == true ]]; then
     proxy_service_yaml="${proxy_service_yaml} | .services.$proxy.depends_on.authelia.condition=\"service_healthy\""
 fi
 
 # DEFINE Caddyfile and Caddy Docker service insert
 if [[ "$proxy" == "caddy" ]]; then
-    log_info "${WHITE}  -${END} ${GREEN}Define Caddyfile and Caddy Docker service insert"
+    log_info "${BODY}Define Caddyfile and Caddy Docker service insert"
     #-------------------------------------------
-    caddy_local_volume="./caddy"
+    caddy_local_volume="./access/caddy"
     caddyfile_local="$caddy_local_volume/Caddyfile"
 
     # mounted local ./caddy/addons to this path inside container
     caddy_addons_path="/etc/caddy/addons"
 
-    # BIND MOUNT VOLUMES CONFIG
-    proxy_service_yaml="${proxy_service_yaml} |
-                        .services.caddy.image=\"caddy:2.10.2\" |
-                        .services.caddy.environment.DOMAIN=\"\${SUPABASE_PUBLIC_URL:?error}\" |
-                        .services.caddy.volumes=[\"$caddyfile_local:/etc/caddy/Caddyfile\",
-                                                 \"$caddy_local_volume/addons:$caddy_addons_path\",
-                                                 \"caddy_data:/data\",
-                                                 \"caddy_config_data:/config\"]"
 # DEFINE nginx.template and Nginx Docker service insert
 else
-    log_info "${WHITE}  -${END} ${GREEN}Define nginx.template and Nginx Docker service insert"
+    log_info "${BODY}Define nginx.template and Nginx Docker service insert"
     #-------------------------------------------
     update_env_vars "NGINX_SERVER_NAME=$host"
     # docker compose nginx service command directive. Passed via yq strenv
     nginx_cmd=""
 
-    nginx_local_volume="./nginx"
+    nginx_local_volume="./access/nginx"
     # path in local fs where nginx template file is stored
     nginx_local_template_file="$nginx_local_volume/nginx.template"
 
@@ -961,8 +1004,10 @@ else
 
     proxy_service_yaml="${proxy_service_yaml} |
                         .services.nginx.image=\"jonasal/nginx-certbot:6.0.1-nginx1.29.5\" |
+                        .services.ngnix.expose=[\"81/tcp\",\"443/tcp\",\"443/udp\",\"80/tcp\"] |
+                        .services.ngnix.TZ=\"France/Paris\" |
                         .services.nginx.environment.NGINX_SERVER_NAME = \"\${NGINX_SERVER_NAME:?error}\" |
-                        .services.nginx.environment.CERTBOT_EMAIL=\"your@email.org\" |
+                        .services.nginx.environment.CERTBOT_EMAIL = \"\${AC_EMAIL:?error}\" |
                         .services.nginx.volumes=[\"$nginx_local_volume:/etc/nginx/user_conf.d\",
                                                  \"$nginx_local_volume/letsencrypt:/etc/letsencrypt\"] |
                         .services.nginx.command=[\"/bin/bash\",\"-c\",strenv(nginx_cmd)]
@@ -981,9 +1026,9 @@ else
         "$nginx_container_template_file" "$(dirname "$nginx_container_template_file")"
 fi
 
-# HANDLE PROXY service BASIC_AUTH
+# HANDLE NGINX PROXY service BASIC_AUTH
 if [[ "$with_authelia" == false ]]; then
-    log_info "${WHITE}  -${END} ${GREEN}Basic authorization"
+    log_info "${BODY}Nginx basic authorization Docker service insert"
     #-------------------------------------------
     update_env_vars "PROXY_AUTH_USERNAME=$username" "PROXY_AUTH_PASSWORD='$password'"
 
@@ -996,13 +1041,13 @@ if [[ "$with_authelia" == false ]]; then
         # path inside nginx container for storing basic_auth credentials
         nginx_pass_file="/etc/nginx/user_conf.d/supabase-self-host-users"
 
-        printf -v nginx_cmd "echo \"\$\${PROXY_AUTH_USERNAME}:\$\${PROXY_AUTH_PASSWORD}\" >%s \\
+        printf -v nginx_cmd "echo \"\$\${PROXY_AUTH_USERNAME}:\$\$y{PROXY_AUTH_PASSWORD}\" >%s \\
 && %s" $nginx_pass_file "$nginx_cmd"
     fi
 fi
 
-# WRITE PROXY service to docker-compose.yml file
-log_info "${WHITE}  -${END} ${GREEN}Proxy service docker-compose.yml file update"
+# WRITE NGINX PROXY service to docker-compose.yml file
+log_info "${BODY}Write $proxy proxy service to docker-compose.yml file"
 #-------------------------------------------
 compose_file="docker-compose.yml"
 nginx_cmd="${nginx_cmd:=""}" update_yaml_file "$proxy_service_yaml" "$compose_file"
@@ -1016,7 +1061,7 @@ if [[ "$with_authelia" == true ]]; then
 
     # WRITE AUTHELIA users_database.yml file
     # adding disabled=false after updating style to double so that every value except disabled is double quoted
-    log_info "${WHITE}  -${END} ${GREEN}Write Authelia users_database.yml file"
+    log_info "${BODY}Write Authelia users_database.yml file"
     #-------------------------------------------
     yaml_path=".users.$username" display_name="$display_name" password="$password" email="$email" \
         "$yq_bin" -n 'eval(strenv(yaml_path)).displayname = strenv(display_name) |
@@ -1024,15 +1069,23 @@ if [[ "$with_authelia" == true ]]; then
                eval(strenv(yaml_path)).email = strenv(email) |
                eval(strenv(yaml_path)).groups = ["admins","dev"] |
                .. style="double" |
-               eval(strenv(yaml_path)).disabled = false' >./authelia/users_database.yml
+               eval(strenv(yaml_path)).disabled = false' >./access/authelia/users_database.yml
 
     # DEFINE AUTHELIA configuration.yml file
-    log_info "${WHITE}  -${END} ${GREEN}Define Authelia configuration.yml file"
+    log_info "${BODY}Define Authelia configuration.yml file"
     #-------------------------------------------
-    authelia_config_file_yaml='.access_control.rules[0].domain=strenv(host) |
+    authelia_config_file_yaml="
+            .access_control.rules[0].domain=strenv(webui_domain) |
+            .access_control.rules[1].domain=strenv(n8n_domain) |
+            .access_control.rules[2].domain=strenv(flowise_domain) |
+            .access_control.rules[3].domain=strenv(langfuse_domain) |
+            .access_control.rules[4].domain=strenv(supabase_domain) |
+            .access_control.rules[5].domain=strenv(searxng_domain) |
+            .access_control.rules[6].domain=strenv(neo4j_domain) |
+            .access_control.rules[7].domain=strenv(llama_domain) |
             .session.cookies[0].domain=strenv(registered_domain) |
             .session.cookies[0].authelia_url=strenv(authelia_url) |
-            .session.cookies[0].default_redirection_url=strenv(redirect_url)'
+            .session.cookies[0].default_redirection_url=strenv(redirect_url)"
 
     server_endpoints="forward-auth"
     implementation="ForwardAuth"
@@ -1047,10 +1100,15 @@ if [[ "$with_authelia" == true ]]; then
 
     update_env_vars "AUTHELIA_SESSION_SECRET=$(gen_hex 32)" "AUTHELIA_STORAGE_ENCRYPTION_KEY=$(gen_hex 32)" "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=$(gen_hex 32)"
 
+    # DEFINE AUTHELIA configuration.yml file
+    log_info "${BODY}Define Authelia Docker service"
+    #-------------------------------------------
+
     # shellcheck disable=SC2016
     authelia_docker_service_yaml='.services.authelia.container_name = "authelia" |
+       .services.authelia.profiles=["caddy", "nginx"] |
        .services.authelia.image = "authelia/authelia:4.38" |
-       .services.authelia.volumes = ["./volumes/authelia:/config"] |
+       .services.authelia.volumes = ["./access/authelia:/config"] |
        .services.authelia.depends_on.db.condition = "service_healthy" |
        .services.authelia.expose = [9091] |
        .services.authelia.restart = "unless-stopped" |
@@ -1058,68 +1116,153 @@ if [[ "$with_authelia" == true ]]; then
        .services.authelia.environment = {
          "AUTHELIA_STORAGE_POSTGRES_ADDRESS": "tcp://db:5432",
          "AUTHELIA_STORAGE_POSTGRES_USERNAME": "postgres",
-         "AUTHELIA_STORAGE_POSTGRES_PASSWORD" : "${POSTGRES_PASSWORD}",
-         "AUTHELIA_STORAGE_POSTGRES_DATABASE" : "${POSTGRES_DB}",
-         "AUTHELIA_STORAGE_POSTGRES_SCHEMA" : strenv(authelia_schema),
+         "AUTHELIA_STORAGE_POSTGRES_PASSWORD": "${POSTGRES_PASSWORD}",
+         "AUTHELIA_STORAGE_POSTGRES_DATABASE": "${POSTGRES_DB}",
+         "AUTHELIA_STORAGE_POSTGRES_SCHEMA": strenv(authelia_schema),
          "AUTHELIA_SESSION_SECRET": "${AUTHELIA_SESSION_SECRET:?error}",
          "AUTHELIA_STORAGE_ENCRYPTION_KEY": "${AUTHELIA_STORAGE_ENCRYPTION_KEY:?error}",
          "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET": "${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}"
        }'
 
     authelia_docker_supabase_service_yaml='.services.db.environment.AUTHELIA_SCHEMA = strenv(authelia_schema) |
-       .services.db.volumes += "./authelia/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
+       .services.db.volumes += "./access/authelia/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
 
     if [[ "$setup_redis" == true ]]; then
-        log_info "${WHITE}  -${END} ${GREEN}Authelia Redis configuration"
+        log_info "${BODY}Authelia Redis configuration"
         #-------------------------------------------
+        redis_docker_service_yaml=".services.authelia.profiles=[\"$proxy\", \"n8n\", \"langfuse\", \"ai-all\"]"
+        update_yaml_file "$redis_docker_service_yaml" "$compose_file"
+
         authelia_config_file_yaml="${authelia_config_file_yaml}|.session.redis.host=\"redis\" | .session.redis.port=6379"
         authelia_docker_service_yaml="${authelia_docker_service_yaml}|.services.authelia.depends_on.redis.condition=\"service_healthy\""
     fi
 
     # TODO - add other target modules
+    # TODO - modify _url to use registered domain
     # WRITE AUTHELIA configuration.yml file (Supabase target)
-    log_info "${WHITE}  -${END} ${GREEN}Write Authelia configuration.yml file"
+    log_info "${BODY}Write Authelia configuration.yml file"
     #-------------------------------------------
-    host="$host" registered_domain="$registered_domain" authelia_url="$SUPABASE_HOSTNAME"/authenticate redirect_url="$SUPABASE_HOSTNAME" \
-        update_yaml_file "$authelia_config_file_yaml" "./authelia/configuration.yml"
+    host="$host" webui_domain="$WEBUI_DOMAIN" n8n_domain="$N8N_DOMAIN" flowise_domain="$FLOWISE_DOMAIN" \
+        langfuse_domain="$LANGFUSE_DOMAIN" supabase_domain="$SUPABASE_DOMAIN" searxng_domain="$SEARXNG_DOMAIN" \
+        neo4j_domain="$NEO4J_DOMAIN" llama_domain="$LLAMA_DOMAIN" registered_domain="$registered_domain" \
+        authelia_url="$protocol://$WEBUI_DOMAIN"/authenticate redirect_url="$protocol://$WEBUI_DOMAIN" \
+        update_yaml_file "$authelia_config_file_yaml" "./access/authelia/configuration.yml"
 
     # WRITE AUTHELIA service to docker-compose.yml file
-    log_info "${WHITE}  -${END} ${GREEN}Write Authelia service to docker-compose.yml file"
+    log_info "${BODY}Write Authelia service to docker-compose.yml file"
     #-------------------------------------------
     authelia_schema="authelia" update_yaml_file "$authelia_docker_service_yaml" "$compose_file"
 
     # WRITE AUTHELIA service to Supabase docker-compose.yml file
-    log_info "${WHITE}  -${END} ${GREEN}Write Authelia service to Supabase docker-compose.yml file"
+    log_info "${BODY}Write Authelia service to Supabase docker-compose.yml file"
     #-------------------------------------------
     authelia_schema="authelia" update_yaml_file "$authelia_docker_supabase_service_yaml" "./supabase/docker/$compose_file"
 fi
 
 # WRITE env_vars to .env file
-log_info "${HEADER}Write .env Variables"
+log_info "${HEADER}Write Additional .env Variables"
 #-------------------------------------------
-echo -e "$env_vars" >>.env
+env_pair=()
+for env_var in "${env_vars[@]}"; do
+    IFS='=' read -r -a env_pair <<< "$env_var"
+    if (( ${#env_pair[@]} > 1 )); then
+        if cat ".env" | grep -q "^${env_pair[0]}"; then
+            log_info "${BODY}Update ${env_pair[0]}"
+            sed -i "s|${env_pair[0]}.*|${env_pair[0]}=${env_pair[1]}|" .env
+        else
+            log_info "${BODY}Append ${env_pair[0]}"
+            echo -e "${env_pair[0]}=${env_pair[1]}" >>.env
+        fi
+    fi
+done
+
+# Docker: http://host.docker.internal:<port>
+# Local:  http://localhost:<port>
+# Global: https://my-ai-suite.fr:<port>
+
+# | Ex | In | Service                 | Container - internal              | Domain - external          |
+# | -: | -: | ----------------------: | --------------------------------: | -----------------------: |
+# | ++ | ++ | `n8n`                   | n8n:5678/                         | localhost:5678/          |
+# | ++ | ++ | `Open WebUI`            | open-webui:8080/                  | localhost:8080/          |
+# | ++ | ++ | `Flowise`               | flowise:3001/                     | localhost:3001/          |
+# |    |    | `Open webUI MCPO`       | open-webui-mcpo:8090/             | localhost:8090/          |
+# |    |    | `MCP Gateway`           | mcp-gateway:8060/                 | localhost:8060/          |
+# |    |    | `Open webUI Filesystem` | open-webui-filesystem:8091/docs/  | localhost:8091/docs/     |
+# |    |    | `Redis`                 | redis:6379/                       | localhost:6379/          |
+# |    |    | `MinIO`                 | minio:9001/                       | localhost:9001/          |
+# |    |    | `QDrant`                | qdrant:6333/dashboard/            | localhost:6333/dashboard/|
+# | ++ | ++ | `Subabase`              | supabase-kong:8000                | localhost:8000           |
+# |    |    | `Postgres`              | postgres:5432                     | localhost:5432/          |
+# | ++ | ++ | `Langfuse Web`          | langfuse-web:3000/                | localhost:3000/          |
+# |    |    | `Langfuse Worker`       | langfuse-worker:3030/             | localhost:3030/          |
+# |    |    | `Logflare`              | supabase-analytics:4000/dashboard/| localhost:4000/dashboard/|
+# |    |    | `ClickHouse`            | clickhouse:8123/                  | localhost:8123/          |
+# |    |    | `SearXNG`               | searxng:8081/                     | localhost:8081/          |
+# | ++ | ++ | `Neo4j`                 | neo4j:7473/                       | localhost:7473/          |
+# |    |    | `Caddy`                 | caddy:443/                        | localhost:443/           |
+# |    |    | `Nginx`                 | nginx:443/Admin/                  | localhost:443/Admin/     |
+# |    |    | `Authelia`              | authelia:9091/                    | localhost:9091/          |
+# |    |    | `Ollama`                | ollama:11434/                     | localhost:11434/         |
+# |    |    | `LLaMA.cpp`             | llamacpp:8040/                    | localhost:8040/          |
 
 # WRITE LOCAL Caddyfile
 if [[ "$proxy" == "caddy" ]]; then
     log_info "${HEADER}Write Caddyfile"
     #-------------------------------------------
+    log_info "${BODY}$caddyfile_local"
     mkdir -p "$caddy_local_volume"
     # https://stackoverflow.com/a/3953712/18954618
     echo "
-    import $caddy_addons_path/cors.conf
+    {
+        # Global options - works for both environments
+        email {\$LETSENCRYPT_EMAIL}
 
-    {\$DOMAIN} {
         $([[ "$CI" == true || "$AC_LOCAL" == true ]] && echo "tls internal")
-        @supa_api path /rest/v1/* /auth/v1/* /realtime/v1/* /functions/v1/* /mcp /api/mcp
 
         $([[ "$with_authelia" == true ]] && echo "@authelia path /authenticate /authenticate/*
         handle @authelia {
             reverse_proxy authelia:9091
+        }")
+
+        handle {
+            $([[ "$with_authelia" == false ]] && echo "basic_auth {
+                {\$PROXY_AUTH_USERNAME} {\$PROXY_AUTH_PASSWORD}
+            }" || echo "forward_auth authelia:9091 {
+                        uri /api/authz/forward-auth
+
+                        copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+            }")
         }
-        ")
+    }
+
+    # N8N
+    {\$N8N_HOSTNAME} {
+        # For domains, Caddy will automatically use Let's Encrypt
+        # For localhost/port addresses, HTTPS won't be enabled
+        reverse_proxy n8n:5678
+    }
+
+    # Open WebUI
+    {\$WEBUI_HOSTNAME} {
+        reverse_proxy open-webui:8080
+    }
+
+    # Flowise
+    {\$FLOWISE_HOSTNAME} {
+        reverse_proxy flowise:3001
+    }
+
+    # Langfuse
+    {\$LANGFUSE_HOSTNAME} {
+        reverse_proxy langfuse-web:3000
+    }
+
+    # Supabase
+    {\$SUPABASE_HOSTNAME} {
+        @supa_api path /rest/v1/* /auth/v1/* /realtime/v1/* /functions/v1/* /mcp /api/mcp
 
         handle @supa_api {
-            reverse_proxy kong:8000
+            reverse_proxy supabase-kong:8000
         }
 
         handle_path /storage/v1/* {
@@ -1133,24 +1276,38 @@ if [[ "$proxy" == "caddy" ]]; then
             reverse_proxy kong:8000
         }
 
-        handle {
-            $([[ "$with_authelia" == false ]] && echo "basic_auth {
-                {\$PROXY_AUTH_USERNAME} {\$PROXY_AUTH_PASSWORD}
-            }" || echo "forward_auth authelia:9091 {
-                        uri /api/authz/forward-auth
-
-                        copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
-            }")
-
-            reverse_proxy studio:3000
+        handle_path /logflare/* {
+            reverse_proxy analytics:4000
         }
 
-        header -server
-}" >"$caddyfile_local"
+        handle {
+            reverse_proxy studio:3000
+        }
+    }
+
+    # Neo4j
+    {\$NEO4J_HOSTNAME} {
+        reverse_proxy neo4j:7474
+    }
+
+    $([[ "$AC_LLAMACPP" == false ]] && echo "\
+    # # Ollama API
+    # {\$OLLAMA_HOSTNAME} {
+    #     reverse_proxy ollama:11434
+    # }" || echo "\
+    # # LLaMA.cpp API
+    # {\$LLAMACPP_HOSTNAME} {
+    #     reverse_proxy llamacpp:8040
+    # }")
+
+    import $caddy_addons_path/cors.conf
+" >"$caddyfile_local"
 # WRITE LOCAL nginx.template
 else
     log_info "${HEADER}Write Nginx Template"
     #-------------------------------------------
+    log_info "${BODY}$nginx_local_template_file"
+
     mkdir -p "$(dirname "$nginx_local_template_file")"
 
     # mounted local ./nginx/addons to this path inside container
@@ -1160,10 +1317,55 @@ else
     cert_path="/etc/letsencrypt/live/automated-self-host"
 
     echo "
+upstream n8n_upstream {
+    server n8n:5678;
+    keepalive 2;
+}
+
+upstream open-webui_upstream {
+    server open-webui:8080;
+    keepalive 2;
+}
+
+upstream flowise_upstream {
+    server flowise:3001;
+    keepalive 2;
+}
+
 upstream kong_upstream {
     server kong:8000;
     keepalive 2;
 }
+
+upstream logflare_upstream {
+    server analytics:4000;
+    keepalive 2;
+}
+
+upstream neo4j_upstream {
+    server neo4j:7474;
+    keepalive 2;
+}
+
+upstream langfuse_upstream {
+    server langfuse-web:3000;
+    keepalive 2;
+}
+
+upstream searxng_upstream {
+    server searxng:8081;
+    keepalive 2;
+}
+
+$([[ "$AC_LLAMACPP" == false ]] && echo "\
+# upstream ollama_upstream {
+#     server ollama:11434;
+#     keepalive 2;
+# }" || echo "\
+# upstream llamacpp_upstream {
+#     server llamacpp:8040;
+#     keepalive 2;
+# }")
 
 server {
     listen 443 ssl;
@@ -1181,14 +1383,55 @@ server {
 
     ssl_dhparam /etc/letsencrypt/dhparams/dhparam.pem;
 
-    location /realtime {
+    # n8n
+    location /n8n {
+        proxy_pass http://n8n_upstream
+    }
+
+    # Open-webui
+    location /open-webui {
+        proxy_pass http://open-webui_upstream
+    }
+
+    # Flowise
+    location /flowise {
+        proxy_pass http://flowise_upstream
+    }
+
+    # Neo4j
+    location /neo4j {
+        proxy_pass http://neo4j_upstream
+    }
+
+    # Langfuse
+    location /langfuse {
+        proxy_pass http://langfuse_upstream
+    }
+
+    # SearXNG
+    location /searxng {
+        proxy_pass http://searxng_upstream
+    }
+
+    $([[ "$AC_LLAMACPP" == false ]] && echo "\
+    # # Ollama
+    # location / {
+    #     proxy_pass http://ollama_upstream
+    # }" || echo "\
+    # # LLaMA.cpp
+    # location /llamacpp {
+    #     proxy_pass http://llamacpp_upstream
+    # }")
+
+    # Supabase
+    location /supabase/realtime {
         proxy_pass http://kong_upstream;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \"upgrade\";
         proxy_read_timeout 3600s;
     }
 
-    location /storage/v1/ {
+    location /supabase/storage/v1/ {
         include $nginx_addons_path/cors.conf;
         include $nginx_addons_path/common_proxy_headers.conf;
         proxy_set_header X-Forwarded-Prefix /storage/v1;
@@ -1196,28 +1439,36 @@ server {
         proxy_pass http://storage:5000/;
     }
 
-    location /goapi/ {
+    location /supabase/logflare {
+        proxy_pass http://logflare_upstream
+    }
+
+    location /supabase/goapi/ {
         proxy_pass http://kong_upstream/;
     }
 
-    location /rest {
+    location /supabase/rest {
         proxy_pass http://kong_upstream;
     }
 
-    location /auth {
+    location /supabase/auth {
         proxy_pass http://kong_upstream;
     }
 
-    location /functions {
+    location /supabase/functions {
         proxy_pass http://kong_upstream;
     }
 
-    location /mcp {
+    location /supabase/mcp {
         proxy_pass http://kong_upstream;
     }
 
-    location /api/mcp {
+    location /supabase/api/mcp {
         proxy_pass http://kong_upstream;
+    }
+
+    location /supabase {
+        proxy_pass http://studio:3000;
     }
 
     $([[ $with_authelia == true ]] && echo "
@@ -1238,7 +1489,6 @@ server {
         include $nginx_addons_path/authelia-authrequest.conf;
         "
         )
-        proxy_pass http://studio:3000;
     }
 }
 
@@ -1251,10 +1501,60 @@ server {
 " >"$nginx_local_template_file"
 fi
 
-if [ "$using_sudo_user" == true ]; then
-    log_info "${WHITE}  -${END} ${GREEN}Setting $(basename "$(pwd)")/* ownership to $SUDO_USER..."
+if [[ "$using_sudo_user" == true ]]; then
+    log_info "${BODY}Setting $(basename "$(pwd)")/* ownership to $SUDO_USER..."
     #-------------------------------------------
     chown -R "$SUDO_USER": .;
+fi
+
+# Update hosts file if local install
+# shellcheck disable=SC2329
+write_to_hosts() {
+    echo "# $AC_NAME Local Domains:
+$HOST_IP     $WEBUI_DOMAIN
+$HOST_IP     $N8N_DOMAIN
+$HOST_IP     $FLOWISE_DOMAIN
+$HOST_IP     $SUPABASE_DOMAIN
+$HOST_IP     $LANGFUSE_DOMAIN
+$HOST_IP     $SEARXNG_DOMAIN
+$HOST_IP     $NEO4J_DOMAIN
+$HOST_IP     $OLLAMA_DOMAIN
+$HOST_IP     $LLAMACPP_DOMAIN
+# End of $AC_NAME section
+" | tee -a "$HOSTS_PATH" > /dev/null
+}
+
+hosts_file_edited=false
+IS_WSL=false
+HOST_IP=127.0.0.1
+if [ "$DEBUG_OFF" == true ]; then
+WIN_PATH="/mnt/c/windows/system32/drivers/etc/hosts"; \
+UNIX_PATH="/etc/hosts"; else \
+WIN_PATH="./access/hosts"; \
+UNIX_PATH="$WIN_PATH"; fi
+[ -x "$(command -v wslinfo)" ] && IS_WSL=true
+HOSTS_PATH=$([[ "$IS_WSL" == true ]] && echo "$WIN_PATH" || echo "$UNIX_PATH")
+
+if [[ "$AC_LOCAL" == true ]]; then
+    log_info "${HEADER}Set Domains"
+    #-------------------------------------------
+    hosts_file_message="${GREEN}Hosts file edited:${END}\n"
+    hosts_file_edited=$(cat "$HOSTS_PATH" | grep "$registered_domain" || echo false)
+    if [[ "$hosts_file_edited" == false ]]; then
+        log_info "${BODY}Adding $AC_NAME local domains to $HOSTS_PATH..."
+        vars=(HOSTS_PATH HOST_IP AC_NAME)
+        for sub in "${subdomains[@]}"; do
+            var=$(to_upper "$(test "$sub" == "open-webui" && echo "webui" || echo "$sub")_DOMAIN")
+            vars+=("$var")
+        done
+        log_debug "VARS_START: ${vars[*]}"
+        run_cmd write_to_hosts "${vars[@]}"
+        hosts_file_edited=$(cat "$HOSTS_PATH" | grep "$registered_domain" || echo false)
+        if [[ "$hosts_file_edited" == false ]]; then
+            hosts_file_message="${WHITE}  -${END} ${YELLOW}Manually edit domain entries in $HOSTS_PATH.${END}"
+        fi
+    fi
+    log_info "${hosts_file_message}${WHITE}${hosts_file_edited}${END}"
 fi
 
 log_info "${END}🎉 ${HEADER}Success!"
@@ -1271,18 +1571,26 @@ if [[ "$AC" != true ]]; then
 fi
 
 edit_host_file() {
-    [ "$AC" == true ] && \
+    [[ "$hosts_file_edited" != false ]] && return
+    [[ "$AC" == true ]] && \
     echo -e "${INFO} 👉 ${BOLD_MAGENTA}Next steps:${END}" || :
     echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Edit your hosts file so your domain will loop back to your${END}"
     echo -e "${INFO}     ${GREEN}machine - just like localhost.${END}"
     echo -e "${INFO}   ${BLUE}1a.${END} ${GREEN}Create a backup of the original hosts file.${END}"
-    echo -e "${INFO}      ${WHITE}sudo cp /etc/hosts /etc/hosts.bak${END}"
-    echo -e "${INFO}   ${BLUE}1b.${END} ${GREEN}Open /etc/hosts file in your editor. Here, I am using vim.${END}"
-    echo -e "${INFO}      ${WHITE}sudo vim /etc/hosts${END}"
-    echo -e "${INFO}   ${BLUE}1c.${END} ${GREEN}Add a new entry with format: 'ip-address' 'hostname-or-domain-name'.${END}"
+    echo -e "${INFO}      ${WHITE}sudo cp ${HOSTS_PATH} ${HOSTS_PATH}.bak${END}"
+    echo -e "${INFO}   ${BLUE}1b.${END} ${GREEN}Open ${HOSTS_PATH} file in your editor. Here, I am using vim.${END}"
+    echo -e "${INFO}      ${WHITE}sudo vim ${HOSTS_PATH}${END}"
+    echo -e "${INFO}   ${BLUE}1c.${END} ${GREEN}Add domain entries with format: 'ip-address' 'hostname-or-domain-name'.${END}"
+    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$WEBUI_DOMAIN${END}"
+    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$N8N_DOMAIN${END}"
+    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$FLOWISE_DOMAIN${END}"
+    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$SUPABASE_DOMAIN${END}"
+    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$LANGFUSE_DOMAIN${END}"
+    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$SEARXNG_DOMAIN${END}"
+    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$NEO4J_DOMAIN${END}"
+    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$LLAMA_DOMAIN${END}"
     echo -e "${INFO}      ${GREEN}Save the file and quit your editor.${END}"
-    echo -e "${INFO}      ${WHITE}127.0.0.1 $N8N_HOSTNAME${END}"
-    echo -e "${INFO}   ${BLUE}1d.${END} ${GREEN}In your browser, navigate to${END} ${WHITE}$N8N_HOSTNAME${END}"
+    echo -e "${INFO}   ${BLUE}1d.${END} ${GREEN}In your browser, navigate to${END} ${WHITE}$protocol://$WEBUI_DOMAIN${END}"
     echo -e "${INFO} 🚀 ${GREEN}Confirm everything is running.${END}"
 }
 
@@ -1291,7 +1599,7 @@ ${BLUE}To access ${NAME} from the internet,${END} \
 ${BLUE}ensure your firewall allows traffic on ports${END} \
 ${WHITE}80${END} ${BLUE}and${END} ${WHITE}443${END}"
 
-[ "${AC_LOCAL}" == true ] && edit_host_file || \
+[[ "${AC_LOCAL}" == true ]] && edit_host_file || \
 echo -e "${INFO} 🌐 $global_access"
 
 exit 0
