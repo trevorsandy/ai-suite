@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 19, 2026
+Last Update February 24, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1593,7 +1593,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     non_root = "non-root"
     if system == "Windows":
         non_root = " ".join(["WSL", non_root])
-        cmd = ["wsl", "-e", "bash", "-c", "whoami"]  
+        cmd = ["wsl", "-e", "bash", "-c", "whoami"]
         try:
             completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
             sudo_user = completed.stdout.strip()
@@ -2064,15 +2064,17 @@ def main():
             if array[1]:
                 args.profile.append([array[1]])
             break
-    
+
     supabase=True
     if ac_auto_config:  # TEMP: Relocation from below during Dev
         log.debug("TEMP: Configure proxy, identity and access management...")
         ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
         ac_env_vars.append(f'AC_SUPABASE={str(supabase).lower()}')
+        if log_level == logging.DEBUG:
+            ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
         run_ai_suite_ac_auto_config(ac_env_vars)
         log.debug("TEMP: Finished!")
-        sys.exit(0) # TEMP: End here in case no breakpoints set...
+        #sys.exit(0) # TEMP: End here in case no breakpoints set...
 
     # Process llama (Ollama/LLaMA.cpp) status checks
     llama_arg = "cpu"

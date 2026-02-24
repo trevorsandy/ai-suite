@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 21, 2026
+# Last Update February 24, 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # This script is adapted from Inder Singh's setup.sh shell script.
@@ -14,11 +14,16 @@
 
 set -euo pipefail
 
+VERSION="0.5.0"
+
 # https://stackoverflow.com/a/28085062/18954618
 : "${CI:=false}"
 : "${WITH_REDIS:=false}"
 : "${SUDO_USER:="$(whoami)"}"
-: "${DEBUG_OFF:=true}"
+: "${DEBUG_ON:=false}"
+: "${DRY_RUN:=0}"
+: "${BACKUP:=1}"
+: "${INTERNAL_ELEVATED:=0}"
 
 # Reset BASH time counter
 SECONDS=0
@@ -33,7 +38,6 @@ DIM=''
 ITALIC=''
 UNDERLINE=''
 RED=''
-#RED_BG=''
 GREEN=''
 #YELLOW=''
 BLUE=''
@@ -70,7 +74,6 @@ if [ -t 1 ]; then
         UNDERLINE='4;'
         # https://stackoverflow.com/a/28938235/18954618
         RED=$(sgr '31')
-        #RED_BG=$(sgr '41') # Red background (White foreground)
         GREEN=$(sgr '32')
         #YELLOW=$(sgr '33')
         BLUE=$(sgr '34')
@@ -106,14 +109,14 @@ log_warning() {
     echo -e "${WARNING} $(is_sgr "${1}" "${UNDERLINE_YELLOW}")$1${END}"
 }
 log_debug() {
-    test "$DEBUG_OFF" == true && return
+    test "$DEBUG_ON" != true && return
     echo -e "${DEBUG} $(is_sgr "${1}" "${WHITE}")$1${END}"
 }
 log_info() {
     echo -e "${INFO} $(is_sgr "${1}" "${DIM_CYAN}")$1${END}"
 }
 critical_exit() {
-    log_critical "$*"
+    log_critical "$*" >&2
     exit 1
 }
 
@@ -178,52 +181,59 @@ finish () {
 
 # Process arguments
 usage() {
-    echo "Usage: [ENVIRONMENT] $0 [OPTIONS]"
-    echo ""
-    echo "Setup self-hosted $AC_NAME with Caddy/Nginx proxy and Authelia 2FA"
-    echo "identity and access management with auto-generated credentials."
-    echo ""
-    echo "Environment:"
-    echo "  CI:false             Non-interactive mode - e.g running a GitHub build test"
-    echo "  SUDO_USER:$(whoami)  Non-root SUDO user ID - brew does not allow installation as root user"
-    echo "  WITH_REDIS:bool      Setup Authelia to use Redis - optional if using --with-authelia option"
-    echo ""
-    echo "  Auto-configure environment variables:"
-    echo "  AC:false               Auto-Configure mode - expects required inputs from env vars"
-    echo "  AC_SUDO_PASSWORD:str   SUDO user password - directed to sudo using a Here string"
-    echo "  AC_SUDO_USER:str       Non-root SUDO user ID - brew does not allow installation as root user"
-    echo "  AC_DOMAIN:str          Domain (optional) - Required for global (public) configuration"
-    echo "  AC_LOCAL:false         Local (private) installation - 1. requires additional configuration"
-    echo "  AC_PROXY:caddy         Set the reverse proxy to use (Caddy or Nginx)"
-    echo "  AC_USERNAME:str        User name for PROXY configuration - only alphanumeric characters allowed"
-    echo "  AC_PASSWORD:str        User password for PROXY configuration"
-    echo "  AC_CONFIRM:false       Send confirmation email on user registration - 2. SMTP server required"
-    echo "  AC_WITH_AUTHELIA:false Enable Authelia 2FA (two factor authentication) support"
-    echo "  AC_EMAIL:str           User email address for Authelia - required if AC_WITH_AUTHELIA=true"
-    echo "  AC_DISPLAY_NAME:str    User display name for Authelia - 3. required if AC_WITH_AUTHELIA=true"
-    echo "  AC_WITH_REDIS:false    Use Redis with Authelia - 4. recommended if AC_WITH_AUTHELIA=true"
-    echo "  AC_LOG_PATH:str        Directory path where configuration runtime log is deposited"
-    echo ""
-    echo "  1. Add your local domain to the hosts file to loop back to your machine like localhost."
-    echo "     For example: 127.0.0.1 https://supabase.local.com"
-    echo "  2. If not using an SMTP server, enter any well formatted email address."
-    echo "     You can view codes sent by Authelia in ./authelia/notifications.txt."
-    echo "  3. Only alphanumeric charactes and spaces are allowed."
-    echo "  4. Used if AC_WITH_AUTHELIA=true. Recommended if global (public) install, otherwise optional"
-    echo ""
-    echo "Options:"
-    echo "  -h, --help           Show this help message and exit"
-    echo "  --proxy PROXY        Set the reverse proxy to use (Caddy or Nginx) - Default: Caddy"
-    echo "  --with-authelia      Enable or disable Authelia 2FA support - Default: false (disable)"
-    echo ""
-    echo "Examples:"
-    echo "  chmod +x $0                         # Make $0 executable"
-    echo "  $0                                  # Basic username and password authentication"
-    echo "  $0 --proxy nginx --with-authelia    # Configuration with Nginx and Authelia 2FA"
-    echo "  $0 --proxy caddy                    # Configuration with Caddy and no 2FA"
-    echo ""
-    echo "For more information, see README.md:"
-    echo "https://github.com/trevorsandy/ai-suite/blob/Dev/README.md"
+    cat <<EOF
+$0 v$VERSION
+
+Usage: [ENVIRONMENT] $0 [OPTIONS]
+
+Setup self-hosted $AC_NAME with Caddy/Nginx proxy and Authelia 2FA
+identity and access management with auto-generated credentials.
+
+Environment:
+  CI:false             Non-interactive mode - e.g running a GitHub build test
+  SUDO_USER:$(whoami)  Non-root SUDO user ID - brew does not allow installation as root user
+  WITH_REDIS:bool      Setup Authelia to use Redis - optional if using --with-authelia option
+
+  Auto-configure environment variables:
+  AC:false               Auto-Configure mode - expects required inputs from env vars
+  AC_SUDO_PASSWORD:str   SUDO user password - directed to sudo using a Here string
+  AC_SUDO_USER:str       Non-root SUDO user ID - brew does not allow installation as root user
+  AC_DOMAIN:str          Domain (optional) - Required for global (public) configuration
+  AC_LOCAL:false         Local (private) installation - 1. requires additional configuration
+  AC_PROXY:caddy         Set the reverse proxy to use (Caddy or Nginx)
+  AC_USERNAME:str        User name for PROXY configuration - only alphanumeric characters allowed
+  AC_PASSWORD:str        User password for PROXY configuration
+  AC_CONFIRM:false       Send confirmation email on user registration - 2. SMTP server required
+  AC_WITH_AUTHELIA:false Enable Authelia 2FA (two factor authentication) support
+  AC_EMAIL:str           User email address for Authelia - required if AC_WITH_AUTHELIA=true
+  AC_DISPLAY_NAME:str    User display name for Authelia - 3. required if AC_WITH_AUTHELIA=true
+  AC_WITH_REDIS:false    Use Redis with Authelia - 4. recommended if AC_WITH_AUTHELIA=true
+  AC_LOG_PATH:str        Directory path where configuration runtime log is deposited
+
+  1. Add your local domain to the hosts file to loop back to your machine like localhost.
+     For example: 127.0.0.1 https://supabase.local.com
+  2. If not using an SMTP server, enter any well formatted email address.
+     You can view codes sent by Authelia in ./authelia/notifications.txt.
+  3. Only alphanumeric charactes and spaces are allowed.
+  4. Used if AC_WITH_AUTHELIA=true. Recommended if global (public) install, otherwise optional
+
+Options:
+  -h, --help           Show this help message and exit
+  --proxy PROXY        Set the reverse proxy to use (Caddy or Nginx) - Default: Caddy
+  --with-authelia      Enable or disable Authelia 2FA support - Default: false (disable)
+  --subdomain <name>   Subdomain(s) beyond open-webui n8n and supabase - ignore for all
+  --version            Display this script version
+  --help.              Display this information
+
+Examples:
+  chmod +x $0                         # Make $0 executable
+  $0                                  # Basic username and password authentication
+  $0 --proxy nginx --with-authelia    # Configuration with Nginx and Authelia 2FA
+  $0 --proxy caddy                    # Configuration with Caddy and no 2FA
+
+For more information, see README.md:
+https://github.com/trevorsandy/ai-suite/blob/Dev/README.md
+EOF
 }
 
 has_argument() {
@@ -232,11 +242,28 @@ has_argument() {
 
 extract_argument() { echo "${2:-${1#*=}}"; }
 
+update_subdomains() {
+    for name in "$@"; do
+        for subdomain in "${subdomains[@]}"; do
+            test "$name" == "$subdomain" && return
+        done
+        subdomains+=("$name")
+    done
+}
+
+ac_install_type=''
+ac_user_confirm=''
 proxy="caddy"
 success=false
 with_authelia=false
 url_parser_bin="./access/url-parser"
 yq_bin="./access/yq"
+using_sudo_user=false
+subdomains=(open-webui n8n supabase)
+
+ORIGINAL_ARGS=("$@")
+PLATFORM="unknown"
+HOSTS_PATH="/etc/hosts"
 
 trap finish EXIT
 
@@ -247,6 +274,10 @@ while [ $# -gt 0 ]; do
         usage
         exit 0
         ;;
+    --version)
+        echo -e "${INFO} ${CYAN}Version:${END} ${WHITE}$VERSION${END}"
+        exit 0
+        ;;
     --with-authelia)
         with_authelia=true
         ;;
@@ -255,6 +286,14 @@ while [ $# -gt 0 ]; do
             proxy="$(extract_argument "$@")"
             shift
         fi
+        ;;
+    --subdomains)
+        shift
+        [[ $# -eq 0 ]] && critical_exit "--subdomains require at least one container name."
+        update_subdomains "$1"
+        ;;
+    --internal-elevated)
+        INTERNAL_ELEVATED=1
         ;;
     *)
         echo -e "${ERROR} ${RED}Invalid option:${END} $1" >&2
@@ -269,9 +308,10 @@ if [[ "$proxy" != "caddy" && "$proxy" != "nginx" ]]; then
     critical_exit "Only caddy or nginx proxy supported - received $proxy"
 fi
 
-ac_install_type=''
-ac_user_confirm=''
-using_sudo_user=false
+# Set all subdomains if no subdomain specified, else append default domains
+if (( ${#subdomains[@]} == 3 )); then
+    subdomains+=(flowise langfuse searxng neo4j llamacpp ollama)
+fi
 
 if [ "$AC" == true ]; then
     SUDO_USER="${AC_SUDO_USER:=${SUDO_USER}}"
@@ -305,6 +345,7 @@ log_info "${BODY}Setup Mode:${END} ${WHITE}${ac_config_mode}"
 log_info "${BODY}Installation:${END} ${WHITE}${ac_install_type}" || :
 [ -n "${ac_user_confirm}" ] && \
 log_info "${BODY}User Confirmation:${END} ${WHITE}${ac_user_confirm}" || :
+[ "${DEBUG_ON}" == true ] && log_debug "Enabled"
 
 detect_arch() {
     case $(uname -m) in
@@ -316,11 +357,12 @@ detect_arch() {
     esac
 }
 
+is_wsl() { grep -qi microsoft /proc/version 2>/dev/null ; }
+
 #https://stackoverflow.com/a/18434831/18954618
 detect_os() {
     case $(uname | tr '[:upper:]' '[:lower:]') in
     linux*) echo "linux" ;;
-    windows*) echo "err" ;;
     # darwin*) echo "darwin" ;;
     *) echo "err" ;;
     esac
@@ -329,10 +371,34 @@ detect_os() {
 os="$(detect_os)"
 arch="$(detect_arch)"
 
-if [[ "$os" == "err" ]]; then critical_exit "This script only supports linux os. On Windows use WSL"; fi
-if [[ "$arch" == "err" ]]; then critical_exit "Unsupported cpu architecture"; fi
+case "$os" in
+    linux*)
+        if is_wsl; then
+            HOSTS_PATH="/mnt/c/Windows/System32/drivers/etc/hosts"
+            PLATFORM="wsl"
+        else
+            PLATFORM="linux"
+        fi
+        ;;
+    darwin*) PLATFORM="mac" ;;
+    err) critical_exit "Unsupported platform." ;;
+esac
 
-is_root() { if [ -n "$1" ]; then return "$(id -u "$1")"; else return "$(id -u)"; fi }
+log_debug "PLATFORM: $PLATFORM"
+log_debug "HOSTS_PATH: $HOSTS_PATH"
+
+if [[ "$arch" == "err" ]]; then critical_exit "Unsupported CPU architecture"; fi
+
+is_unix_root() { if [ -n "$1" ]; then return "$(id -u "$1")"; else return "$(id -u)"; fi }
+
+is_windows_admin() {
+    powershell.exe -NoProfile -Command \
+      "[bool](([Security.Principal.WindowsPrincipal] \
+      [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole( \
+      [Security.Principal.WindowsBuiltInRole]::Administrator))"
+}
+
+: "${SILENT:=$(is_unix_root "" && echo 1 || echo 0)}"
 
 packages=(curl wget jq openssl git)
 if [ -x "$(command -v apt-get)" ]; then
@@ -349,16 +415,14 @@ elif [ -x "$(command -v pkg)" ]; then
     packages+=("pkg:apachew24")
 elif [ -x "$(command -v brew)" ]; then
     # brew does not allow installation as root so run install as target SUDO user with SUDO privileges
-    if is_root; then
-        if test -n "$SUDO_USER"; then
-            if is_root "$SUDO_USER"; then
-                log_error "Current user ($(whoami)) and SUDO_USER ($SUDO_USER) is root!"
-                critical_exit "Homebrew cannot run package install as ($SUDO_USER)!"
-            fi
-            using_sudo_user=true
-        else
-            critical_exit "Homebrew cannot run package install as ($(whoami))!"
+    if test -n "$SUDO_USER"; then
+        if is_unix_root "$SUDO_USER"; then
+            log_error "Current user ($(whoami)) and SUDO_USER ($SUDO_USER) is root!"
+            critical_exit "Homebrew cannot run package install as ($SUDO_USER)!"
         fi
+        using_sudo_user=true
+    else
+        critical_exit "Homebrew cannot run package install as ($(whoami))!"
     fi
     packages+=("brew:httpd")
 else
@@ -388,87 +452,83 @@ package_is_installed() {
 
 privilage() {
     local prompt
-    if prompt=$(sudo -nv 2>&1); then
+    if is_unix_root; then
+        echo "is_unix__root"
+    elif prompt=$(sudo -nv 2>&1); then
         echo "has_sudo__pass_set"
     elif echo "$prompt" | grep -q '^sudo:'; then
         echo "has_sudo__needs_pass"
+    elif command -v su >/dev/null 2>&1; then
+        echo "has_su__needs_pass"
     else
-        echo "no_sudo"
+        echo "none"
     fi
 }
 
-run_cmd() {
-    local fn
-    local cmd=$*
-    test "$1" == "write_to_hosts" && fn=$(declare -F "$1"); cmd=$1
-    # https://stackoverflow.com/a/63221401
-    if [[ -n "$fn" ]]; then
-        shift
-        local vars=("$@")
-        fn=$(declare -f "$fn")
-        for var in "${vars[@]}"; do
-            test -z "$(declare -p "$var" 2> /dev/null)" && continue
-            local val="${!var}"     # get the value of the varable represented by $v
-            val="${val//\"/\\\"}"   # escape double-quotes
-            val="${val//\\/\\\\\\}" # escape backslashes
-            log_debug "var: ${var}, val: ${val}"
-            # shellcheck disable=SC2086
-            fn="$(echo "$fn" | sed -r 's|\$'$var'|'"$val"'|g')" # replace instances of variable with value
-        done
-        log_debug "$fn"
-    fi
-    local BOLD_CYAN 
+prompt_message() {
+    local BOLD_CYAN
     BOLD_CYAN=$(sgr "${BOLD}36")
+    local prompt_message="${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}$1${END} ${WHITE}password for command:${END}"
+    echo -e "$prompt_message ${BLUE}$([ "$1" == "su" ] && echo "su -c" || echo "su")${END}"
+}
+
+sudo_prompt() {
+    # https://superuser.com/questions/553932
+    if [ -n "${AC_SUDO_PASSWORD}" ]; then
+        (sudo -S -v <<<"${AC_SUDO_PASSWORD}" > /dev/null 2>&1)
+    else
+        echo -e "$(prompt_message "sudo") ${WHITE}$1${END}"
+    fi
+}
+
+run_pkg_cmd() {
+    local cmd=$*
+    local user_privilage
     user_privilage=$(privilage)
     case "$user_privilage" in
+    is_unix__root)
+        $cmd ;;
     has_sudo__pass_set)
         # shellcheck disable=SC2086
-        if test -z "$fn"; then sudo $cmd; else sudo bash -c "$fn; $cmd"; fi
-        ;;
+        sudo $cmd ;;
     has_sudo__needs_pass)
-        # https://superuser.com/questions/553932
-        if [ -n "${AC_SUDO_PASSWORD}" ]; then
-            (sudo -S -v <<<"${AC_SUDO_PASSWORD}" > /dev/null 2>&1)
-        else
-            echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}sudo${END} ${WHITE}password for command:${END} ${BLUE}sudo${END} ${WHITE}$cmd${END}"
-        fi
+        sudo_prompt "$cmd"
         # shellcheck disable=SC2086
-        if test -z "$fn"; then sudo $cmd; else sudo bash -c "$fn; $cmd"; fi
-        ;;
-    *)
-        echo -e "${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}root${END} ${WHITE}password for command:${END} ${BLUE}su -c${END} ${WHITE}\"$cmd\"${END}"
-        if test -z "$fn"; then su -c "$cmd"; else su bash -c "$fn; $cmd"; fi
-        ;;
+        sudo $cmd ;;
+    has_su__needs_pass)
+        echo -e "$(prompt_message "su") ${WHITE}$cmd${END}"
+        su -c "$cmd" ;;
+    *) : ;;
     esac
 }
 
 install_packages() {
     case "${package_manager}" in
     apt-get)
-        run_cmd apt-get update
-        run_cmd export DEBIAN_FRONTEND="noninteractive" apt-get install -y "${packages[@]}"
+        run_pkg_cmd apt-get update
+        run_pkg_cmd export DEBIAN_FRONTEND="noninteractive" apt-get install -y "${packages[@]}"
         ;;
     apk)
-        run_cmd apk update
-        run_cmd add --no-cache "${packages[@]}"
+        run_pkg_cmd apk update
+        run_pkg_cmd add --no-cache "${packages[@]}"
         ;;
     dnf)
-        run_cmd dnf makecache
-        run_cmd dnf install -y "${packages[@]}"
+        run_pkg_cmd dnf makecache
+        run_pkg_cmd dnf install -y "${packages[@]}"
         ;;
     zypper)
-        run_cmd zypper refresh
-        run_cmd zypper install "${packages[@]}"
+        run_pkg_cmd zypper refresh
+        run_pkg_cmd zypper install "${packages[@]}"
         ;;
     pacman)
-        run_cmd pacman -Syu --noconfirm "${packages[@]}"
+        run_pkg_cmd pacman -Syu --noconfirm "${packages[@]}"
         ;;
     pkg)
-        run_cmd pkg update
-        run_cmd pkg install -y "${packages[@]}"
+        run_pkg_cmd pkg update
+        run_pkg_cmd pkg install -y "${packages[@]}"
         ;;
     brew)
-        run_cmd -u "$SUDO_USER" brew install "${packages[@]}"
+        run_pkg_cmd -u "$SUDO_USER" brew install "${packages[@]}"
         using_sudo_user=true
         ;;
     *)
@@ -486,13 +546,13 @@ else
 fi
 missing_packages=()
 package_manager=''
-pma=()
+pkg_pair=()
 for i in "${packages[@]}"; do
     package="$i"
-    IFS=':' read -r -a pma <<< "$i"
-    if (( ${#pma[@]} > 1 )); then
-        package="${pma[1]}"
-        package_manager="${pma[0]}"
+    IFS=':' read -r -a pkg_pair <<< "$i"
+    if (( ${#pkg_pair[@]} > 1 )); then
+        package="${pkg_pair[1]}"
+        package_manager="${pkg_pair[0]}"
     fi
     if package_is_installed "$package" == 0; then
         missing_packages+=("$package")
@@ -556,9 +616,9 @@ if [ ! -x "$yq_bin" ]; then
     download_binary https://github.com/mikefarah/yq/releases/download/v4.45.4/yq_"$os"_"$arch" "$yq_bin"
 fi
 
-dl_stat () { if test -x "$1"; then echo "${GREEN}  ✔"; else echo "${RED}  ✘"; fi }
-log_info "$(dl_stat "$url_parser_bin")${END} ${WHITE}url_parser"
-log_info "$(dl_stat "$yq_bin") ${WHITE}yq"
+bin_status () { if test -x "$1"; then echo "${GREEN}  ✔"; else echo "${RED}  ✘"; fi }
+log_info "$(bin_status "$url_parser_bin")${END} ${WHITE}url_parser"
+log_info "$(bin_status "$yq_bin") ${WHITE}yq"
 
 format_prompt() { echo -e "${QUESTION} ${GREEN}$1${END}"; }
 
@@ -595,13 +655,13 @@ to_upper() { echo "$1" | awk '{print toupper($0)}' ; }
 # Populate module hostname (URL)
 log_info "${HEADER}Populate Domain Names"
 #-------------------------------------------
+DOMAINS=()
 N8N_DOMAIN=''
 LLAMA_DOMAIN=''
 OLLAMA_DOMAIN=''
 LLAMACPP_DOMAIN=''
 SUPABASE_DOMAIN=''
 # Modules listedd in reverse order
-subdomains=(open-webui n8n flowise supabase langfuse searxng neo4j llamacpp ollama)
 # url_parser --url argument and options:
 # --url: URL to parse. (e.g., https://subdomain.example.com:1234/path/resource?user=123#section1)
 # host: Host with port number if present (e.g., subdomain.example.com:1234)
@@ -615,8 +675,8 @@ subdomains=(open-webui n8n flowise supabase langfuse searxng neo4j llamacpp olla
 # fragment: URL Fragment (e.g., section1)
 # registeredDomain: Registered domain from host (e.g., example.com)
 # query.<parameter>: The value of the user query parameter (e.g., query.user: 123).
-set_hostname_url() {
-    local hostname_variable="$1"
+set_domain_names() {
+    local domain_variable="$1"
     local subdomain="$2"
     local scheme="https"
     local url=""
@@ -652,7 +712,7 @@ set_hostname_url() {
         fi
         if ! test "$AC" == true && test -z "$protocol"; then url="" && continue; fi
 
-        if [[ -z "$hostname_variable" || "$with_authelia" == true ]]; then
+        if [[ -z "$domain_variable" || "$with_authelia" == true ]]; then
             if ! registered_domain="$("$url_parser_bin" --url "$url" --get registeredDomain 2>/dev/null)"; then
                 registered_domain=""
             fi
@@ -667,16 +727,21 @@ set_hostname_url() {
     done
 
     if [[ -n "$protocol" && -n "$host" ]]; then
-        if test -n "$hostname_variable"; then
-            eval "$hostname_variable=${host}"
-            # echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$hostname_variable:${END} ${WHITE}${host}${END}"
+        if test -n "$domain_variable"; then
+            eval "$domain_variable=${host}"
+            add_domain=true
+            for d in "${DOMAINS[@]}"; do \
+            test "$host" == "$d" && add_domain=false; break || : ; done
+            test "$add_domain" == true && DOMAINS+=("${host}")
+            # echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$domain_variable:${END} ${WHITE}${host}${END}"
         elif test -n "$registered_domain"; then
             for subdomain in "${subdomains[@]}"; do
                 if test "$subdomain" == "open-webui"; then sub="webui"; else sub="$subdomain"; fi
-                hostname_variable="$(to_upper "${sub}_DOMAIN")"
-                host_name="${subdomain}.${registered_domain}"
-                # echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$hostname_variable:${END} ${WHITE}${host_name}${END}"
-                eval "$hostname_variable=$host_name"
+                domain_variable="$(to_upper "${sub}_DOMAIN")"
+                domain_name="${subdomain}.${registered_domain}"
+                DOMAINS+=("$domain_name")
+                # echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$domain_variable:${END} ${WHITE}${host_name}${END}"
+                eval "$domain_variable=$domain_name"
             done
         else
             critical_exit "Failed to get registered domain from hostname URL."
@@ -687,7 +752,7 @@ set_hostname_url() {
 }
 
 # If 'module_DOMAIN' 'subdomain' arguments are empty, all AI Suite domains will be populated.
-set_hostname_url "" ""
+set_domain_names "" ""
 
 log_info "${BODY}protocol:${END} ${WHITE}$protocol"
 log_info "${BODY}host (${AC_NAME}):${END} ${WHITE}$host"
@@ -703,13 +768,16 @@ else
 fi
 log_info "${BODY}LLAMA_DOMAIN:${END} ${WHITE}$LLAMA_DOMAIN"
 
-# Confirm host domain names were populated
-if [[ "$AC" == true ]]; then
-    for sub in "${subdomains[@]}"; do
-        var=$(to_upper "$(test "$sub" == "open-webui" && echo "webui" || echo "$sub")_DOMAIN")
-        [ -v "$var" ] && echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}${var}:${END} ${WHITE}${!var}${END}"
-    done
-fi
+# Confirm subdomains have been converted to domain names
+sub_i=0
+for sub in "${subdomains[@]}"; do
+    var=$(to_upper "$(test "$sub" == "open-webui" && echo "webui" || echo "$sub")_DOMAIN")
+    test -z "$(declare -p "$var" 2> /dev/null)" && continue
+    var_name="${MAGENTA}${var}:${END}"
+    domain_name="${CYAN}${DOMAINS[$sub_i]}${END}"
+    [ -v "$var" ] && echo -e "${NOTICE} ${WHITE}-${END} ${var_name} ${domain_name}"
+    (( sub_i+1 ))
+done
 
 #-------------------------------------------
 
@@ -756,7 +824,7 @@ done
 
 # Get Auto-confirm Registered User
 auto_confirm=""
-if [[ "$CI" == true ]]; then auto_confirm="false"; \
+if [[ "$CI" == true ]]; then auto_confirm=false; \
 elif [[ "$AC" == true ]]; then auto_confirm="$AC_CONFIRM"; fi
 
 prompt="Do you want to send confirmation email when registering a user?\n\
@@ -765,9 +833,9 @@ prompt="Do you want to send confirmation email when registering a user?\n\
 while [ -z "$auto_confirm" ]; do
     confirmation_prompt auto_confirm "$prompt"
     if [[ "$auto_confirm" == true ]]; then
-        auto_confirm="false"
+        auto_confirm=false
     elif [[ "$auto_confirm" == false ]]; then
-        auto_confirm="true"
+        auto_confirm=true
     fi
 done
 
@@ -1508,53 +1576,229 @@ if [[ "$using_sudo_user" == true ]]; then
 fi
 
 # Update hosts file if local install
-# shellcheck disable=SC2329
-write_to_hosts() {
-    echo "# $AC_NAME Local Domains:
-$HOST_IP     $WEBUI_DOMAIN
-$HOST_IP     $N8N_DOMAIN
-$HOST_IP     $FLOWISE_DOMAIN
-$HOST_IP     $SUPABASE_DOMAIN
-$HOST_IP     $LANGFUSE_DOMAIN
-$HOST_IP     $SEARXNG_DOMAIN
-$HOST_IP     $NEO4J_DOMAIN
-$HOST_IP     $OLLAMA_DOMAIN
-$HOST_IP     $LLAMACPP_DOMAIN
-# End of $AC_NAME section
-" | tee -a "$HOSTS_PATH" > /dev/null
+unix_hosts_add() {
+    local header="# $AC_NAME Local Domains:"
+    local footer="# End of $AC_NAME section"
+
+    if [[ "$BACKUP" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
+        cp "$HOSTS_PATH" "$HOSTS_PATH.bak.$(date +%Y%m%d%H%M%S)"
+    fi
+
+    if [[ $DRY_RUN -eq 1 ]]; then echo "[DRY-RUN] $header"; elif \
+    ! grep -q "^$header" "$HOSTS_PATH"; then \
+    printf "%s\n" "$header" >> "$HOSTS_PATH"; fi
+
+    for d in "${DOMAINS[@]}"; do
+        local pattern="^\\s*$HOST_IP\\s+$d"
+        if ! grep -qE "$pattern" "$HOSTS_PATH"; then
+            [[ $DRY_RUN -eq 1 ]] && { echo -e "[DRY-RUN] $HOST_IP\t$d"; continue; }
+            printf "%s\t%s\n" "$HOST_IP" "$d" >> "$HOSTS_PATH"
+        fi
+    done
+
+    if [[ $DRY_RUN -eq 1 ]]; then echo "[DRY-RUN] $footer"; elif \
+    ! grep -q "^$footer" "$HOSTS_PATH"; then \
+    printf "%s\n" "$footer" >> "$HOSTS_PATH"; fi
 }
 
-hosts_file_edited=false
-IS_WSL=false
-HOST_IP=127.0.0.1
-if [ "$DEBUG_OFF" == true ]; then
-WIN_PATH="/mnt/c/windows/system32/drivers/etc/hosts"; \
-UNIX_PATH="/etc/hosts"; else \
-WIN_PATH="./access/hosts"; \
-UNIX_PATH="$WIN_PATH"; fi
-[ -x "$(command -v wslinfo)" ] && IS_WSL=true
-HOSTS_PATH=$([[ "$IS_WSL" == true ]] && echo "$WIN_PATH" || echo "$UNIX_PATH")
+unix_hosts_edit() {
+    if [[ "$INTERNAL_ELEVATED" -eq 1 ]]; then
+        unix_hosts_add
+        return
+    fi
 
-if [[ "$AC_LOCAL" == true ]]; then
-    log_info "${HEADER}Set Domains"
-    #-------------------------------------------
-    hosts_file_message="${GREEN}Hosts file edited:${END}\n"
-    hosts_file_edited=$(cat "$HOSTS_PATH" | grep "$registered_domain" || echo false)
-    if [[ "$hosts_file_edited" == false ]]; then
-        log_info "${BODY}Adding $AC_NAME local domains to $HOSTS_PATH..."
-        vars=(HOSTS_PATH HOST_IP AC_NAME)
-        for sub in "${subdomains[@]}"; do
-            var=$(to_upper "$(test "$sub" == "open-webui" && echo "webui" || echo "$sub")_DOMAIN")
-            vars+=("$var")
-        done
-        log_debug "VARS_START: ${vars[*]}"
-        run_cmd write_to_hosts "${vars[@]}"
-        hosts_file_edited=$(cat "$HOSTS_PATH" | grep "$registered_domain" || echo false)
-        if [[ "$hosts_file_edited" == false ]]; then
-            hosts_file_message="${WHITE}  -${END} ${YELLOW}Manually edit domain entries in $HOSTS_PATH.${END}"
+    local user_privilage
+    user_privilage=$(privilege)
+
+    if [[ "$user_privilage" == "is_unix_root" ]]; then
+        unix_hosts_add
+        return
+    fi
+
+    case "$user_privilage" in
+        has_sudo__pass_set)
+            sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
+            ;;
+        has_sudo__needs_pass)
+            [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode requires passwordless sudo."
+            sudo_prompt "--internal-elevated"
+            sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
+            ;;
+        has_su__needs_pass)
+            [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode cannot use su."
+            local cmd="bash $0 --internal-elevated ${ORIGINAL_ARGS[*]}"
+            echo -e "$(prompt_message "su") ${WHITE}$cmd${END}"
+            su -c "$cmd"
+            ;;
+        none)
+            critical_exit "No privilege escalation available."
+            ;;
+     esac
+}
+
+windows_hosts_edit() {
+    local is_elevated
+    is_elevated=$(is_windows_admin)
+    local ps_backup=0
+    [[ "$BACKUP" -eq 1 ]] && ps_backup=1
+    local ps_dryrun=0
+    [[ "$DRY_RUN" -eq 1 ]] && ps_dryrun=1
+    local ps_script_path="./ps_edit_hosts.ps1"
+    local header="# $AC_NAME Local Domains:"
+    local footer="# End of $AC_NAME section"
+    local ps_domains=""
+    for d in "${DOMAINS[@]}"; do
+        ps_domains+="\"$d\","
+    done
+    ps_domains="@(${ps_domains%,})"
+    local ps_script="# Edit hosts - update $AC_NAME domains
+\$Domains    = $ps_domains
+\$Ip         = \"$HOST_IP\"
+\$Backup     = $ps_backup
+\$DryRun     = $ps_dryrun
+\$Header     = \"$header\"
+\$Footer     = \"$footer\"
+\$HostsPath  = [System.IO.Path]::GetFullPath(\"$WIN_HOSTS_PATH\")
+\$TargetPath = [System.IO.Path]::GetFullPath('C:\\Windows\\System32\\drivers\\etc\\hosts')
+\$Restricted = [string]::Equals(\$HostsPath, \$TargetPath, [System.StringComparison]::OrdinalIgnoreCase)
+\$Elevated   = ([Security.Principal.WindowsPrincipal] \`
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (\$Restricted) {
+    If (-not \$Elevated) {
+        \$ScriptPath = [System.IO.Path]::GetFullPath(\$MyInvocation.MyCommand.Path)
+        Start-Process powershell.exe \`
+            -ArgumentList @(
+                '-NoProfile',
+                '-ExecutionPolicy','Bypass',
+                '-File', \$ScriptPath
+            ) \`
+            -Verb RunAs \`
+            -WindowStyle Hidden \`
+            -Wait
+        exit \$LASTEXITCODE
+    }
+}
+
+if (\$Backup -eq 1 -and \$DryRun -eq 0) {
+    \$Ts = Get-Date -Format \"yyyyMMddHHmmss\"
+    Copy-Item \"\$HostsPath\" \"\$HostsPath.bak.\$Ts\"
+}
+
+\$Pattern = \"^\$Header\"
+if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
+    if (\$DryRun -eq 1) {
+        Write-Host \"[DRY-RUN] \$Header\"
+    } else {
+        Add-Content -Path \"\$HostsPath\" -Value \"\$Header\"
+    }
+}
+
+foreach (\$Domain in \$Domains) {
+    \$Pattern = \"^\$Ip\s+\$Domain\"
+    if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
+        if (\$DryRun -eq 1) {
+            Write-Host \"[DRY-RUN] \$Ip\`t\$Domain\"
+        } else {
+            Add-Content -Path \"\$HostsPath\" -Value \"\$Ip\`t\$Domain\"
+        }
+    }
+}
+
+\$Pattern = \"^\$Footer\"
+if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
+    if (\$DryRun -eq 1) {
+        Write-Host \"[DRY-RUN] \$Header\"
+    } else {
+        Add-Content -Path \"\$HostsPath\" -Value \"\$Footer\"
+    }
+}
+"
+
+    log_debug "ps_script: $ps_script"
+
+    echo "$ps_script" > "$ps_script_path"
+
+    if [[ $SILENT -eq 1 ]]; then
+        if [[ "$is_elevated" != "True" ]]; then
+            critical_exit "Silent mode requires Administrator privilage."
         fi
     fi
-    log_info "${hosts_file_message}${WHITE}${hosts_file_edited}${END}"
+
+    if [[ "$is_elevated" == "True" ]]; then
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$ps_script_path"
+    else
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
+          Start-Process powershell.exe -WindowStyle Hidden -Wait -ArgumentList @(
+             '-NoProfile',
+             '-ExecutionPolicy Bypass',
+             '-File',
+             \"$ps_script_path\"
+           )
+        "
+    fi
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+        ! grep -q "^$header" "$HOSTS_PATH" && \
+        echo "[DRY-RUN] $header"
+        for d in "${DOMAINS[@]}"; do
+            local pattern="^\\s*$HOST_IP\\s+$d"
+            if ! grep -qE "$pattern" "$HOSTS_PATH"; then
+                echo -e "[DRY-RUN] $HOST_IP\t$d";
+            fi
+        done
+        ! grep -q "^$footer" "$HOSTS_PATH" && \
+        echo "[DRY-RUN] $footer"
+        echo ""
+    else
+        rm "$ps_script_path"
+    fi
+}
+
+check_host_domains() {
+    local quiet
+    quiet=$([ "$1" == "--quiet" ] && \
+    echo true || echo false)
+
+    [ "$quiet" == false ] && \
+    log_info "${HEADER}Configured Domains"
+    #-------------------------------------------
+    mal_domains=()
+    for d in "${DOMAINS[@]}"; do
+        local pattern="^\\s*$HOST_IP\\s+$d"
+        if grep -qE "$pattern" "$HOSTS_PATH"; then
+            [ "$quiet" == false ] && \
+            log_info "${GREEN}  ✔${END} ${WHITE}$d"
+        else
+            [ "$quiet" == false ] && \
+            log_info "${RED}  ✘${END} ${WHITE}$d"
+            mal_domains+=("$d")
+        fi
+    done
+}
+
+HOST_IP=127.0.0.1
+WIN_HOSTS_PATH="C:\\Windows\\System32\\drivers\\etc\\hosts"
+mal_domains=()
+
+if [[ "$AC_LOCAL" == true ]]; then
+    check_host_domains "--quiet"
+    if (( ${#mal_domains[@]} > 0 )); then
+        log_info "${HEADER}Set Domains"
+        #-------------------------------------------
+        [ "$DEBUG_ON" == true ] && { DRY_RUN=1; mal_domains=(); }
+        case "$PLATFORM" in
+            linux|mac)
+                unix_hosts_edit
+                ;;
+            wsl)
+                windows_hosts_edit
+                ;;
+            *) critical_exit "Platform $PLATFORM is unsupported." ;;
+        esac
+        [[ $DRY_RUN -eq 0 ]] && { check_host_domains ""; }
+    fi
 fi
 
 log_info "${END}🎉 ${HEADER}Success!"
@@ -1571,26 +1815,37 @@ if [[ "$AC" != true ]]; then
 fi
 
 edit_host_file() {
-    [[ "$hosts_file_edited" != false ]] && return
-    [[ "$AC" == true ]] && \
+    (( ${#mal_domains[@]} == 0 )) && return
     echo -e "${INFO} 👉 ${BOLD_MAGENTA}Next steps:${END}" || :
-    echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Edit your hosts file so your domain will loop back to your${END}"
-    echo -e "${INFO}     ${GREEN}machine - just like localhost.${END}"
+    echo -e "${INFO} ${GREEN}Manually configure these domains in:${END}"
+    echo -e "${INFO}   ${WHITE}$HOSTS_PATH${END}${GREEN}.${END}"
+    for d in "${mal_domains[@]}"; do
+        echo -e "${INFO} ${WHITE}  -${END} ${CYAN}${HOST_IP}${END} ${WHITE}$d${END}"
+    done
+    local console="console"
+    local copy_cmd="sudo cp"
+    if [[ "$PLATFORM" == "wsl" ]]; then
+        console="console, as administrator"
+        copy_cmd="cp"
+    fi
+    local directory
+    directory=$(dirname "${HOSTS_PATH}")
+    local hosts_sfile
+    hosts_sfile=$(basename "${HOSTS_PATH}")
+    echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Upon completion of the installation,${END}"
+    echo -e "${INFO}     ${GREEN}edit your hosts file so your domains will loop${END}"
+    echo -e "${INFO}     ${GREEN}back to your machine - just like localhost.${END}"
     echo -e "${INFO}   ${BLUE}1a.${END} ${GREEN}Create a backup of the original hosts file.${END}"
-    echo -e "${INFO}      ${WHITE}sudo cp ${HOSTS_PATH} ${HOSTS_PATH}.bak${END}"
-    echo -e "${INFO}   ${BLUE}1b.${END} ${GREEN}Open ${HOSTS_PATH} file in your editor. Here, I am using vim.${END}"
-    echo -e "${INFO}      ${WHITE}sudo vim ${HOSTS_PATH}${END}"
-    echo -e "${INFO}   ${BLUE}1c.${END} ${GREEN}Add domain entries with format: 'ip-address' 'hostname-or-domain-name'.${END}"
-    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$WEBUI_DOMAIN${END}"
-    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$N8N_DOMAIN${END}"
-    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$FLOWISE_DOMAIN${END}"
-    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$SUPABASE_DOMAIN${END}"
-    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$LANGFUSE_DOMAIN${END}"
-    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$SEARXNG_DOMAIN${END}"
-    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$NEO4J_DOMAIN${END}"
-    echo -e "${INFO}      ${WHITE}${HOST_IP} ${END} ${CYAN}$LLAMA_DOMAIN${END}"
-    echo -e "${INFO}      ${GREEN}Save the file and quit your editor.${END}"
-    echo -e "${INFO}   ${BLUE}1d.${END} ${GREEN}In your browser, navigate to${END} ${WHITE}$protocol://$WEBUI_DOMAIN${END}"
+    echo -e "${INFO}      ${GREEN}From a ${CYAN}Bash${END} ${GREEN}$console, execute:${END}"
+    echo -e "${INFO}      ${WHITE}cd $directory${END}"
+    echo -e "${INFO}      ${WHITE}ts=\$(date +%Y%m%d%H%M%S)${END}"
+    echo -e "${INFO}      ${WHITE}$copy_cmd $hosts_sfile $hosts_sfile.bak.\$ts${END}"
+    echo -e "${INFO}   ${BLUE}1b.${END} ${GREEN}Open the $hosts_sfile file in your editor."
+    echo -e "${INFO}     ${GREEN}Here, I am using${END} ${CYAN}vim${END}${GREEN}.${END}"
+    echo -e "${INFO}      ${WHITE}sudo vim $hosts_sfile${END}"
+    echo -e "${INFO}   ${BLUE}1c.${END} ${GREEN}Add domain entries with format: ${WHITE}ip-address   domain${END}${GREEN}.${END}"
+    echo -e "${INFO}      ${GREEN}Save the file (${END}${WHITE}Esc${END}${GREEN},${END} ${WHITE}:wq${END}${GREEN}) and quit your editor.${END}"
+    echo -e "${INFO}   ${BLUE}1d.${END} ${GREEN}In your browser, navigate to${END} ${WHITE}$protocol://$WEBUI_DOMAIN${END}${GREEN}.${END}"
     echo -e "${INFO} 🚀 ${GREEN}Confirm everything is running.${END}"
 }
 
