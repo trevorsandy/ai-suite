@@ -1076,13 +1076,14 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False):
     if not valid_env_file:
         if os.path.exists(".env.example"):
             shutil.copy('.env.example', '.env')
+            valid_env_file = os.path.exists(env_file)
             if not auto_config:
-                valid_env_file = os.path.exists(env_file)
                 log.warning("The .env file was not found - it was created from .env.example template")
                 log.critical("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
+                return {}
         else:
             log.critical("The .env.example file was not found - exiting...")
-        return {}
+            return {}
     elif not auto_config:
         with open(env_file, 'r') as f:
             env_content = f.read()
@@ -1092,7 +1093,12 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False):
             'N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret',
             'POSTGRES_PASSWORD=your-super-secret-postgres-password',
             'JWT_SECRET=your-super-secret-jwt-token-with-at-least-40-characters-long',
-            'DASHBOARD_PASSWORD=your-super-secret-password-1',
+            'ANON_KEY=your-super-secret-and-super-super-long-anon-token',
+            'SERVICE_ROLE_KEY=your-super-secret-and-super-super-long-service-role-token',
+            'DASHBOARD_PASSWORD=your-super-secure-postgres-password',
+            'SECRET_KEY_BASE=your-super-secret-and-long-64-character-hex-32-secret',
+            'VAULT_ENC_KEY=your-32-character-encryption-key',
+            'PG_META_CRYPTO_KEY=your-encryption-key-32-chars-min',
             'FLOWISE_PASSWORD=your-super-secret-postgres-password',
             'NEO4J_AUTH=neo4j/your-super-secret-password-2',
             'CLICKHOUSE_PASSWORD=your-super-secret-password-3',
@@ -1575,7 +1581,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         return []
 
     log.info(f"Auto-configuring {name} proxy and access...", extra=log_bright)
-    
+
     password = "" # Set "password" to fully automate when debugging etc...
     prompt = True # Set False to bypass prompts when debugging etc...
     if prompt:
@@ -1586,6 +1592,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     response = None
     public = False
 
+    #TODO: Set generic timezone - Country/City
     # AC - bool
     ac_env_list = ['AC=true']
     # AC_SUDO_USER - str
@@ -2065,16 +2072,21 @@ def main():
                 args.profile.append([array[1]])
             break
 
+    if ac_auto_config: # TEMP: Relocate auto-configure block from below during Dev
+        log.debug("TEMP: Relocated auto-configure block...")
     supabase=True
-    if ac_auto_config:  # TEMP: Relocation from below during Dev
-        log.debug("TEMP: Configure proxy, identity and access management...")
+    # TEMP: block end
+    if ac_auto_config:
+        log.info("Configure proxy, identity and access management...")
         ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
         ac_env_vars.append(f'AC_SUPABASE={str(supabase).lower()}')
         if log_level == logging.DEBUG:
             ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
         run_ai_suite_ac_auto_config(ac_env_vars)
+    if ac_auto_config: # TEMP: End here if working on auto-config and no breakpoints set...
         log.debug("TEMP: Finished!")
-        #sys.exit(0) # TEMP: End here in case no breakpoints set...
+        sys.exit(0)
+    # TEMP: block end
 
     # Process llama (Ollama/LLaMA.cpp) status checks
     llama_arg = "cpu"
@@ -2270,8 +2282,10 @@ def main():
     """ TEMP: Moved to '# Access auto-configuration' above during Dev
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
-        ac_env_list.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
-        ac_env_list.append(f'AC_SUPABASE={str(supabase).lower()}')
+        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
+        ac_env_vars.append(f'AC_SUPABASE={str(supabase).lower()}')
+        if log_level == logging.DEBUG:
+            ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
         run_ai_suite_ac_auto_config(ac_env_vars)
     """
 

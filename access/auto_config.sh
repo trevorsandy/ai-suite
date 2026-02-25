@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 24, 2026
+# Last Update February 25, 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # This script is adapted from Inder Singh's setup.sh shell script.
@@ -140,22 +140,27 @@ finish_elapsed_time() {
 
 # shellcheck disable=SC2329
 finish () {
-    vars=(AC_SUDO_PASSWORD AC_PASSWORD password confirm_password)
+    local vars=(AC_SUDO_PASSWORD AC_PASSWORD password confirm_password)
     for var in "${vars[@]}"; do [ -v "$var" ] && unset "$var" ; done
 
-    if [ "$success" ]; then
-        HEADER="${END}✅ ${HEADER}"
+    local status="Completed"
+    local header="${END}✅ ${HEADER}"
+    if [ "$completion" == "Partial!" ]; then
+        header="${END}⚠️ ${HEADER}"
         status="Finished"
-        binaries=()
-        for bin in "$yq_bin" "$url_parser_bin"; do [ -f "$bin" ] && binaries+=("$bin") ; done
-        if (( ${#binaries[@]} != 0 )); then log_info "Clean downloaded binaries..." ; fi
-        #for bin in "${binaries[@]}"; do log_info "  ✘ $(basename "${bin}")"; (rm "$bin"); done
-    else
-        HEADER="${END}❌ $(sgr "${UNDERLINE}91")"
+    elif [ "$completion" == "Fail!" ]; then
+        header="${END}❌ $(sgr "${UNDERLINE}91")"
         status="Terminated"
     fi
 
-    log_info "${HEADER}Configuration ${status}"
+    if [ "$status" == "Completed" ]; then
+        local binaries=()
+        for bin in "$yq_bin" "$url_parser_bin"; do [ -f "$bin" ] && binaries+=("$bin") ; done
+        if (( ${#binaries[@]} != 0 )); then log_info "Clean downloaded binaries..." ; fi
+        for bin in "${binaries[@]}"; do log_info "  ✘ $(basename "${bin}")"; (rm "$bin"); done
+    fi
+
+    log_info "${header}Configuration ${status}"
     #-------------------------------------------
     finish_elapsed_time
 
@@ -251,14 +256,14 @@ update_subdomains() {
     done
 }
 
+completion=''
 ac_install_type=''
 ac_user_confirm=''
-proxy="caddy"
-success=false
 with_authelia=false
+using_sudo_user=false
+proxy="caddy"
 url_parser_bin="./access/url-parser"
 yq_bin="./access/yq"
-using_sudo_user=false
 subdomains=(open-webui n8n supabase)
 
 ORIGINAL_ARGS=("$@")
@@ -357,6 +362,8 @@ detect_arch() {
     esac
 }
 
+arch="$(detect_arch)"
+
 is_wsl() { grep -qi microsoft /proc/version 2>/dev/null ; }
 
 #https://stackoverflow.com/a/18434831/18954618
@@ -369,19 +376,18 @@ detect_os() {
 }
 
 os="$(detect_os)"
-arch="$(detect_arch)"
 
 case "$os" in
-    linux*)
-        if is_wsl; then
-            HOSTS_PATH="/mnt/c/Windows/System32/drivers/etc/hosts"
-            PLATFORM="wsl"
-        else
-            PLATFORM="linux"
-        fi
-        ;;
-    darwin*) PLATFORM="mac" ;;
-    err) critical_exit "Unsupported platform." ;;
+linux*)
+    if is_wsl; then
+        HOSTS_PATH="/mnt/c/Windows/System32/drivers/etc/hosts"
+        PLATFORM="wsl"
+    else
+        PLATFORM="linux"
+    fi
+    ;;
+darwin*) PLATFORM="mac" ;;
+err) critical_exit "Unsupported platform." ;;
 esac
 
 log_debug "PLATFORM: $PLATFORM"
@@ -657,7 +663,6 @@ log_info "${HEADER}Populate Domain Names"
 #-------------------------------------------
 DOMAINS=()
 N8N_DOMAIN=''
-LLAMA_DOMAIN=''
 OLLAMA_DOMAIN=''
 LLAMACPP_DOMAIN=''
 SUPABASE_DOMAIN=''
@@ -680,6 +685,11 @@ set_domain_names() {
     local subdomain="$2"
     local scheme="https"
     local url=""
+
+    unset N8N_DOMAIN
+    unset OLLAMA_DOMAIN
+    unset LLAMACPP_DOMAIN
+    unset SUPABASE_DOMAIN
 
     while [ -z "$url" ]; do
         if test -z "$subdomain"; then subdomain="${subdomains[0]}"; fi
@@ -754,6 +764,21 @@ set_domain_names() {
 # If 'module_DOMAIN' 'subdomain' arguments are empty, all AI Suite domains will be populated.
 set_domain_names "" ""
 
+# Confirm all specified subdomains have been converted to domain names
+sub_i=0
+for sub in "${subdomains[@]}"; do
+    var=$(to_upper "$(test "$sub" == "open-webui" && echo "webui" || echo "$sub")_DOMAIN")
+    test -z "$(declare -p "$var" 2> /dev/null)" && continue
+    var_name="${MAGENTA}${var}:${END}"
+    domain_name="${CYAN}${DOMAINS[$sub_i]}${END}"
+    if [ -v "$var" ]; then
+        echo -e "${NOTICE} ${WHITE}-${END} ${var_name} ${domain_name}"
+    else
+        echo -e "${NOTICE} ${WHITE}-${END} ${var_name} ${RED}is not a valid variable!${END}"
+    fi
+    (( sub_i+1 ))
+done
+
 log_info "${BODY}protocol:${END} ${WHITE}$protocol"
 log_info "${BODY}host (${AC_NAME}):${END} ${WHITE}$host"
 log_info "${BODY}registered_domain:${END} ${WHITE}$registered_domain"
@@ -761,23 +786,13 @@ log_info "${BODY}registered_domain:${END} ${WHITE}$registered_domain"
 log_info "${BODY}SUPABASE_PUBLIC_URL:${END} ${WHITE}$protocol://$SUPABASE_DOMAIN"
 log_info "${BODY}N8N WEBHOOK_URL:${END} ${WHITE}$protocol://$N8N_DOMAIN"
 
+LLAMA_DOMAIN=''
 if [[ "$AC_LLAMACPP" == true ]]; then
     LLAMA_DOMAIN="$LLAMACPP_DOMAIN"
 else
     LLAMA_DOMAIN="$OLLAMA_DOMAIN"
 fi
 log_info "${BODY}LLAMA_DOMAIN:${END} ${WHITE}$LLAMA_DOMAIN"
-
-# Confirm subdomains have been converted to domain names
-sub_i=0
-for sub in "${subdomains[@]}"; do
-    var=$(to_upper "$(test "$sub" == "open-webui" && echo "webui" || echo "$sub")_DOMAIN")
-    test -z "$(declare -p "$var" 2> /dev/null)" && continue
-    var_name="${MAGENTA}${var}:${END}"
-    domain_name="${CYAN}${DOMAINS[$sub_i]}${END}"
-    [ -v "$var" ] && echo -e "${NOTICE} ${WHITE}-${END} ${var_name} ${domain_name}"
-    (( sub_i+1 ))
-done
 
 #-------------------------------------------
 
@@ -827,7 +842,7 @@ auto_confirm=""
 if [[ "$CI" == true ]]; then auto_confirm=false; \
 elif [[ "$AC" == true ]]; then auto_confirm="$AC_CONFIRM"; fi
 
-prompt="Do you want to send confirmation email when registering a user?\n\
+prompt="Do you want to send a confirmation email when registering a user?\n\
         If yes, you'll have to setup your own SMTP server [y/n]: "
 
 while [ -z "$auto_confirm" ]; do
@@ -838,6 +853,8 @@ while [ -z "$auto_confirm" ]; do
         auto_confirm=true
     fi
 done
+
+# TODO: When AC_WITH_EXIM is supported, if auto_confirm == false, prompt to setup local SMTP server
 
 # If with_authelia, then additionally ask for email and display name
 if [[ "$with_authelia" == true ]]; then
@@ -942,7 +959,6 @@ log_info "${BODY}display_name:${END} ${WHITE}$display_name"
 log_info "${BODY}email:${END} ${WHITE}$email"
 
 # Create .env file from .env.example template
-# TODO - extend to all .env credentials (n8n, PostgreSQL, Flowise, Neo4j, Langfuse, Caddy/Nginx...)
 log_info "${HEADER}Create .env File"
 #-------------------------------------------
 yml_bool() { echo "$(tr '[:lower:]' '[:upper:]' <<< "${1:0:1}")${1:1}" ; }
@@ -996,6 +1012,8 @@ sed -i \
     -e "s|AC_DISPLAY_NAME.*|AC_DISPLAY_NAME=${AC_DISPLAY_NAME}|" \
     -e "s|AC_WITH_REDIS.*|AC_WITH_REDIS=$(yml_bool "${AC_WITH_REDIS}")|" \
     -e "s|AC_LOG_PATH.*|AC_LOG_PATH=${AC_LOG_PATH}|" \
+    -e "s|# N8N_PROTOCOL.*|N8N_PROTOCOL=$protocol|" \
+    -e "s|# N8N_PROXY_HOPS.*|N8N_PROXY_HOPS=3|" \
     -e "s|# WEBUI_HOSTNAME.*|WEBUI_HOSTNAME=openwebui.\${AC_DOMAIN}|" \
     -e "s|# N8N_HOSTNAME.*|N8N_HOSTNAME=n8n.\${AC_DOMAIN}|" \
     -e "s|# FLOWISE_HOSTNAME.*|FLOWISE_HOSTNAME=flowise.\${AC_DOMAIN}|" \
@@ -1008,6 +1026,13 @@ sed -i \
     -e "s|# WEBHOOK_URL=.*|WEBHOOK_URL=$protocol://\${N8N_HOSTNAME}|" \
     -e "s|# LETSENCRYPT_EMAIL.*|LETSENCRYPT_EMAIL=\${AC_EMAIL}|" \
     .env
+
+sed -i \
+    -e "s|#- N8N_HOST=.*|- N8N_HOST=\${N8N_HOSTNAME:-\${N8N_HOST}}|" \
+    -e "s|#- N8N_PORT=.*|- N8N_PORT=\${N8N_PORT}|" \
+    -e "s|#- N8N_PROTOCOL=.*|- N8N_PROTOCOL=\${N8N_PROTOCOL}|" \
+    -e "s|#- N8N_PROXY_HOPS=.*|- N8N_PROXY_HOPS=\${N8N_PROXY_HOPS}|" \
+    docker-compose.yml
 fi
 
 # Update yaml file using yq package
@@ -1029,7 +1054,7 @@ update_env_vars() {
 log_info "${HEADER}Configure Proxy Service"
 #-------------------------------------------
 # DEFINE PROXY service
-proxy_service_yaml=".services.$proxy.profiles=[\"$proxy\"] |
+proxy_service_yaml=".services.$proxy.profiles=[\"$proxy\"$([[ "$proxy" == "caddy" ]] && echo ", \"ai-all\"")] |
 .services.$proxy.container_name=\"$proxy\" |
 .services.$proxy.restart=\"unless-stopped\" |
 .services.$proxy.ports=[\"80:80/tcp\",\"443:443/tcp\"]
@@ -1073,7 +1098,6 @@ else
     proxy_service_yaml="${proxy_service_yaml} |
                         .services.nginx.image=\"jonasal/nginx-certbot:6.0.1-nginx1.29.5\" |
                         .services.ngnix.expose=[\"81/tcp\",\"443/tcp\",\"443/udp\",\"80/tcp\"] |
-                        .services.ngnix.TZ=\"France/Paris\" |
                         .services.nginx.environment.NGINX_SERVER_NAME = \"\${NGINX_SERVER_NAME:?error}\" |
                         .services.nginx.environment.CERTBOT_EMAIL = \"\${AC_EMAIL:?error}\" |
                         .services.nginx.volumes=[\"$nginx_local_volume:/etc/nginx/user_conf.d\",
@@ -1174,7 +1198,7 @@ if [[ "$with_authelia" == true ]]; then
 
     # shellcheck disable=SC2016
     authelia_docker_service_yaml='.services.authelia.container_name = "authelia" |
-       .services.authelia.profiles=["caddy", "nginx"] |
+       .services.authelia.profiles=["caddy", "nginx", "ai-all"] |
        .services.authelia.image = "authelia/authelia:4.38" |
        .services.authelia.volumes = ["./access/authelia:/config"] |
        .services.authelia.depends_on.db.condition = "service_healthy" |
@@ -1205,8 +1229,7 @@ if [[ "$with_authelia" == true ]]; then
         authelia_docker_service_yaml="${authelia_docker_service_yaml}|.services.authelia.depends_on.redis.condition=\"service_healthy\""
     fi
 
-    # TODO - add other target modules
-    # TODO - modify _url to use registered domain
+    # TODO - modify _url to use domain versus host (subdomain.domain)
     # WRITE AUTHELIA configuration.yml file (Supabase target)
     log_info "${BODY}Write Authelia configuration.yml file"
     #-------------------------------------------
@@ -1227,6 +1250,8 @@ if [[ "$with_authelia" == true ]]; then
     authelia_schema="authelia" update_yaml_file "$authelia_docker_supabase_service_yaml" "./supabase/docker/$compose_file"
 fi
 
+# TODO: Setup Exim SMTP server if AC_WITH_EXIM == true (AC_WITH_EXIM is not yet supported)
+
 # WRITE env_vars to .env file
 log_info "${HEADER}Write Additional .env Variables"
 #-------------------------------------------
@@ -1244,11 +1269,12 @@ for env_var in "${env_vars[@]}"; do
     fi
 done
 
-# Docker: http://host.docker.internal:<port>
-# Local:  http://localhost:<port>
-# Global: https://my-ai-suite.fr:<port>
+# Docker:         http://host.docker.internal:<port>
+# Local:          http://localhost:<port>
+# Local (proxy):  https://local.pc:<port>
+# Global:         https://my-ai-suite.fr:<port>
 
-# | Ex | In | Service                 | Container - internal              | Domain - external          |
+# | Ex | In | Service                 | Container - Docker internal       | Domain - Docker external |
 # | -: | -: | ----------------------: | --------------------------------: | -----------------------: |
 # | ++ | ++ | `n8n`                   | n8n:5678/                         | localhost:5678/          |
 # | ++ | ++ | `Open WebUI`            | open-webui:8080/                  | localhost:8080/          |
@@ -1273,6 +1299,11 @@ done
 # |    |    | `Ollama`                | ollama:11434/                     | localhost:11434/         |
 # |    |    | `LLaMA.cpp`             | llamacpp:8040/                    | localhost:8040/          |
 
+# NOTE: LLAMA and SearXNG are disabled in proxy config by default.
+# Set the following env_vars (to anything other than empty) to enable:
+AC_LLAMA=''
+AC_SEARXNG=''
+
 # WRITE LOCAL Caddyfile
 if [[ "$proxy" == "caddy" ]]; then
     log_info "${HEADER}Write Caddyfile"
@@ -1296,9 +1327,8 @@ if [[ "$proxy" == "caddy" ]]; then
             $([[ "$with_authelia" == false ]] && echo "basic_auth {
                 {\$PROXY_AUTH_USERNAME} {\$PROXY_AUTH_PASSWORD}
             }" || echo "forward_auth authelia:9091 {
-                        uri /api/authz/forward-auth
-
-                        copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+                uri /api/authz/forward-auth
+                copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
             }")
         }
     }
@@ -1358,15 +1388,77 @@ if [[ "$proxy" == "caddy" ]]; then
         reverse_proxy neo4j:7474
     }
 
-    $([[ "$AC_LLAMACPP" == false ]] && echo "\
-    # # Ollama API
-    # {\$OLLAMA_HOSTNAME} {
-    #     reverse_proxy ollama:11434
-    # }" || echo "\
-    # # LLaMA.cpp API
-    # {\$LLAMACPP_HOSTNAME} {
-    #     reverse_proxy llamacpp:8040
-    # }")
+    # SearXNG
+    $([[ -n "$AC_SEARXNG" ]] && echo "\
+{\$SEARXNG_HOSTNAME} {" || echo "\
+{DISABLED_SEARXNG} {")
+        encode zstd gzip
+
+        @api {
+            path /config
+            path /healthz
+            path /stats/errors
+            path /stats/checker
+        }
+        @search {
+            path /search
+        }
+        @imageproxy {
+            path /image_proxy
+        }
+        @static {
+            path /static/*
+        }
+
+        header {
+            # CSP (https://content-security-policy.com)
+            Content-Security-Policy \"upgrade-insecure-requests; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self' https://github.com/searxng/searxng/issues/new; font-src 'self'; frame-ancestors 'self'; base-uri 'self'; connect-src 'self' https://overpass-api.de; img-src * data:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.dailymotion.com https://www.deezer.com https://www.mixcloud.com https://w.soundcloud.com https://embed.spotify.com;\"
+            # Disable some browser features
+            Permissions-Policy \"accelerometer=(),camera=(),geolocation=(),gyroscope=(),magnetometer=(),microphone=(),payment=(),usb=()\"
+            # Set referrer policy
+            Referrer-Policy \"no-referrer\"
+            # Force clients to use HTTPS
+            Strict-Transport-Security \"max-age=31536000\"
+            # Prevent MIME type sniffing from the declared Content-Type
+            X-Content-Type-Options \"nosniff\"
+            # X-Robots-Tag (comment to allow site indexing)
+            X-Robots-Tag \"noindex, noarchive, nofollow\"
+            # Remove \"Server\" header
+            -Server
+        }
+
+        header @api {
+            Access-Control-Allow-Methods \"GET, OPTIONS\"
+            Access-Control-Allow-Origin \"*\"
+        }
+
+        route {
+            # Cache policy
+            header Cache-Control \"max-age=0, no-store\"
+            header @search Cache-Control \"max-age=5, private\"
+            header @imageproxy Cache-Control \"max-age=604800, public\"
+            header @static Cache-Control \"max-age=31536000, public, immutable\"
+        }
+
+        # SearXNG (uWSGI)
+        reverse_proxy searxng:8080 {
+            header_up X-Forwarded-Port {http.request.port}
+            header_up X-Real-IP {http.request.remote.host}
+            # https://github.com/searx/searx-docker/issues/24
+            header_up Connection \"close\"
+        }
+    }
+
+    $(if [[ -n "$AC_LLAMA" ]]; then \
+      [[ "$AC_LLAMACPP" == false ]] && echo "\
+    # Ollama API
+    {\$OLLAMA_HOSTNAME} {
+        reverse_proxy ollama:11434
+    }" || echo "\
+    # LLaMA.cpp API
+    {\$LLAMACPP_HOSTNAME} {
+        reverse_proxy llamacpp:8040
+    }"; fi)
 
     import $caddy_addons_path/cors.conf
 " >"$caddyfile_local"
@@ -1425,15 +1517,16 @@ upstream searxng_upstream {
     keepalive 2;
 }
 
-$([[ "$AC_LLAMACPP" == false ]] && echo "\
-# upstream ollama_upstream {
-#     server ollama:11434;
-#     keepalive 2;
-# }" || echo "\
-# upstream llamacpp_upstream {
-#     server llamacpp:8040;
-#     keepalive 2;
-# }")
+$(if [[ -n "$AC_LLAMA" ]]; then \
+  [[ "$AC_LLAMACPP" == false ]] && echo "\
+upstream ollama_upstream {
+    server ollama:11434;
+    keepalive 2;
+}" || echo "\
+upstream llamacpp_upstream {
+    server llamacpp:8040;
+    keepalive 2;
+}"; fi)
 
 server {
     listen 443 ssl;
@@ -1481,15 +1574,16 @@ server {
         proxy_pass http://searxng_upstream
     }
 
-    $([[ "$AC_LLAMACPP" == false ]] && echo "\
-    # # Ollama
-    # location / {
-    #     proxy_pass http://ollama_upstream
-    # }" || echo "\
-    # # LLaMA.cpp
-    # location /llamacpp {
-    #     proxy_pass http://llamacpp_upstream
-    # }")
+    $(if [[ -n "$AC_LLAMA" ]]; then \
+      [[ "$AC_LLAMACPP" == false ]] && echo "\
+    # Ollama
+    location / {
+        proxy_pass http://ollama_upstream
+    }" || echo "\
+    # LLaMA.cpp
+    location /llamacpp {
+        proxy_pass http://llamacpp_upstream
+    }"; fi)
 
     # Supabase
     location /supabase/realtime {
@@ -1616,33 +1710,29 @@ unix_hosts_edit() {
     fi
 
     case "$user_privilage" in
-        has_sudo__pass_set)
-            sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
-            ;;
-        has_sudo__needs_pass)
-            [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode requires passwordless sudo."
-            sudo_prompt "--internal-elevated"
-            sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
-            ;;
-        has_su__needs_pass)
-            [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode cannot use su."
-            local cmd="bash $0 --internal-elevated ${ORIGINAL_ARGS[*]}"
-            echo -e "$(prompt_message "su") ${WHITE}$cmd${END}"
-            su -c "$cmd"
-            ;;
-        none)
-            critical_exit "No privilege escalation available."
-            ;;
-     esac
+    has_sudo__pass_set)
+        sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
+        ;;
+    has_sudo__needs_pass)
+        [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode requires passwordless sudo."
+        sudo_prompt "--internal-elevated"
+        sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
+        ;;
+    has_su__needs_pass)
+        [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode cannot use su."
+        local cmd="bash $0 --internal-elevated ${ORIGINAL_ARGS[*]}"
+        echo -e "$(prompt_message "su") ${WHITE}$cmd${END}"
+        su -c "$cmd"
+        ;;
+    none)
+        critical_exit "No privilege escalation available."
+        ;;
+    esac
 }
 
 windows_hosts_edit() {
     local is_elevated
     is_elevated=$(is_windows_admin)
-    local ps_backup=0
-    [[ "$BACKUP" -eq 1 ]] && ps_backup=1
-    local ps_dryrun=0
-    [[ "$DRY_RUN" -eq 1 ]] && ps_dryrun=1
     local ps_script_path="./ps_edit_hosts.ps1"
     local header="# $AC_NAME Local Domains:"
     local footer="# End of $AC_NAME section"
@@ -1653,32 +1743,30 @@ windows_hosts_edit() {
     ps_domains="@(${ps_domains%,})"
     local ps_script="# Edit hosts - update $AC_NAME domains
 \$Domains    = $ps_domains
+\$Backup     = $BACKUP
+\$DryRun     = $DRY_RUN
 \$Ip         = \"$HOST_IP\"
-\$Backup     = $ps_backup
-\$DryRun     = $ps_dryrun
 \$Header     = \"$header\"
 \$Footer     = \"$footer\"
 \$HostsPath  = [System.IO.Path]::GetFullPath(\"$WIN_HOSTS_PATH\")
 \$TargetPath = [System.IO.Path]::GetFullPath('C:\\Windows\\System32\\drivers\\etc\\hosts')
 \$Restricted = [string]::Equals(\$HostsPath, \$TargetPath, [System.StringComparison]::OrdinalIgnoreCase)
 \$Elevated   = ([Security.Principal.WindowsPrincipal] \`
-    [Security.Principal.WindowsIdentity]::GetCurrent()
+  [Security.Principal.WindowsIdentity]::GetCurrent()
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-if (\$Restricted) {
-    If (-not \$Elevated) {
-        \$ScriptPath = [System.IO.Path]::GetFullPath(\$MyInvocation.MyCommand.Path)
-        Start-Process powershell.exe \`
-            -ArgumentList @(
-                '-NoProfile',
-                '-ExecutionPolicy','Bypass',
-                '-File', \$ScriptPath
-            ) \`
-            -Verb RunAs \`
-            -WindowStyle Hidden \`
-            -Wait
-        exit \$LASTEXITCODE
-    }
+if (\$Restricted -and -not \$Elevated) {
+    \$ScriptPath = [System.IO.Path]::GetFullPath(\$MyInvocation.MyCommand.Path)
+    Start-Process powershell.exe \`
+        -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy','Bypass',
+            '-File', \$ScriptPath
+        ) \`
+        -Verb RunAs \`
+        -WindowStyle Hidden \`
+        -Wait
+    exit \$LASTEXITCODE
 }
 
 if (\$Backup -eq 1 -and \$DryRun -eq 0) {
@@ -1688,9 +1776,7 @@ if (\$Backup -eq 1 -and \$DryRun -eq 0) {
 
 \$Pattern = \"^\$Header\"
 if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
-    if (\$DryRun -eq 1) {
-        Write-Host \"[DRY-RUN] \$Header\"
-    } else {
+    if (\$DryRun -ne 1) {
         Add-Content -Path \"\$HostsPath\" -Value \"\$Header\"
     }
 }
@@ -1698,9 +1784,7 @@ if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
 foreach (\$Domain in \$Domains) {
     \$Pattern = \"^\$Ip\s+\$Domain\"
     if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
-        if (\$DryRun -eq 1) {
-            Write-Host \"[DRY-RUN] \$Ip\`t\$Domain\"
-        } else {
+        if (\$DryRun -ne 1) {
             Add-Content -Path \"\$HostsPath\" -Value \"\$Ip\`t\$Domain\"
         }
     }
@@ -1708,17 +1792,15 @@ foreach (\$Domain in \$Domains) {
 
 \$Pattern = \"^\$Footer\"
 if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
-    if (\$DryRun -eq 1) {
-        Write-Host \"[DRY-RUN] \$Header\"
-    } else {
+    if (\$DryRun -ne 1) {
         Add-Content -Path \"\$HostsPath\" -Value \"\$Footer\"
     }
 }
 "
 
-    log_debug "ps_script: $ps_script"
-
     echo "$ps_script" > "$ps_script_path"
+
+    log_debug "ps_script: $ps_script"
 
     if [[ $SILENT -eq 1 ]]; then
         if [[ "$is_elevated" != "True" ]]; then
@@ -1735,7 +1817,7 @@ if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
              '-ExecutionPolicy Bypass',
              '-File',
              \"$ps_script_path\"
-           )
+          )
         "
     fi
 
@@ -1757,21 +1839,20 @@ if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
 }
 
 check_host_domains() {
-    local quiet
-    quiet=$([ "$1" == "--quiet" ] && \
-    echo true || echo false)
+    local quiet=false
+    quiet=$([[ "$1" == "--quiet" ]] && echo true)
 
-    [ "$quiet" == false ] && \
+    [[ "$quiet" == false ]] && \
     log_info "${HEADER}Configured Domains"
     #-------------------------------------------
     mal_domains=()
     for d in "${DOMAINS[@]}"; do
         local pattern="^\\s*$HOST_IP\\s+$d"
         if grep -qE "$pattern" "$HOSTS_PATH"; then
-            [ "$quiet" == false ] && \
+            [[ "$quiet" == false ]] && \
             log_info "${GREEN}  ✔${END} ${WHITE}$d"
         else
-            [ "$quiet" == false ] && \
+            [[ "$quiet" == false ]] && \
             log_info "${RED}  ✘${END} ${WHITE}$d"
             mal_domains+=("$d")
         fi
@@ -1781,6 +1862,7 @@ check_host_domains() {
 HOST_IP=127.0.0.1
 WIN_HOSTS_PATH="C:\\Windows\\System32\\drivers\\etc\\hosts"
 mal_domains=()
+domains=${#DOMAINS[@]}
 
 if [[ "$AC_LOCAL" == true ]]; then
     check_host_domains "--quiet"
@@ -1789,21 +1871,42 @@ if [[ "$AC_LOCAL" == true ]]; then
         #-------------------------------------------
         [ "$DEBUG_ON" == true ] && { DRY_RUN=1; mal_domains=(); }
         case "$PLATFORM" in
-            linux|mac)
-                unix_hosts_edit
-                ;;
-            wsl)
-                windows_hosts_edit
-                ;;
-            *) critical_exit "Platform $PLATFORM is unsupported." ;;
+        linux|mac)
+            unix_hosts_edit
+            ;;
+        wsl)
+            windows_hosts_edit
+            ;;
+        *)
+            critical_exit "Platform $PLATFORM is unsupported."
+            ;;
         esac
         [[ $DRY_RUN -eq 0 ]] && { check_host_domains ""; }
     fi
+
+    if (( ${#mal_domains[@]} == 0 )); then
+        completion="Success!"
+    elif (( ${#mal_domains[@]} < domains )); then
+        completion="Partial!"
+    else
+        completion="Fail!"
+    fi
+else
+    if (( domains == ${#subdomains[@]} )); then
+        completion="Success!"
+    elif (( domains > 0 )); then
+        completion="Partial!"
+    else
+        completion="Fail!"
+    fi
 fi
 
-log_info "${END}🎉 ${HEADER}Success!"
+emoji='😛'
+if [[ "$completion" == "Partial!" ]]; then emoji='😒'; \
+elif [[ "$completion" == "Fail!" ]]; then emoji='😖'; fi
+
+log_info "${END}$emoji ${HEADER}$completion"
 #-------------------------------------------
-success=true
 
 if [[ "$AC" != true ]]; then
     echo -e "${INFO} 👉 ${BOLD_MAGENTA}Next steps:${END}"
@@ -1814,8 +1917,8 @@ if [[ "$AC" != true ]]; then
     echo -e "${INFO} 🚀 ${GREEN}Confirm everything is running from the console output${END}"
 fi
 
-edit_host_file() {
-    (( ${#mal_domains[@]} == 0 )) && return
+local_access() {
+    [[ "$completion" == "Success!" ]] && return
     echo -e "${INFO} 👉 ${BOLD_MAGENTA}Next steps:${END}" || :
     echo -e "${INFO} ${GREEN}Manually configure these domains in:${END}"
     echo -e "${INFO}   ${WHITE}$HOSTS_PATH${END}${GREEN}.${END}"
@@ -1828,33 +1931,33 @@ edit_host_file() {
         console="console, as administrator"
         copy_cmd="cp"
     fi
-    local directory
-    directory=$(dirname "${HOSTS_PATH}")
-    local hosts_sfile
-    hosts_sfile=$(basename "${HOSTS_PATH}")
+    local hosts_directory
+    hosts_directory=$(dirname "${HOSTS_PATH}")
+    local hosts_file
+    hosts_file=$(basename "${HOSTS_PATH}")
     echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Upon completion of the installation,${END}"
     echo -e "${INFO}     ${GREEN}edit your hosts file so your domains will loop${END}"
     echo -e "${INFO}     ${GREEN}back to your machine - just like localhost.${END}"
     echo -e "${INFO}   ${BLUE}1a.${END} ${GREEN}Create a backup of the original hosts file.${END}"
     echo -e "${INFO}      ${GREEN}From a ${CYAN}Bash${END} ${GREEN}$console, execute:${END}"
-    echo -e "${INFO}      ${WHITE}cd $directory${END}"
+    echo -e "${INFO}      ${WHITE}cd $hosts_directory${END}"
     echo -e "${INFO}      ${WHITE}ts=\$(date +%Y%m%d%H%M%S)${END}"
-    echo -e "${INFO}      ${WHITE}$copy_cmd $hosts_sfile $hosts_sfile.bak.\$ts${END}"
-    echo -e "${INFO}   ${BLUE}1b.${END} ${GREEN}Open the $hosts_sfile file in your editor."
+    echo -e "${INFO}      ${WHITE}$copy_cmd $hosts_file $hosts_file.bak.\$ts${END}"
+    echo -e "${INFO}   ${BLUE}1b.${END} ${GREEN}Open the $hosts_file file in your editor."
     echo -e "${INFO}     ${GREEN}Here, I am using${END} ${CYAN}vim${END}${GREEN}.${END}"
-    echo -e "${INFO}      ${WHITE}sudo vim $hosts_sfile${END}"
+    echo -e "${INFO}      ${WHITE}sudo vim $hosts_file${END}"
     echo -e "${INFO}   ${BLUE}1c.${END} ${GREEN}Add domain entries with format: ${WHITE}ip-address   domain${END}${GREEN}.${END}"
     echo -e "${INFO}      ${GREEN}Save the file (${END}${WHITE}Esc${END}${GREEN},${END} ${WHITE}:wq${END}${GREEN}) and quit your editor.${END}"
     echo -e "${INFO}   ${BLUE}1d.${END} ${GREEN}In your browser, navigate to${END} ${WHITE}$protocol://$WEBUI_DOMAIN${END}${GREEN}.${END}"
     echo -e "${INFO} 🚀 ${GREEN}Confirm everything is running.${END}"
 }
 
-global_access="\
-${BLUE}To access ${NAME} from the internet,${END} \
+global_access() {
+echo -e "${INFO} 🌐 ${BLUE}To access ${NAME} from the internet,${END} \
 ${BLUE}ensure your firewall allows traffic on ports${END} \
 ${WHITE}80${END} ${BLUE}and${END} ${WHITE}443${END}"
+}
 
-[[ "${AC_LOCAL}" == true ]] && edit_host_file || \
-echo -e "${INFO} 🌐 $global_access"
+if [[ "${AC_LOCAL}" == true ]]; then local_access; else global_access; fi
 
 exit 0

@@ -26,49 +26,66 @@ x-n8n: &service-n8n
     - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
     - TZ=${GENERIC_TIMEZONE}
 
-      # MCP Client node
+    # MCP Client node
+
     - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=${N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE}
 
-      # Postgres
     - DB_TYPE=${DB_TYPE}
+
+    # Postgres
+
     - DB_POSTGRESDB_HOST=${POSTGRES_HOST}
     - DB_POSTGRESDB_PORT=${POSTGRES_PORT}
     - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
     - DB_POSTGRESDB_USER=${POSTGRES_USER}
     - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-
-      # Queue / Redis
     - EXECUTIONS_MODE=${EXECUTIONS_MODE}
+
+    # Queue / Redis
+
     - QUEUE_BULL_REDIS_HOST=${QUEUE_BULL_REDIS_HOST}
     - QUEUE_BULL_REDIS_PORT=${QUEUE_BULL_REDIS_PORT}
     - QUEUE_HEALTH_CHECK_ACTIVE=${QUEUE_HEALTH_CHECK_ACTIVE}
     - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=${OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS}
 
-      # Task runners (2.0)
+    # Task runners (2.0)
+
     - N8N_RUNNERS_ENABLED=${N8N_RUNNERS_ENABLED}
     - N8N_RUNNERS_MODE=${N8N_RUNNERS_MODE}
     - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=${N8N_RUNNERS_BROKER_LISTEN_ADDRESS}
     - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
+
     #- N8N_TASK_BROKER_URL=${N8N_TASK_BROKER_URL}
+
+    # Security dials:
+
+    - N8N_BLOCK_ENV_ACCESS_IN_NODE=${N8N_BLOCK_ENV_ACCESS_IN_NODE}
+
     #- N8N_COMMAND_RESPONSE_URL=${N8N_COMMAND_RESPONSE_URL}
+
     #- N8N_TASK_BROKER_PORT=${N8N_TASK_BROKER_PORT}
 
-      # Security dials:
-    - N8N_BLOCK_ENV_ACCESS_IN_NODE=${N8N_BLOCK_ENV_ACCESS_IN_NODE}
     - N8N_RESTRICT_FILE_ACCESS_TO=${N8N_RESTRICT_FILE_ACCESS_TO}
     - N8N_GIT_NODE_DISABLE_BARE_REPOS=${N8N_GIT_NODE_DISABLE_BARE_REPOS}
     - N8N_SKIP_AUTH_ON_OAUTH_CALLBACK=${N8N_SKIP_AUTH_ON_OAUTH_CALLBACK}
     - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=${N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS}
-      # Remove "ExecuteCommand" and "LocalFileTrigger" nodes from exclude list
+
+    # Remove "ExecuteCommand" and "LocalFileTrigger" nodes from exclude list
+
     - NODES_EXCLUDE=${NODES_EXCLUDE}
 
-      # HTTPS via reverse proxy
+    - OLLAMA_HOST=${OLLAMA_HOST}
+
+    # HTTPS via reverse proxy
+
     #- N8N_HOST=${N8N_HOSTNAME:-${N8N_HOST}}
+
     #- N8N_PORT=${N8N_PORT}
+
     #- N8N_PROTOCOL=${N8N_PROTOCOL}
+
     #- N8N_PROXY_HOPS=${N8N_PROXY_HOPS}
 
-    - OLLAMA_HOST=${OLLAMA_HOST}
     - LLAMACPP_HOST=${LLAMACPP_HOST}
     - PROJECTS_PATH=${PROJECTS_PATH}
     - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
@@ -227,14 +244,14 @@ services:
     container_name: n8n-import
     entrypoint: /bin/sh
     command:
-    - "-c"
-    - |
-      if [ -z "$(n8n list:workflow --onlyId)" ]; then
-        n8n import:credentials --separate --input=/data/credentials && \
-        n8n import:workflow --separate --input=/data/workflows
-      else
-        echo "Workflows already loaded, skipping import"
-      fi
+      - "-c"
+      - |
+        if [ -z "$(n8n list:workflow --onlyId)" ]; then
+          n8n import:credentials --separate --input=/data/credentials && \
+          n8n import:workflow --separate --input=/data/workflows
+        else
+          echo "Workflows already loaded, skipping import"
+        fi
     depends_on:
       postgres:
         condition: service_healthy
@@ -358,7 +375,7 @@ services:
     restart: always
 
   caddy:
-    profiles: ["caddy", "ai-all"]
+    profiles: [caddy, ai-all]
     image: docker.io/library/caddy:2-alpine
     container_name: caddy
     restart: unless-stopped
@@ -396,8 +413,49 @@ services:
         max-size: "1m"
         max-file: "1"
 
+    depends_on:
+      kong:
+        condition: service_healthy
+      authelia:
+        condition: service_healthy
+
+  nginx:
+    profiles:
+      - nginx
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80/tcp
+      - 443:443/tcp
+    depends_on:
+      kong:
+        condition: service_healthy
+      authelia:
+        condition: service_healthy
+    image: jonasal/nginx-certbot:6.0.1-nginx1.29.5
+    environment:
+      NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?error}
+      CERTBOT_EMAIL: ${AC_EMAIL:?error}
+      USE_LOCAL_CA: 1
+    volumes:
+      - ./access/nginx:/etc/nginx/user_conf.d
+      - ./access/nginx/letsencrypt:/etc/letsencrypt
+    command:
+      - /bin/bash
+      - -c
+      - |
+        envsubst '$${NGINX_SERVER_NAME}' < /etc/nginx/user_conf.d/nginx.template > /etc/nginx/user_conf.d/nginx.conf \
+        && /scripts/start_nginx_certbot.sh
+  ngnix:
+    expose:
+      - 81/tcp
+      - 443/tcp
+      - 443/udp
+      - 80/tcp
+    TZ: France/Paris
+
   authelia:
-    profiles: ["caddy", "ai-all"]
+    profiles: [caddy, nginx, ai-all]
     container_name: authelia
     image: authelia/authelia:4.38
     volumes:
@@ -419,7 +477,6 @@ services:
       AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:?error}
       AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:?error}
       AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}
-
   langfuse-worker:
     profiles: ["langfuse", "ai-all"]
     image: langfuse/langfuse-worker:3
@@ -435,7 +492,7 @@ services:
       clickhouse:
         condition: service_healthy
     expose:
-     - 3030/tcp
+      - 3030/tcp
     environment: &langfuse-worker-env
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       SALT: ${LANGFUSE_SALT}
@@ -532,7 +589,9 @@ services:
     container_name: minio
     restart: always
     entrypoint: sh
+
     # create the 'langfuse' bucket before starting the service
+
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
     expose:
       - 9000/tcp
@@ -667,37 +726,3 @@ services:
     devices:
       - "/dev/kfd"
       - "/dev/dri"
-  nginx:
-    profiles:
-      - nginx
-    container_name: nginx
-    restart: unless-stopped
-    ports:
-      - 80:80/tcp
-      - 443:443/tcp
-    depends_on:
-      kong:
-        condition: service_healthy
-      authelia:
-        condition: service_healthy
-    image: jonasal/nginx-certbot:6.0.1-nginx1.29.5
-    environment:
-      NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?error}
-      CERTBOT_EMAIL: ${AC_EMAIL:?error}
-      USE_LOCAL_CA: 1
-    volumes:
-      - ./access/nginx:/etc/nginx/user_conf.d
-      - ./access/nginx/letsencrypt:/etc/letsencrypt
-    command:
-      - /bin/bash
-      - -c
-      - |
-        envsubst '$${NGINX_SERVER_NAME}' < /etc/nginx/user_conf.d/nginx.template > /etc/nginx/user_conf.d/nginx.conf \
-        && /scripts/start_nginx_certbot.sh
-  ngnix:
-    expose:
-      - 81/tcp
-      - 443/tcp
-      - 443/udp
-      - 80/tcp
-    TZ: France/Paris
