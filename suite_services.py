@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 24, 2026
+Last Update February 26, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -170,7 +170,7 @@ class Formatter(logging.Formatter):
         return ('\033[{0}m').format(rendition)
 
     @staticmethod
-    def style(level:int | None=None, color:int | None=None, **kwargs):
+    def style(level:int | None = None, color:int | None = None, **kwargs):
         """Return Select Graphic Rendition style parameters
            kwargs (level): bright:bool, bold:bool, faint:bool, italic:bool, underline:bool,
                            emoji:str
@@ -1067,7 +1067,7 @@ def check_prerequisites():
         return False
     return True
 
-def get_dotenv_vars(env_file=None, force=False, auto_config=False):
+def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None):
     """Load environment variables from .env file"""
     if env_file is None:
         env_file = os.path.join(".env")
@@ -1077,6 +1077,8 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False):
         if os.path.exists(".env.example"):
             shutil.copy('.env.example', '.env')
             valid_env_file = os.path.exists(env_file)
+            if valid_env_file:
+                auto_config = str(dotenv.get_key(env_file, 'AC')).lower() == 'true'
             if not auto_config:
                 log.warning("The .env file was not found - it was created from .env.example template")
                 log.critical("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
@@ -1084,28 +1086,43 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False):
         else:
             log.critical("The .env.example file was not found - exiting...")
             return {}
-    elif not auto_config:
+    else:
+        auto_config = str(dotenv.get_key(env_file, 'AC')).lower() == 'true'
+
+    if not auto_config:
         with open(env_file, 'r') as f:
             env_content = f.read()
-        default_secrets = [
-            'N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key',
-            'N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key',
-            'N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret',
-            'POSTGRES_PASSWORD=your-super-secret-postgres-password',
-            'JWT_SECRET=your-super-secret-jwt-token-with-at-least-40-characters-long',
-            'ANON_KEY=your-super-secret-and-super-super-long-anon-token',
-            'SERVICE_ROLE_KEY=your-super-secret-and-super-super-long-service-role-token',
-            'DASHBOARD_PASSWORD=your-super-secure-postgres-password',
-            'SECRET_KEY_BASE=your-super-secret-and-long-64-character-hex-32-secret',
-            'VAULT_ENC_KEY=your-32-character-encryption-key',
-            'PG_META_CRYPTO_KEY=your-encryption-key-32-chars-min',
-            'FLOWISE_PASSWORD=your-super-secret-postgres-password',
-            'NEO4J_AUTH=neo4j/your-super-secret-password-2',
-            'CLICKHOUSE_PASSWORD=your-super-secret-password-3',
-            'MINIO_ROOT_PASSWORD=your-super-secret-password-4',
-            'LANGFUSE_SALT=your-super-secret-key-1',
-            'NEXTAUTH_SECRET=your-super-secret-key-2',
-            'ENCRYPTION_KEY=your-super-secret-key-3']
+        default_secrets = []
+        modules = profile if profile else ['ai-all']
+        if modules:
+            if any(m for m in modules if m in ['n8n', 'n8n-all', 'ai-all']):
+                default_secrets.extend([
+                    'N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key',
+                    'N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key',
+                    'N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret',
+                    'POSTGRES_PASSWORD=your-super-secret-postgres-password'])
+            if any(m for m in modules if m in ['supabase', 'ai-all']):
+                default_secrets.extend([
+                    'JWT_SECRET=your-super-secret-jwt-token-with-at-least-40-characters-long',
+                    'ANON_KEY=your-super-secret-and-super-super-long-anon-token',
+                    'SERVICE_ROLE_KEY=your-super-secret-and-super-super-long-service-role-token',
+                    'DASHBOARD_PASSWORD=your-super-secure-postgres-password',
+                    'SECRET_KEY_BASE=your-super-secret-and-long-64-character-hex-32-secret',
+                    'VAULT_ENC_KEY=your-32-character-encryption-key',
+                    'PG_META_CRYPTO_KEY=your-encryption-key-32-chars-min'])
+            if any(m for m in modules if m in ['flowise', 'ai-all']):
+                default_secrets.extend([
+                    'FLOWISE_PASSWORD=your-super-secret-postgres-password'])
+            if any(p for p in modules if p in ['neo4j', 'ai-all']):
+                default_secrets.extend([
+                    'NEO4J_AUTH=neo4j/your-super-secret-password-2'])
+            if any(m for m in modules if m in ['langfuse', 'ai-all']):
+                default_secrets.extend([
+                    'CLICKHOUSE_PASSWORD=your-super-secret-password-3',
+                    'MINIO_ROOT_PASSWORD=your-super-secret-password-4',
+                    'LANGFUSE_SALT=your-super-secret-key-1',
+                    'NEXTAUTH_SECRET=your-super-secret-key-2',
+                    'ENCRYPTION_KEY=your-super-secret-key-3'])
         unset_secrets = []
         for secret in default_secrets:
             if secret in env_content:
@@ -1575,7 +1592,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     if not env_vars:
         log.error("The auto-configure env_vars dictionary is empty!")
         return []
-    ac = env_vars.get('AC', 'True')
+    ac = env_vars.get('AC', 'False')
     if ac and ac.lower() != 'true':
         log.notice("Auto-configure is disabled. Set AC=True in .env to enable.") # type:ignore[reportAttributeAccessIssue]
         return []
@@ -1594,7 +1611,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
 
     #TODO: Set generic timezone - Country/City
     # AC - bool
-    ac_env_list = ['AC=true']
+    ac_env_list = [f'AC="{str(ac).lower()}"']
     # AC_SUDO_USER - str
     sudo_user = getpass.getuser()
     non_root = "non-root"
@@ -1755,12 +1772,12 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         if env_pair[0].endswith('_PASSWORD'):
             env_pair[1] = '***'
         emoji = '🌐'
-        env_var_prefix = ("{}• {} {:18s}{}={}{}").format(
+        env_var_prefix = ("{}• {} {:18s}{}= {}{}").format(
             env_prefix, emoji, env_pair[0], LSHF.suffix(),
             var_prefix, env_pair[1])
         env_var_style = {'prefix': env_var_prefix, 'suffix': LSHF.suffix()}
         env_var_style.update({'purge_msg':'True'})
-        raw_msg = ("• {} {:18s}={}").format(emoji, env_pair[0], env_pair[1])
+        raw_msg = ("• {} {:18s}= {}").format(emoji, env_pair[0], env_pair[1])
         log.info(raw_msg, extra=env_var_style)
     log.info("="*60, extra=line_style)
 
@@ -1864,9 +1881,12 @@ def main():
     open_webui_profiles = ['open-webui', 'open-webui-all']
     open_webui_all_profiles = open_webui_profiles + n8n_all_profiles
     agent_all_profiles = open_webui_all_profiles + ['opencode']
-    server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j', 'caddy']
+    server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j']
+    subdomain_profiles = n8n_profiles + open_webui_profiles + server_profiles + \
+                         llama_host_profiles   
+    proxy_profiles = ['caddy', 'nginx']
     profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + \
-               llama_docker_profiles + llama_host_profiles + ['no-auto-config']
+               llama_host_profiles + llama_docker_profiles + proxy_profiles
     managemant_operations = ['stop', 'stop-llama', 'start', 'pause', 'unpause']
     data_operations = ['backup-data', 'restore-data']
     installation_operations = ['update', 'install']
@@ -1874,7 +1894,6 @@ def main():
     operations = managemant_and_data_operations + installation_operations
     environments = ['private', 'public']
     log_levels = ['OFF', 'CRITICAL', 'ERROR', 'WARNING', 'NOTICE', 'INFO', 'DEBUG']
-    no_auto_config_list = managemant_and_data_operations + ['no-auto-config']
     parser = argparse.ArgumentParser(
         prog=f'{file}',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1907,11 +1926,11 @@ def main():
                 flowise                                     Flowise
                 supabase                                    Supabase database
                 searxng langfuse neo4j                      management, analytics and monitoring utilities
-                caddy                                       Caddy network management
+                caddy                                       Caddy proxy
+                ngnix                                       Ngnix proxy
                 open-webui-all                              Open WebUI complete bundle
                 n8n-all                                     n8n, Open WebUI and selected utilities bundle
                 ai-all                                      full {name} bundle
-                no-auto-config                              do not auto-configure access on install or update
 
               - LLM modules:
                 cpu gpu-nvidia gpu-amd                      Ollama CPU/GPU options running in Docker
@@ -1965,9 +1984,6 @@ def main():
 
               ...to update all modules and restart using Ollama CPU running in Docker:
               python {file} --profile ai-all cpu --operation update
-
-              ...to update all modules but do not auto-configure access management:
-              python {file} --profile ai-all no-auto-config --operation update
 
               ...to install all modules and start using Ollama running on the Host:
               python {file} --operation install
@@ -2055,8 +2071,8 @@ def main():
     # Load working environment variables
     mod_env_vars = {}
     ac_auto_config = \
-        any(p for p in args.profile if p not in no_auto_config_list)
-    env_vars = get_dotenv_vars(auto_config=ac_auto_config)
+        any(p for p in args.profile if p not in managemant_and_data_operations)
+    env_vars = get_dotenv_vars(auto_config=ac_auto_config, profile=args.profile)
     if not env_vars:
         sys.exit(1)
 
@@ -2069,7 +2085,11 @@ def main():
         if element.startswith('AC_PROXY='):
             array = element.split('=')
             if array[1]:
-                args.profile.append([array[1]])
+                args.profile.append(array[1]) if array[1] not in args.profile else None
+            for proxy in proxy_profiles:
+                if any(p for p in args.profile if p == proxy):
+                    if proxy != array[1]:
+                        args.profile.remove(proxy)
             break
 
     if ac_auto_config: # TEMP: Relocate auto-configure block from below during Dev
@@ -2078,10 +2098,19 @@ def main():
     # TEMP: block end
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
-        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
-        ac_env_vars.append(f'AC_SUPABASE={str(supabase).lower()}')
+        ac_subdomains = []
+        default = any(p for p in args.profile if p == 'ai-all')
+        if not default:
+            for profile in subdomain_profiles:
+                if any(p for p in args.profile if p == profile):
+                    if profile.endswith('-all'):
+                        profile.replace('-all', '')
+                    ac_subdomains.append(profile)
+        if ac_subdomains:
+            ac_env_vars.append(f'AC_SUBDOMAINS="{" ".join(ac_subdomains)}"')
         if log_level == logging.DEBUG:
             ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
+        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
         run_ai_suite_ac_auto_config(ac_env_vars)
     if ac_auto_config: # TEMP: End here if working on auto-config and no breakpoints set...
         log.debug("TEMP: Finished!")
@@ -2172,7 +2201,7 @@ def main():
                         log.info(f"{name} will use {llama} profile argument '{profile_arg}'...")
                         first_argument = True
                 else:
-                    args.profile.remove(profile_arg) if profile_arg in args.profile else None
+                    args.profile.remove(profile_arg)
         # Check if any llama host profile arguments specified and remove if found
         for profile_arg in llama_host_profiles:
             if any(p for p in args.profile if p == profile_arg):
@@ -2282,10 +2311,15 @@ def main():
     """ TEMP: Moved to '# Access auto-configuration' above during Dev
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
-        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
-        ac_env_vars.append(f'AC_SUPABASE={str(supabase).lower()}')
+        ac_subdomains = []
+        for profile in server_profiles + llama_host_profiles:
+            if any(p for p in args.profile if p == profile):
+                ac_subdomains.append(profile)
+        if ac_subdomains:
+            ac_env_vars.append(f'AC_SUBDOMAINS={" ".join(ac_subdomains)}')
         if log_level == logging.DEBUG:
             ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
+        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
         run_ai_suite_ac_auto_config(ac_env_vars)
     """
 

@@ -1,28 +1,32 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 25, 2026
+# Last Update February 27, 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
-# This script is adapted from Inder Singh's setup.sh shell script.
+# Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
+# Authelia 2FA identity and access management using auto-generated credentials.
+#
+# This script is executed on --operation update or install by suite_services.py
+# when if AC=True in .env. It can also be run stand-alone.
+#
+# Portions of this code are derived from Inder Singh's setup.sh shell script.
 # Copyright 2026 Inder Singh. Licensed under Apache License 2.0.
 # Original source:
 #    https://github.com/singh-inder/supabase-automated-self-host/raw/main/setup.sh
-#
-# This script is executed on --operation update or install by suite_services.py
-# when --profile no-auto-config is not specified.
-#
 
 set -euo pipefail
 
-VERSION="0.5.0"
+VERSION="0.2.0"
 
 # https://stackoverflow.com/a/28085062/18954618
 : "${CI:=false}"
+: "${APP_NAME:="AI-Suite"}"
 : "${WITH_REDIS:=false}"
 : "${SUDO_USER:="$(whoami)"}"
 : "${DEBUG_ON:=false}"
-: "${DRY_RUN:=0}"
 : "${BACKUP:=1}"
+: "${SILENT:=$([[ "$CI" == true ]] && echo 1 || echo 0)}"
+: "${DRY_RUN:=$([[ "$DEBUG_ON" == true ]] && echo 1 || echo 0)}"
 : "${INTERNAL_ELEVATED:=0}"
 
 # Reset BASH time counter
@@ -32,14 +36,14 @@ SECONDS=0
 SGR=''
 END=''
 HEADER=''
-BODY='  - '
+BODY="  - "
 BOLD=''
 DIM=''
 ITALIC=''
 UNDERLINE=''
 RED=''
 GREEN=''
-#YELLOW=''
+YELLOW=''
 BLUE=''
 MAGENTA=''
 CYAN=''
@@ -49,21 +53,22 @@ BOLD_MAGENTA=''
 ITALIC_RED_BG=''
 UNDERLINE_YELLOW=''
 COLON=":"
-NAME="${AC_NAME:="AI-Suite"}:"
-NOTICE="${NAME} NOTICE"
-QUESTION="${NAME} QUESTION"
-CRITICAL="${NAME} CRITICAL"
-ERROR="${NAME} ERROR"
-WARNING="${NAME} WARNING"
-DEBUG="${NAME} DEBUG"
-INFO="${NAME} INFO"
+APP="${APP_NAME}:"
+NOTICE="${APP} NOTICE"
+QUESTION="${APP} QUESTION"
+CRITICAL="${APP} CRITICAL"
+ERROR="${APP} ERROR"
+WARNING="${APP} WARNING"
+DEBUG="${APP} DEBUG"
+INFO="${APP} INFO"
 
+sgr() { [[ -n "${END}" ]] && echo "${SGR}$*m" || : ; }
+
+is_sgr() { [[ "${1:0:5}" == "${SGR}" ]] && echo "${END}" || echo "$2" ; }
+
+# https://stackoverflow.com/a/28938235/18954618
 # Check if terminal supports colors https://unix.stackexchange.com/a/10065/642181
-sgr() { [ -n "${END}" ] && echo "${SGR}$*m" || : ; }
-
-is_sgr() { [ "${1:0:5}" == "${SGR}" ] && echo "${END}" || echo "$2" ; }
-
-if [ -t 1 ]; then
+if [[ "$SILENT" == 0 && -t 1 ]]; then
     total_colors=$(tput colors)
     if [[ -n "$total_colors" && $total_colors -ge 8 ]]; then
         SGR='\033['
@@ -72,10 +77,10 @@ if [ -t 1 ]; then
         DIM='2;'
         ITALIC='3;'
         UNDERLINE='4;'
-        # https://stackoverflow.com/a/28938235/18954618
         RED=$(sgr '31')
         GREEN=$(sgr '32')
-        #YELLOW=$(sgr '33')
+        # shellcheck disable=SC2034
+        YELLOW=$(sgr '33')
         BLUE=$(sgr '34')
         MAGENTA=$(sgr '35')
         CYAN=$(sgr '36')
@@ -87,14 +92,14 @@ if [ -t 1 ]; then
         COLON="${END}$(sgr "97"):"
         HEADER="$(sgr "${BOLD}${UNDERLINE}92")"
         BODY="$(sgr "37")  -${END} $(sgr "32")"
-        NAME="$(sgr "${ITALIC}94")${NAME%?}${COLON}${END}"
-        NOTICE="${NAME} $(sgr "${BOLD}95")NOTICE${END}"
-        QUESTION="${NAME} $(sgr "${BOLD}92")QUESTION${END}"
-        CRITICAL="${NAME} $(sgr "${BOLD}41")CRITICAL${END}"
-        ERROR="${NAME} $(sgr "${BOLD}91")ERROR${END}"
-        WARNING="${NAME} $(sgr "${BOLD}${UNDERLINE}93")WARNING${END}"
-        DEBUG="${NAME} $(sgr "${BOLD}97")DEBUG${END}"
-        INFO="${NAME} $(sgr "36")INFO${END}"
+        APP="$(sgr "${ITALIC}94")${APP%?}${COLON}${END}"
+        NOTICE="${APP} $(sgr "${BOLD}95")NOTICE${END}"
+        QUESTION="${APP} $(sgr "${BOLD}92")QUESTION${END}"
+        CRITICAL="${APP} $(sgr "${BOLD}41")CRITICAL${END}"
+        ERROR="${APP} $(sgr "${BOLD}91")ERROR${END}"
+        WARNING="${APP} $(sgr "${BOLD}${UNDERLINE}93")WARNING${END}"
+        DEBUG="${APP} $(sgr "${BOLD}97")DEBUG${END}"
+        INFO="${APP} $(sgr "36")INFO${END}"
     fi
 fi
 
@@ -109,7 +114,7 @@ log_warning() {
     echo -e "${WARNING} $(is_sgr "${1}" "${UNDERLINE_YELLOW}")$1${END}"
 }
 log_debug() {
-    test "$DEBUG_ON" != true && return
+    [[ "$DEBUG_ON" != true ]] && return
     echo -e "${DEBUG} $(is_sgr "${1}" "${WHITE}")$1${END}"
 }
 log_info() {
@@ -133,6 +138,7 @@ fi
 # shellcheck disable=SC2329
 finish_elapsed_time() {
     set +x
+    local ELAPSED
     ELAPSED="$((SECONDS / 3600))hrs $(((SECONDS / 60) % 60))min $((SECONDS % 60))sec"
     echo -e "${INFO} ${CYAN}Elapsed time:${END} ${GREEN}$ELAPSED${END}"
     echo -e "${INFO} ${GREEN}-------------------------------------------${END}"
@@ -143,12 +149,15 @@ finish () {
     local vars=(AC_SUDO_PASSWORD AC_PASSWORD password confirm_password)
     for var in "${vars[@]}"; do [ -v "$var" ] && unset "$var" ; done
 
-    local status="Completed"
     local header="${END}✅ ${HEADER}"
-    if [ "$completion" == "Partial!" ]; then
+    local status="Completed"
+
+    if [ "$completion" == "Success!" ]; then
+        :
+    elif [ "$completion" == "Partial!" ]; then
         header="${END}⚠️ ${HEADER}"
         status="Finished"
-    elif [ "$completion" == "Fail!" ]; then
+    else
         header="${END}❌ $(sgr "${UNDERLINE}91")"
         status="Terminated"
     fi
@@ -160,7 +169,7 @@ finish () {
         for bin in "${binaries[@]}"; do log_info "  ✘ $(basename "${bin}")"; (rm "$bin"); done
     fi
 
-    log_info "${header}Configuration ${status}"
+    log_info "${header}Configuration $status"
     #-------------------------------------------
     finish_elapsed_time
 
@@ -184,6 +193,8 @@ finish () {
     sed -i "s/\x1b\[[0-79;]\{1,11\}m//g" "$LOG"
 }
 
+trap finish EXIT
+
 # Process arguments
 usage() {
     cat <<EOF
@@ -191,18 +202,23 @@ $0 v$VERSION
 
 Usage: [ENVIRONMENT] $0 [OPTIONS]
 
-Setup self-hosted $AC_NAME with Caddy/Nginx proxy and Authelia 2FA
-identity and access management with auto-generated credentials.
+Auto-configure, with user prompts, self-hosted $APP_NAME with Caddy/Nginx proxy and
+Authelia 2FA identity and access management using auto-generated credentials.
 
 Environment:
-  CI:false             Non-interactive mode - e.g running a GitHub build test
-  SUDO_USER:$(whoami)  Non-root SUDO user ID - brew does not allow installation as root user
-  WITH_REDIS:bool      Setup Authelia to use Redis - optional if using --with-authelia option
+  CI:bool         Non-interactive mode - e.g running a GitHub build test, default: $CI
+  APP_NAME:str    The application name in $0 - default: $APP_NAME
+  SUDO_USER:str   Non-root user - brew does not allow installation as root, default: $SUDO_USER
+  WITH_REDIS:bool Set Authelia to use Redis - optional if --with-authelia, default: $WITH_REDIS
+  DEBUG_ON:bool   Turn on debug mode, log_debug statements enabled - default: $DEBUG_ON
+  DRY_RUN:int     Simulate adding domains to hosts file - 1 when DEBUG_ON=true, default: $DRY_RUN
+  SILENT:int      No prompt for elevated privilage - 1 when CI=true, default: $SILENT
+  BACKUP:int      Backup hosts file before update - default: $BACKUP
 
   Auto-configure environment variables:
-  AC:false               Auto-Configure mode - expects required inputs from env vars
-  AC_SUDO_PASSWORD:str   SUDO user password - directed to sudo using a Here string
-  AC_SUDO_USER:str       Non-root SUDO user ID - brew does not allow installation as root user
+  AC:false               Auto-configure mode - expects required inputs from 'env' variables
+  AC_SUDO_PASSWORD:str   SUDO user password - optional, user prompt if not set and not elevated
+  AC_SUDO_USER:str       Non-root SUDO user - brew does not allow installation as root user
   AC_DOMAIN:str          Domain (optional) - Required for global (public) configuration
   AC_LOCAL:false         Local (private) installation - 1. requires additional configuration
   AC_PROXY:caddy         Set the reverse proxy to use (Caddy or Nginx)
@@ -213,32 +229,56 @@ Environment:
   AC_EMAIL:str           User email address for Authelia - required if AC_WITH_AUTHELIA=true
   AC_DISPLAY_NAME:str    User display name for Authelia - 3. required if AC_WITH_AUTHELIA=true
   AC_WITH_REDIS:false    Use Redis with Authelia - 4. recommended if AC_WITH_AUTHELIA=true
+  AC_SUBDOMAINS:str      Subdomain(s) to create domain name(s) - 5. all subdomains used if not set
   AC_LOG_PATH:str        Directory path where configuration runtime log is deposited
 
-  1. Add your local domain to the hosts file to loop back to your machine like localhost.
-     For example: 127.0.0.1 https://supabase.local.com
+  AC_SEARXNG:false  Configure proxy for SearXNG domain name
+  AC_LLAMA:false    Configure proxy for LLAMA (LLaMA.cpp/Ollama) domain name
+  AC_LLAMACPP:false Using LLaMA.cpp LLM (instead of Ollama)
+
+  1. Automatically adds your local domain name(s) to the hosts file to loop back to your
+     machine like localhost - for example: 127.0.0.1   open-webui.local.pc.
   2. If not using an SMTP server, enter any well formatted email address.
      You can view codes sent by Authelia in ./authelia/notifications.txt.
   3. Only alphanumeric charactes and spaces are allowed.
   4. Used if AC_WITH_AUTHELIA=true. Recommended if global (public) install, otherwise optional
+  5. Subdomains (external Docker containers):
+     - open-webui
+     - n8n
+     - supabase
+     - flowise
+     - langfuse
+     - searxng
+     - neo4j
+     - llamacpp or ollama - only one LLM at a tume can be configured
 
 Options:
-  -h, --help           Show this help message and exit
-  --proxy PROXY        Set the reverse proxy to use (Caddy or Nginx) - Default: Caddy
-  --with-authelia      Enable or disable Authelia 2FA support - Default: false (disable)
-  --subdomain <name>   Subdomain(s) beyond open-webui n8n and supabase - ignore for all
-  --version            Display this script version
-  --help.              Display this information
+  -h, --help         Show this help message and exit
+  --proxy PROXY      Set the reverse proxy to use (Caddy or Nginx) - default: Caddy
+  --with-authelia    Enable or disable Authelia 2FA support - default: false (disable)
+  --subdomain <name> Subdomain(s) to create domain name(s) - all used if not set
+  --version          Display this script version: v$VERSION
+  --help             Display this information
 
 Examples:
-  chmod +x $0                         # Make $0 executable
-  $0                                  # Basic username and password authentication
-  $0 --proxy nginx --with-authelia    # Configuration with Nginx and Authelia 2FA
-  $0 --proxy caddy                    # Configuration with Caddy and no 2FA
+  chmod +x $0                          # Make $0 executable
+  $0                                   # Basic username and password authentication
+  $0 --proxy nginx --with-authelia     # Configuration with Nginx and Authelia 2FA
+  $0 --proxy caddy                     # Configuration with Caddy and no 2FA
+  env <AC_VAR> <AC_VAR> <AC_VAR>... $0 # Auto-configure mode using environment variables
 
-For more information, see README.md:
+For more information on , see README.md:
 https://github.com/trevorsandy/ai-suite/blob/Dev/README.md
 EOF
+}
+
+bash_version_at_or_above_4_4() {
+    [[ -z $BASH_VERSION ]] && return 1
+    local required_ver="4.4"
+    if [ "$(printf '%s\n' "$required_ver" "$BASH_VERSION" | sort -V | head -n1)" = "$required_ver" ]; then
+       return 0 
+    fi
+    return 1
 }
 
 has_argument() {
@@ -248,15 +288,23 @@ has_argument() {
 extract_argument() { echo "${2:-${1#*=}}"; }
 
 update_subdomains() {
-    for name in "$@"; do
+    local exists=false
+    local sub_domains=()
+    for sub_domain in "$@"; do
+        IFS=' ' read -r -a sub_domains <<< "$sub_domain"
+    done
+    for sub_domain in "${sub_domains[@]}"; do
+        exists=false
         for subdomain in "${subdomains[@]}"; do
-            test "$name" == "$subdomain" && return
+            [[  "$sub_domain" == "$subdomain"  ]] && { exists=true; break; }
         done
-        subdomains+=("$name")
+        [[ "$exists" == false ]] && \
+        subdomains+=("$sub_domain")
     done
 }
 
 completion=''
+subdomains=()
 ac_install_type=''
 ac_user_confirm=''
 with_authelia=false
@@ -264,13 +312,10 @@ using_sudo_user=false
 proxy="caddy"
 url_parser_bin="./access/url-parser"
 yq_bin="./access/yq"
-subdomains=(open-webui n8n supabase)
 
 ORIGINAL_ARGS=("$@")
 PLATFORM="unknown"
 HOSTS_PATH="/etc/hosts"
-
-trap finish EXIT
 
 # https://medium.com/@wujido20/handling-flags-in-bash-scripts-4b06b4d0ed04
 while [ $# -gt 0 ]; do
@@ -309,13 +354,20 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+if ! bash_version_at_or_above_4_4; then
+    critical_exit "Bash version 4.4 and above is required. Current version is $BASH_VERSION."
+fi
+
 if [[ "$proxy" != "caddy" && "$proxy" != "nginx" ]]; then
     critical_exit "Only caddy or nginx proxy supported - received $proxy"
 fi
 
 # Set all subdomains if no subdomain specified, else append default domains
-if (( ${#subdomains[@]} == 3 )); then
-    subdomains+=(flowise langfuse searxng neo4j llamacpp ollama)
+if [[ "$AC" == true ]]; then
+    update_subdomains "${AC_SUBDOMAINS[@]}"
+fi
+if (( ${#subdomains[@]} == 0 )); then
+    subdomains+=(open-webui n8n supabase flowise langfuse searxng neo4j llamacpp ollama)
 fi
 
 if [ "$AC" == true ]; then
@@ -362,10 +414,6 @@ detect_arch() {
     esac
 }
 
-arch="$(detect_arch)"
-
-is_wsl() { grep -qi microsoft /proc/version 2>/dev/null ; }
-
 #https://stackoverflow.com/a/18434831/18954618
 detect_os() {
     case $(uname | tr '[:upper:]' '[:lower:]') in
@@ -375,6 +423,17 @@ detect_os() {
     esac
 }
 
+# is_wsl() { grep -qi microsoft /proc/version 2>/dev/null ; }
+
+is_wsl() {
+    case "$(uname -r)" in
+    *icrosoft*WSL2 | *icrosoft*wsl2) return ;;
+    *icrosoft) critical_exit "Microsoft WSL1 is not supported. Use WSL2 with 'wsl --set-version <distro> 2'" ;;
+    *) return 1 ;;
+    esac
+}
+
+arch="$(detect_arch)"
 os="$(detect_os)"
 
 case "$os" in
@@ -391,6 +450,7 @@ err) critical_exit "Unsupported platform." ;;
 esac
 
 log_debug "PLATFORM: $PLATFORM"
+log_debug "BASH_VERSION: $BASH_VERSION"
 log_debug "HOSTS_PATH: $HOSTS_PATH"
 
 if [[ "$arch" == "err" ]]; then critical_exit "Unsupported CPU architecture"; fi
@@ -404,22 +464,21 @@ is_windows_admin() {
       [Security.Principal.WindowsBuiltInRole]::Administrator))"
 }
 
-: "${SILENT:=$(is_unix_root "" && echo 1 || echo 0)}"
-
+available() { command -v "$1" >/dev/null; }
 packages=(curl wget jq openssl git)
-if [ -x "$(command -v apt-get)" ]; then
+if available apt-get; then
     packages+=("apt-get:apache2-utils")
-elif [ -x "$(command -v apk)" ]; then
+elif available apk; then
     packages+=("apk:apache2-utils")
-elif [ -x "$(command -v dnf)" ]; then
+elif available dnf; then
     packages+=("dnf:httpd-tools")
-elif [ -x "$(command -v zypper)" ]; then
+elif available zypper; then
     packages+=("zypper:apache2-utils")
-elif [ -x "$(command -v pacman)" ]; then
+elif available pacman; then
     packages+=("apt-get:apache")
-elif [ -x "$(command -v pkg)" ]; then
+elif available pkg; then
     packages+=("pkg:apachew24")
-elif [ -x "$(command -v brew)" ]; then
+elif available brew; then
     # brew does not allow installation as root so run install as target SUDO user with SUDO privileges
     if test -n "$SUDO_USER"; then
         if is_unix_root "$SUDO_USER"; then
@@ -437,7 +496,7 @@ fi
 
 package_is_installed() {
     local i=1 # set i to 0 if package not found
-    package="$1"
+    local package="$1"
     case "${package_manager}" in
     apt-get) dpkg -s apache2-utils > /dev/null 2>&1 || { local i=0; } ;;
     apk) apk info -e apache2-utils > /dev/null 2>&1 || { local i=0; } ;;
@@ -545,17 +604,18 @@ install_packages() {
 
 log_info "${HEADER}Required Packages"
 #-------------------------------------------
-if command -v docker &> /dev/null; then
+if available docker; then
     log_info "${GREEN}  ✔${END} ${WHITE}Docker"
 else
     log_info "${RED}  ✘${END} ${WHITE}Docker"
 fi
-missing_packages=()
+
 package_manager=''
-pkg_pair=()
-for i in "${packages[@]}"; do
-    package="$i"
-    IFS=':' read -r -a pkg_pair <<< "$i"
+missing_packages=()
+for package in "${packages[@]}"; do
+    pkg_pair=()
+    package_manager=''
+    IFS=':' read -r -a pkg_pair <<< "$package"
     if (( ${#pkg_pair[@]} > 1 )); then
         package="${pkg_pair[1]}"
         package_manager="${pkg_pair[0]}"
@@ -656,8 +716,6 @@ elide() {
     awk -v max=35 '{ if (length($0) > max) print substr($0, 1, max-3) "..."; else print; }'
 }
 
-to_upper() { echo "$1" | awk '{print toupper($0)}' ; }
-
 # Populate module hostname (URL)
 log_info "${HEADER}Populate Domain Names"
 #-------------------------------------------
@@ -666,6 +724,48 @@ N8N_DOMAIN=''
 OLLAMA_DOMAIN=''
 LLAMACPP_DOMAIN=''
 SUPABASE_DOMAIN=''
+
+unset_domain_vars() {
+    local sub var
+
+    for sub in "${subdomains[@]}"; do
+        domain_var var "$sub"
+
+        declare -p "$var" &>/dev/null || continue
+        unset "$var"
+        log_debug "Unset domain variable: $var"
+    done
+}
+
+domain_var() {
+    local __out=$1
+    local sub=$2
+
+    local base=${sub/open-webui/WEBUI}
+    base=${base//-/_}
+
+    printf -v "$__out" '%s_DOMAIN' "${base^^}"
+}
+
+construct_domain_vars() {
+    local sub=$1
+    local var val
+
+    domain_var var "$sub"
+
+    val="${sub}.${registered_domain}"
+
+    local add_domain=true
+    for d in "${DOMAINS[@]}"; do \
+    [[ "$val" == "$d" ]] && add_domain=false; break || : ; done
+    [[ "$add_domain" == true ]] && DOMAINS+=("$val")
+
+    printf -v "$var" '%s' "$val"
+    # shellcheck disable=SC2163
+    export "$var"
+    #echo -e "${DEBUG} ${WHITE}-${END} ${YELLOW}$var:${END} ${WHITE}$val${END}"
+}
+
 # Modules listedd in reverse order
 # url_parser --url argument and options:
 # --url: URL to parse. (e.g., https://subdomain.example.com:1234/path/resource?user=123#section1)
@@ -686,10 +786,7 @@ set_domain_names() {
     local scheme="https"
     local url=""
 
-    unset N8N_DOMAIN
-    unset OLLAMA_DOMAIN
-    unset LLAMACPP_DOMAIN
-    unset SUPABASE_DOMAIN
+    unset_domain_vars
 
     while [ -z "$url" ]; do
         if test -z "$subdomain"; then subdomain="${subdomains[0]}"; fi
@@ -738,20 +835,14 @@ set_domain_names() {
 
     if [[ -n "$protocol" && -n "$host" ]]; then
         if test -n "$domain_variable"; then
-            eval "$domain_variable=${host}"
-            add_domain=true
-            for d in "${DOMAINS[@]}"; do \
-            test "$host" == "$d" && add_domain=false; break || : ; done
-            test "$add_domain" == true && DOMAINS+=("${host}")
-            # echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$domain_variable:${END} ${WHITE}${host}${END}"
+            if ! registered_domain="$("$url_parser_bin" --url "$url" --get registeredDomain 2>/dev/null)"; then
+                log_error "Failed to extract the registered domain from $url."
+            else
+                 construct_domain_vars "$subdomain"
+            fi
         elif test -n "$registered_domain"; then
-            for subdomain in "${subdomains[@]}"; do
-                if test "$subdomain" == "open-webui"; then sub="webui"; else sub="$subdomain"; fi
-                domain_variable="$(to_upper "${sub}_DOMAIN")"
-                domain_name="${subdomain}.${registered_domain}"
-                DOMAINS+=("$domain_name")
-                # echo -e "${NOTICE} ${WHITE}-${END} ${MAGENTA}$domain_variable:${END} ${WHITE}${host_name}${END}"
-                eval "$domain_variable=$domain_name"
+            for sub in "${subdomains[@]}"; do
+                construct_domain_vars "$sub"
             done
         else
             critical_exit "Failed to get registered domain from hostname URL."
@@ -764,23 +855,31 @@ set_domain_names() {
 # If 'module_DOMAIN' 'subdomain' arguments are empty, all AI Suite domains will be populated.
 set_domain_names "" ""
 
-# Confirm all specified subdomains have been converted to domain names
-sub_i=0
-for sub in "${subdomains[@]}"; do
-    var=$(to_upper "$(test "$sub" == "open-webui" && echo "webui" || echo "$sub")_DOMAIN")
-    test -z "$(declare -p "$var" 2> /dev/null)" && continue
-    var_name="${MAGENTA}${var}:${END}"
-    domain_name="${CYAN}${DOMAINS[$sub_i]}${END}"
-    if [ -v "$var" ]; then
-        echo -e "${NOTICE} ${WHITE}-${END} ${var_name} ${domain_name}"
-    else
-        echo -e "${NOTICE} ${WHITE}-${END} ${var_name} ${RED}is not a valid variable!${END}"
-    fi
-    (( sub_i+1 ))
-done
+log_info "${BODY}Confirm subdomains converted to domain names"
+
+validate_domain_vars() {
+    local i sub var val
+
+    for (( i=0; i<${#subdomains[@]}; i++ )); do
+        sub="${subdomains[$i]}"
+        val="${DOMAINS[$i]}"
+
+        domain_var var "$sub"
+        
+        var_name="${MAGENTA}${var}:${END}"
+        val_name="${CYAN}${val}${END}"
+        if declare -p "$var" &>/dev/null; then
+            echo -e "${NOTICE} ${WHITE}-${END} ${var_name} ${val_name}"
+        else
+            echo -e "${NOTICE} ${WHITE}-${END} ${var} ${RED}is not a valid variable!${END}"
+        fi
+    done
+}
+
+validate_domain_vars
 
 log_info "${BODY}protocol:${END} ${WHITE}$protocol"
-log_info "${BODY}host (${AC_NAME}):${END} ${WHITE}$host"
+log_info "${BODY}host (${APP_NAME}):${END} ${WHITE}$host"
 log_info "${BODY}registered_domain:${END} ${WHITE}$registered_domain"
 
 log_info "${BODY}SUPABASE_PUBLIC_URL:${END} ${WHITE}$protocol://$SUPABASE_DOMAIN"
@@ -794,12 +893,13 @@ else
 fi
 log_info "${BODY}LLAMA_DOMAIN:${END} ${WHITE}$LLAMA_DOMAIN"
 
+credentials="Set Credentials"
+[[ "$CI" != true && "$AC" != true ]] && \
+credentials="Capture And $credentials" || :
+log_info "${HEADER}$credentials"
 #-------------------------------------------
 
-[[ "$CI" != true && "$AC" != true ]] && \
-log_info "${HEADER}Capture Credentials" || :
-#-------------------------------------------
-# Get Username
+log_info "${BODY}Username"
 username=""
 if [[ "$CI" == true ]]; then username="inder"; \
 elif [[ "$AC" == true ]]; then username="$AC_USERNAME"; fi
@@ -815,7 +915,7 @@ while [ -z "$username" ]; do
     # read command automatically trims leading & trailing whitespace. No need to handle it separately
 done
 
-# Get User Password
+log_info "${BODY}User password"
 password=""
 confirm_password=""
 if [[ "$CI" == true ]]; then
@@ -837,7 +937,7 @@ while [[ -z "$password" || "$password" != "$confirm_password" ]]; do
     fi
 done
 
-# Get Auto-confirm Registered User
+log_info "${BODY}Auto-confirm Registered User"
 auto_confirm=""
 if [[ "$CI" == true ]]; then auto_confirm=false; \
 elif [[ "$AC" == true ]]; then auto_confirm="$AC_CONFIRM"; fi
@@ -872,7 +972,7 @@ if [[ "$with_authelia" == true ]]; then
         setup_redis="$WITH_REDIS"
     fi
 
-    # Get Authelia Email Address
+    log_info "${BODY}Authelia Email Address"
     while [ -z "$email" ]; do
         read -rp "$(format_prompt "Enter your email address for Authelia:") " email
 
@@ -885,7 +985,7 @@ if [[ "$with_authelia" == true ]]; then
         fi
     done
 
-    # Get Authelia Display Name
+    log_info "${BODY}Authelia Display Name"
     while [ -z "$display_name" ]; do
         read -rp "$(format_prompt "Enter your display name for Authelia:") " display_name
 
@@ -895,7 +995,7 @@ if [[ "$with_authelia" == true ]]; then
         fi
     done
 
-    # Get Setup Authelia to use Redis
+    log_info "${BODY}Setup Authelia to use Redis"
     while [[ "$CI" == false && "$AC" == false && -z "$setup_redis" ]]; do
         confirmation_prompt setup_redis "Do you want to setup Authelia to use Redis? [y/n]: "
     done
@@ -941,8 +1041,6 @@ gen_token() {
 anon_token=$(gen_token "anon")
 service_role_token=$(gen_token "service_role")
 
-#-------------------------------------------
-
 log_info "${BODY}jwt_secret:${END} ${WHITE}$(elide "$jwt_secret")"
 log_info "${BODY}anon_token:${END} ${WHITE}$(elide "$anon_token")"
 log_info "${BODY}service_role_token:${END} ${WHITE}$(elide "$service_role_token")"
@@ -963,6 +1061,7 @@ log_info "${HEADER}Create .env File"
 #-------------------------------------------
 yml_bool() { echo "$(tr '[:lower:]' '[:upper:]' <<< "${1:0:1}")${1:1}" ; }
 
+log_info "${BODY}Set Supabase and Postgres credentials"
 sed -e "3d" \
     -e "s|POSTGRES_PASSWORD.*|POSTGRES_PASSWORD=$(gen_hex 16)|" \
     -e "s|JWT_SECRET.*|JWT_SECRET=$jwt_secret|" \
@@ -986,6 +1085,7 @@ sed -e "3d" \
     .env.example >.env
 
 if [[ "$AC" == true ]]; then
+log_info "${BODY}Set ${APP_NAME} module credentials"
 sed -i \
     -e "s|N8N_ENCRYPTION_KEY.*|N8N_ENCRYPTION_KEY=$(gen_hex 32)|" \
     -e "s|N8N_RUNNERS_AUTH_TOKEN.*|N8N_RUNNERS_AUTH_TOKEN=$(gen_hex 32)|" \
@@ -998,6 +1098,7 @@ sed -i \
     -e "s|ENCRYPTION_KEY.*|ENCRYPTION_KEY=$(gen_hex 16)|" \
     .env
 
+log_info "${BODY}Enable  module credentials"
 sed -i \
     -e "s|^AC=.*|AC=$(yml_bool "${AC}")|" \
     -e "s|AC_SUDO_USER.*|AC_SUDO_USER=${AC_SUDO_USER}|" \
@@ -1014,6 +1115,11 @@ sed -i \
     -e "s|AC_LOG_PATH.*|AC_LOG_PATH=${AC_LOG_PATH}|" \
     -e "s|# N8N_PROTOCOL.*|N8N_PROTOCOL=$protocol|" \
     -e "s|# N8N_PROXY_HOPS.*|N8N_PROXY_HOPS=3|" \
+    .env
+
+[[ "$proxy" == "caddy" ]] && { \
+log_info "${BODY}Enable Caddy hostname variables" ;
+sed -i \
     -e "s|# WEBUI_HOSTNAME.*|WEBUI_HOSTNAME=openwebui.\${AC_DOMAIN}|" \
     -e "s|# N8N_HOSTNAME.*|N8N_HOSTNAME=n8n.\${AC_DOMAIN}|" \
     -e "s|# FLOWISE_HOSTNAME.*|FLOWISE_HOSTNAME=flowise.\${AC_DOMAIN}|" \
@@ -1025,8 +1131,10 @@ sed -i \
     -e "s|# LLAMACPP_HOSTNAME.*|LLAMACPP_HOSTNAME=llamacpp.\${AC_DOMAIN}|" \
     -e "s|# WEBHOOK_URL=.*|WEBHOOK_URL=$protocol://\${N8N_HOSTNAME}|" \
     -e "s|# LETSENCRYPT_EMAIL.*|LETSENCRYPT_EMAIL=\${AC_EMAIL}|" \
-    .env
+    .env ;
+}
 
+log_info "${BODY}Enable n8n proxy variables"
 sed -i \
     -e "s|#- N8N_HOST=.*|- N8N_HOST=\${N8N_HOSTNAME:-\${N8N_HOST}}|" \
     -e "s|#- N8N_PORT=.*|- N8N_PORT=\${N8N_PORT}|" \
@@ -1059,7 +1167,7 @@ proxy_service_yaml=".services.$proxy.profiles=[\"$proxy\"$([[ "$proxy" == "caddy
 .services.$proxy.restart=\"unless-stopped\" |
 .services.$proxy.ports=[\"80:80/tcp\",\"443:443/tcp\"]
 "
-if [[ "$AC_SUPABASE" == true ]]; then
+if [[ -v "SUPABASE_DOMAIN" ]]; then
     proxy_service_yaml="${proxy_service_yaml} | .services.$proxy.depends_on.kong.condition=\"service_healthy\""
 fi
 
@@ -1100,6 +1208,7 @@ else
                         .services.ngnix.expose=[\"81/tcp\",\"443/tcp\",\"443/udp\",\"80/tcp\"] |
                         .services.nginx.environment.NGINX_SERVER_NAME = \"\${NGINX_SERVER_NAME:?error}\" |
                         .services.nginx.environment.CERTBOT_EMAIL = \"\${AC_EMAIL:?error}\" |
+                        .services.nginx.environment.TZ = \"\${GENERIC_TIMEZONE:-England/Greenwich}\" |
                         .services.nginx.volumes=[\"$nginx_local_volume:/etc/nginx/user_conf.d\",
                                                  \"$nginx_local_volume/letsencrypt:/etc/letsencrypt\"] |
                         .services.nginx.command=[\"/bin/bash\",\"-c\",strenv(nginx_cmd)]
@@ -1233,11 +1342,27 @@ if [[ "$with_authelia" == true ]]; then
     # WRITE AUTHELIA configuration.yml file (Supabase target)
     log_info "${BODY}Write Authelia configuration.yml file"
     #-------------------------------------------
-    host="$host" webui_domain="$WEBUI_DOMAIN" n8n_domain="$N8N_DOMAIN" flowise_domain="$FLOWISE_DOMAIN" \
-        langfuse_domain="$LANGFUSE_DOMAIN" supabase_domain="$SUPABASE_DOMAIN" searxng_domain="$SEARXNG_DOMAIN" \
-        neo4j_domain="$NEO4J_DOMAIN" llama_domain="$LLAMA_DOMAIN" registered_domain="$registered_domain" \
-        authelia_url="$protocol://$WEBUI_DOMAIN"/authenticate redirect_url="$protocol://$WEBUI_DOMAIN" \
+    export_domain_envs() {
+        local sub var env
+        for sub in "${subdomains[@]}"; do
+            domain_var var "$sub"
+    
+            declare -n ref="$var"
+            env=${var,,}
+    
+            export "$env=$ref"
+        done
+    }
+    
+    (
+        export_domain_envs
+    
+        host="$host" \
+        registered_domain="$registered_domain" \
+        authelia_url="$protocol://$WEBUI_DOMAIN/authenticate" \
+        redirect_url="$protocol://$WEBUI_DOMAIN" \
         update_yaml_file "$authelia_config_file_yaml" "./access/authelia/configuration.yml"
+    )
 
     # WRITE AUTHELIA service to docker-compose.yml file
     log_info "${BODY}Write Authelia service to docker-compose.yml file"
@@ -1276,28 +1401,28 @@ done
 
 # | Ex | In | Service                 | Container - Docker internal       | Domain - Docker external |
 # | -: | -: | ----------------------: | --------------------------------: | -----------------------: |
-# | ++ | ++ | `n8n`                   | n8n:5678/                         | localhost:5678/          |
-# | ++ | ++ | `Open WebUI`            | open-webui:8080/                  | localhost:8080/          |
+# | ++ |    | `n8n`                   | n8n:5678/                         | localhost:5678/          |
+# | ++ |    | `Open WebUI`            | open-webui:8080/                  | localhost:8080/          |
 # | ++ | ++ | `Flowise`               | flowise:3001/                     | localhost:3001/          |
-# |    |    | `Open webUI MCPO`       | open-webui-mcpo:8090/             | localhost:8090/          |
-# |    |    | `MCP Gateway`           | mcp-gateway:8060/                 | localhost:8060/          |
-# |    |    | `Open webUI Filesystem` | open-webui-filesystem:8091/docs/  | localhost:8091/docs/     |
-# |    |    | `Redis`                 | redis:6379/                       | localhost:6379/          |
-# |    |    | `MinIO`                 | minio:9001/                       | localhost:9001/          |
-# |    |    | `QDrant`                | qdrant:6333/dashboard/            | localhost:6333/dashboard/|
+# |    | ++ | `Open webUI MCPO`       | open-webui-mcpo:8090/             | localhost:8090/          |
+# |    | ++ | `MCP Gateway`           | mcp-gateway:8060/                 | localhost:8060/          |
+# |    | ++ | `Open webUI Filesystem` | open-webui-filesystem:8091/docs/  | localhost:8091/docs/     |
+# |    | ++ | `Redis`                 | redis:6379/                       | localhost:6379/          |
+# |    | ++ | `MinIO`                 | minio:9001/                       | localhost:9001/          |
+# |    | ++ | `QDrant`                | qdrant:6333/dashboard/            | localhost:6333/dashboard/|
 # | ++ | ++ | `Subabase`              | supabase-kong:8000                | localhost:8000           |
-# |    |    | `Postgres`              | postgres:5432                     | localhost:5432/          |
-# | ++ | ++ | `Langfuse Web`          | langfuse-web:3000/                | localhost:3000/          |
-# |    |    | `Langfuse Worker`       | langfuse-worker:3030/             | localhost:3030/          |
-# |    |    | `Logflare`              | supabase-analytics:4000/dashboard/| localhost:4000/dashboard/|
-# |    |    | `ClickHouse`            | clickhouse:8123/                  | localhost:8123/          |
-# |    |    | `SearXNG`               | searxng:8081/                     | localhost:8081/          |
+# |    | ++ | `Postgres`              | postgres:5432                     | localhost:5432/          |
+# | ++ |    | `Langfuse Web`          | langfuse-web:3000/                | localhost:3000/          |
+# |    | ++ | `Langfuse Worker`       | langfuse-worker:3030/             | localhost:3030/          |
+# |    | ++ | `Logflare`              | supabase-analytics:4000/dashboard/| localhost:4000/dashboard/|
+# |    | ++ | `ClickHouse`            | clickhouse:8123/                  | localhost:8123/          |
+# | ++ |    | `SearXNG`               | searxng:8081/                     | localhost:8081/          |
 # | ++ | ++ | `Neo4j`                 | neo4j:7473/                       | localhost:7473/          |
-# |    |    | `Caddy`                 | caddy:443/                        | localhost:443/           |
-# |    |    | `Nginx`                 | nginx:443/Admin/                  | localhost:443/Admin/     |
-# |    |    | `Authelia`              | authelia:9091/                    | localhost:9091/          |
-# |    |    | `Ollama`                | ollama:11434/                     | localhost:11434/         |
-# |    |    | `LLaMA.cpp`             | llamacpp:8040/                    | localhost:8040/          |
+# |    | ++ | `Caddy`                 | caddy:443/                        | localhost:443/           |
+# |    | ++ | `Nginx`                 | nginx:443/Admin/                  | localhost:443/Admin/     |
+# |    | ++ | `Authelia`              | authelia:9091/                    | localhost:9091/          |
+# | ++ | ++ | `Ollama`                | ollama:11434/                     | localhost:11434/         |
+# | ++ | ++ | `LLaMA.cpp`             | llamacpp:8040/                    | localhost:8040/          |
 
 # NOTE: LLAMA and SearXNG are disabled in proxy config by default.
 # Set the following env_vars (to anything other than empty) to enable:
@@ -1308,7 +1433,7 @@ AC_SEARXNG=''
 if [[ "$proxy" == "caddy" ]]; then
     log_info "${HEADER}Write Caddyfile"
     #-------------------------------------------
-    log_info "${BODY}$caddyfile_local"
+    log_info "${BODY}caddyfile_local: $caddyfile_local"
     mkdir -p "$caddy_local_volume"
     # https://stackoverflow.com/a/3953712/18954618
     echo "
@@ -1466,7 +1591,7 @@ if [[ "$proxy" == "caddy" ]]; then
 else
     log_info "${HEADER}Write Nginx Template"
     #-------------------------------------------
-    log_info "${BODY}$nginx_local_template_file"
+    log_info "${BODY}nginx_local_template: $nginx_local_template_file"
 
     mkdir -p "$(dirname "$nginx_local_template_file")"
 
@@ -1512,10 +1637,11 @@ upstream langfuse_upstream {
     keepalive 2;
 }
 
+$([[ -n "$AC_SEARXNG" ]] && echo "\
 upstream searxng_upstream {
     server searxng:8081;
     keepalive 2;
-}
+}")
 
 $(if [[ -n "$AC_LLAMA" ]]; then \
   [[ "$AC_LLAMACPP" == false ]] && echo "\
@@ -1569,10 +1695,11 @@ server {
         proxy_pass http://langfuse_upstream
     }
 
+    $([[ -n "$AC_SEARXNG" ]] && echo "\
     # SearXNG
     location /searxng {
         proxy_pass http://searxng_upstream
-    }
+    }")
 
     $(if [[ -n "$AC_LLAMA" ]]; then \
       [[ "$AC_LLAMACPP" == false ]] && echo "\
@@ -1671,8 +1798,8 @@ fi
 
 # Update hosts file if local install
 unix_hosts_add() {
-    local header="# $AC_NAME Local Domains:"
-    local footer="# End of $AC_NAME section"
+    local header="# $APP_NAME Local Domains:"
+    local footer="# End of $APP_NAME section"
 
     if [[ "$BACKUP" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
         cp "$HOSTS_PATH" "$HOSTS_PATH.bak.$(date +%Y%m%d%H%M%S)"
@@ -1733,15 +1860,15 @@ unix_hosts_edit() {
 windows_hosts_edit() {
     local is_elevated
     is_elevated=$(is_windows_admin)
-    local ps_script_path="./ps_edit_hosts.ps1"
-    local header="# $AC_NAME Local Domains:"
-    local footer="# End of $AC_NAME section"
+    local ps_script_path="./access/ps_edit_hosts.ps1"
+    local header="# $APP_NAME Local Domains:"
+    local footer="# End of $APP_NAME section"
     local ps_domains=""
     for d in "${DOMAINS[@]}"; do
         ps_domains+="\"$d\","
     done
     ps_domains="@(${ps_domains%,})"
-    local ps_script="# Edit hosts - update $AC_NAME domains
+    local ps_script="# Edit hosts - update $APP_NAME domains
 \$Domains    = $ps_domains
 \$Backup     = $BACKUP
 \$DryRun     = $DRY_RUN
@@ -1865,16 +1992,20 @@ mal_domains=()
 domains=${#DOMAINS[@]}
 
 if [[ "$AC_LOCAL" == true ]]; then
-    check_host_domains "--quiet"
+    check_host_arg=""
+    [[ $DRY_RUN -eq 1 ]] && { check_host_arg="--quiet"; }
+    check_host_domains "$check_host_arg"
     if (( ${#mal_domains[@]} > 0 )); then
         log_info "${HEADER}Set Domains"
         #-------------------------------------------
-        [ "$DEBUG_ON" == true ] && { DRY_RUN=1; mal_domains=(); }
+        [[ "$DRY_RUN" == 1 ]] && { mal_domains=(); }
         case "$PLATFORM" in
         linux|mac)
+            log_info "${BODY}Update Unix hosts"
             unix_hosts_edit
             ;;
         wsl)
+            log_info "${BODY}Update Windows hosts"
             windows_hosts_edit
             ;;
         *)
@@ -1935,7 +2066,10 @@ local_access() {
     hosts_directory=$(dirname "${HOSTS_PATH}")
     local hosts_file
     hosts_file=$(basename "${HOSTS_PATH}")
-    echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Upon completion of the installation,${END}"
+    local domain_entry="${WHITE}ip-address   domain${END}${GREEN}"
+    local save_command="${END}${WHITE}Esc${END}${GREEN},${END} ${WHITE}:wq${END}${GREEN}"
+    local your_domain="${END} ${WHITE}$protocol://$WEBUI_DOMAIN${END}${GREEN}"
+    echo -e "${INFO} ${BLUE}1.${END} ${GREEN}Upon completion of the ${APP_NAME} installation,${END}"
     echo -e "${INFO}     ${GREEN}edit your hosts file so your domains will loop${END}"
     echo -e "${INFO}     ${GREEN}back to your machine - just like localhost.${END}"
     echo -e "${INFO}   ${BLUE}1a.${END} ${GREEN}Create a backup of the original hosts file.${END}"
@@ -1946,14 +2080,14 @@ local_access() {
     echo -e "${INFO}   ${BLUE}1b.${END} ${GREEN}Open the $hosts_file file in your editor."
     echo -e "${INFO}     ${GREEN}Here, I am using${END} ${CYAN}vim${END}${GREEN}.${END}"
     echo -e "${INFO}      ${WHITE}sudo vim $hosts_file${END}"
-    echo -e "${INFO}   ${BLUE}1c.${END} ${GREEN}Add domain entries with format: ${WHITE}ip-address   domain${END}${GREEN}.${END}"
-    echo -e "${INFO}      ${GREEN}Save the file (${END}${WHITE}Esc${END}${GREEN},${END} ${WHITE}:wq${END}${GREEN}) and quit your editor.${END}"
-    echo -e "${INFO}   ${BLUE}1d.${END} ${GREEN}In your browser, navigate to${END} ${WHITE}$protocol://$WEBUI_DOMAIN${END}${GREEN}.${END}"
+    echo -e "${INFO}   ${BLUE}1c.${END} ${GREEN}Add domain entries with format: $domain_entry.${END}"
+    echo -e "${INFO}      ${GREEN}Save $hosts_file and quit ($save_command) your editor.${END}"
+    echo -e "${INFO}   ${BLUE}1d.${END} ${GREEN}In your browser, navigate to $your_domain.${END}"
     echo -e "${INFO} 🚀 ${GREEN}Confirm everything is running.${END}"
 }
 
 global_access() {
-echo -e "${INFO} 🌐 ${BLUE}To access ${NAME} from the internet,${END} \
+echo -e "${INFO} 🌐 ${BLUE}To access ${APP_NAME} from the internet,${END} \
 ${BLUE}ensure your firewall allows traffic on ports${END} \
 ${WHITE}80${END} ${BLUE}and${END} ${WHITE}443${END}"
 }
