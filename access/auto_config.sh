@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 27, 2026
+# Last Update February 28, 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -33,14 +33,22 @@ VERSION="0.2.0"
 SECONDS=0
 
 # Colors
+# Core SGR support detection
 SGR=''
 END=''
-HEADER=''
-BODY="  - "
+if [[ "$SILENT" == 0 && -t 1 ]]; then
+    if colors=$(tput colors 2>/dev/null) && [[ "$colors" -ge 8 ]]; then
+        SGR='\033['
+        END="${SGR}0m"
+    fi
+fi
+
+# Primitive style flags
 BOLD=''
 DIM=''
 ITALIC=''
 UNDERLINE=''
+# Base colors
 RED=''
 GREEN=''
 YELLOW=''
@@ -48,90 +56,200 @@ BLUE=''
 MAGENTA=''
 CYAN=''
 WHITE=''
+# Composite tokens
 DIM_CYAN=''
 BOLD_MAGENTA=''
 ITALIC_RED_BG=''
 UNDERLINE_YELLOW=''
-COLON=":"
-APP="${APP_NAME}:"
-NOTICE="${APP} NOTICE"
+# Semantic tokens
+HEADER=''
+BODY='  - '
+COLON=':'
+APP="${APP_NAME}${COLON}"
 QUESTION="${APP} QUESTION"
-CRITICAL="${APP} CRITICAL"
 ERROR="${APP} ERROR"
-WARNING="${APP} WARNING"
-DEBUG="${APP} DEBUG"
 INFO="${APP} INFO"
 
-sgr() { [[ -n "${END}" ]] && echo "${SGR}$*m" || : ; }
+# Apply SGR layer once
+if [[ -n "$SGR" ]]; then
+    BOLD='1;'
+    DIM='2;'
+    ITALIC='3;'
+    UNDERLINE='4;'
 
-is_sgr() { [[ "${1:0:5}" == "${SGR}" ]] && echo "${END}" || echo "$2" ; }
+    RED="${SGR}31m"
+    GREEN="${SGR}32m"
+    # shellcheck disable=SC2034
+    YELLOW="${SGR}33m"
+    BLUE="${SGR}34m"
+    MAGENTA="${SGR}35m"
+    CYAN="${SGR}36m"
+    WHITE="${SGR}37m"
 
-# https://stackoverflow.com/a/28938235/18954618
-# Check if terminal supports colors https://unix.stackexchange.com/a/10065/642181
-if [[ "$SILENT" == 0 && -t 1 ]]; then
-    total_colors=$(tput colors)
-    if [[ -n "$total_colors" && $total_colors -ge 8 ]]; then
-        SGR='\033['
-        END="${SGR}0m"
-        BOLD='1;'
-        DIM='2;'
-        ITALIC='3;'
-        UNDERLINE='4;'
-        RED=$(sgr '31')
-        GREEN=$(sgr '32')
-        # shellcheck disable=SC2034
-        YELLOW=$(sgr '33')
-        BLUE=$(sgr '34')
-        MAGENTA=$(sgr '35')
-        CYAN=$(sgr '36')
-        WHITE=$(sgr '37')
-        DIM_CYAN=$(sgr "${DIM}36")
-        BOLD_MAGENTA=$(sgr "${BOLD}95")
-        ITALIC_RED_BG=$(sgr "${ITALIC}41")
-        UNDERLINE_YELLOW=$(sgr "${UNDERLINE}93")
-        COLON="${END}$(sgr "97"):"
-        HEADER="$(sgr "${BOLD}${UNDERLINE}92")"
-        BODY="$(sgr "37")  -${END} $(sgr "32")"
-        APP="$(sgr "${ITALIC}94")${APP%?}${COLON}${END}"
-        NOTICE="${APP} $(sgr "${BOLD}95")NOTICE${END}"
-        QUESTION="${APP} $(sgr "${BOLD}92")QUESTION${END}"
-        CRITICAL="${APP} $(sgr "${BOLD}41")CRITICAL${END}"
-        ERROR="${APP} $(sgr "${BOLD}91")ERROR${END}"
-        WARNING="${APP} $(sgr "${BOLD}${UNDERLINE}93")WARNING${END}"
-        DEBUG="${APP} $(sgr "${BOLD}97")DEBUG${END}"
-        INFO="${APP} $(sgr "36")INFO${END}"
-    fi
+    DIM_CYAN="${SGR}${DIM}36m"
+    BOLD_MAGENTA="${SGR}${BOLD}95m"
+    ITALIC_RED_BG="${SGR}${ITALIC}41m"
+    UNDERLINE_YELLOW="${SGR}${UNDERLINE}93m"
+
+    HEADER="${SGR}${BOLD}${UNDERLINE}92m"
+    BODY="${SGR}37m  -${END} ${SGR}32m"
+
+    COLON="${SGR}97m:${END}"
+    APP="${SGR}3;94m${APP_NAME}${COLON}${END}"
 fi
 
-# Logging
-log_critical() {
-    echo -e "${CRITICAL} $(is_sgr "${1}" "${ITALIC_RED_BG}")$1${END}"
+# Log level definitions
+declare -A LOG_LEVEL_NAME=(
+    [NOTICE]='NOTICE'
+    [QUESTION]='QUESTION'
+    [CRITICAL]='CRITICAL'
+    [ERROR]='ERROR'
+    [WARNING]='WARNING'
+    [DEBUG]='DEBUG'
+    [INFO]='INFO'
+)
+
+declare -A LOG_LEVEL_STYLE=(
+    [NOTICE]='1;95'     # BOLD; MAGENTA
+    [QUESTION]='1;92'   # BOLD; GREEN
+    [CRITICAL]='1;41'   # BOLD; RED_BG
+    [ERROR]='1;91'      # BOLD; RED
+    [WARNING]='1;4;93'  # BOLD; YELLOW
+    [DEBUG]='1;97'      # BOLD; WHITE
+    [INFO]='36'         #       CYAN
+)
+
+declare -A LOG_BODY_STYLE=(
+    [NOTICE]="$BOLD_MAGENTA"
+    [QUESTION]="$GREEN"
+    [CRITICAL]="$ITALIC_RED_BG"
+    [ERROR]="$RED"
+    [WARNING]="$UNDERLINE_YELLOW"
+    [DEBUG]="$WHITE"
+    [INFO]="$DIM_CYAN"
+)
+
+declare -A LOG_OUTPUT=(
+    [CRITICAL]='stderr'
+    [ERROR]='stderr'
+    [WARNING]='stdout'
+    [NOTICE]='stdout'
+    [QUESTION]='stdout'
+    [DEBUG]='stdout'
+    [INFO]='stdout'
+)
+
+# Prefix cache (precomputed for speed)
+log_header_prefix() {
+    local -n header_prefix_ref=$1
+    local level=$2
+    local prefix
+    if [[ -n "$SGR" ]]; then
+        prefix="${APP} ${SGR}${LOG_LEVEL_STYLE[$level]}m${LOG_LEVEL_NAME[$level]}${END}"
+    else
+        prefix="${APP} ${LOG_LEVEL_NAME[$level]}"
+    fi
+    # shellcheck disable=SC2034
+    header_prefix_ref=$prefix
 }
-log_error() {
-    echo -e "${ERROR} $(is_sgr "${1}" "${RED}")$1${END}"
+
+declare -A LOG_HEADER_PREFIX
+
+for level in "${!LOG_LEVEL_NAME[@]}"; do
+    log_header_prefix LOG_HEADER_PREFIX["$level"] "$level"
+done
+
+LOG_JSON="${LOG_JSON:-false}"
+LOG_TIMESTAMP="${LOG_TIMESTAMP:-false}"
+
+# Injection-aware logger
+log() {
+    local level="$1"; shift
+    [[ "$level" == DEBUG && "$DEBUG_ON" != true ]] && return
+
+    local message="$*"
+    local header="${LOG_HEADER_PREFIX[$level]}"
+    local body_style="${LOG_BODY_STYLE[$level]}"
+
+    # JSON mode (unchanged)
+    if [[ "$LOG_JSON" == true ]]; then
+        local now
+        now=$(date '+%Y-%m-%d %H:%M:%S')
+        printf '{"time":"%s","level":"%s","app":"%s","msg":"%s"}\n' \
+            "$now" "$level" "$APP_NAME" "$message"
+        return
+    fi
+
+    # Timestamp
+    if [[ "$LOG_TIMESTAMP" == true ]]; then
+        local now
+        now=$(date '+%Y-%m-%d %H:%M:%S')
+        header="$now $header"
+    fi
+
+    # Inject END or preserve default body style
+    local body_prefix="$body_style"
+    if [[ -n "$SGR" && "$message" == "$SGR"* ]]; then
+        body_prefix="$END"
+    fi
+
+    if [[ "${LOG_OUTPUT[$level]}" == stderr ]]; then
+        printf '%b %b%b%b\n' \
+            "$header" \
+            "$body_prefix" \
+            "$message" \
+            "$END" >&2
+    else
+        printf '%b %b%b%b\n' \
+            "$header" \
+            "$body_prefix" \
+            "$message" \
+            "$END"
+    fi
 }
-log_warning() {
-    echo -e "${WARNING} $(is_sgr "${1}" "${UNDERLINE_YELLOW}")$1${END}"
-}
-log_debug() {
-    [[ "$DEBUG_ON" != true ]] && return
-    echo -e "${DEBUG} $(is_sgr "${1}" "${WHITE}")$1${END}"
-}
-log_info() {
-    echo -e "${INFO} $(is_sgr "${1}" "${DIM_CYAN}")$1${END}"
-}
+
+# Semantic tokens
+log_header_prefix QUESTION 'QUESTION'
+log_header_prefix ERROR 'ERROR'
+log_header_prefix INFO 'INFO'
+
+# Wrappers
+log_notice()   { log NOTICE "$*"; }
+log_critical() { log CRITICAL "$*"; }
+log_error()    { log ERROR "$*"; }
+log_warning()  { log WARNING "$*"; }
+log_debug()    { log DEBUG "$*"; }
+log_info()     { log INFO "$*"; }
+
 critical_exit() {
-    log_critical "$*" >&2
+    log_critical "$*"
     exit 1
 }
 
-SCRIPT="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
-if [ "${SCRIPT}" == "auto_config.sh" ]; then
-    [ -z "${AC_LOG_PATH}" ] && AC_LOG_PATH="$(pwd)" || :
+# Real-time tee with SGR stripping
+SCRIPT="${0##*/}"
+if [[ "$SCRIPT" == "auto_config.sh" ]]; then
+    AC_LOG_PATH="${AC_LOG_PATH:-$(pwd)}"
     LOG="$AC_LOG_PATH/$SCRIPT.log"
-    if [[ -f "${LOG}" && -r "${LOG}" ]]; then rm "${LOG}"; fi
-    exec > >(tee -a "${LOG}" )
-    exec 2> >(tee -a "${LOG}" >&2)
+    [[ -f "$LOG" && -r "$LOG" ]] && rm "$LOG"
+    # Strip SGR color sequence codes from output"
+    exec > >(tee >(sed 's/\x1b\[[0-79;]\{1,11\}m//g' >> "$LOG"))
+    exec 2> >(tee >(sed 's/\x1b\[[0-79;]\{1,11\}m//g' >> "$LOG") >&2)
+    # - The sed regex explained:
+    # sed             application binary
+    # '               open single quote
+    # s               substitution flag
+    # /               delimeter '/'
+    # \x1b            match the SGR escape sequence '\x1b' before the color or attribute code
+    # \[              matches the first open bracket - escape '\[' to distinguish from regex [
+    # [0-79;]\{1,11\} matches '1 to 11' of any character in '012345679;' - escape the curly braces
+    #                 with '\{' to keep the shell from mangling them
+    #                 we have 11 times due to bold, dim, italic, underline and color * 2 plus reset * 1
+    # m               match the SGR escape sequence reset character 'm' - this trails the color code
+    # //              empty string between delimeters '/' to replace everything with
+    # g               match globally - i.e., multiple times per line
+    # '               close single quote
+    # "$LOG"          the log file: auto_config.sh.log
 fi
 
 # Capture elapsed execution time
@@ -158,7 +276,7 @@ finish () {
         header="${END}⚠️ ${HEADER}"
         status="Finished"
     else
-        header="${END}❌ $(sgr "${UNDERLINE}91")"
+        header="${END}❌ ${SGR}${UNDERLINE}91m"
         status="Terminated"
     fi
 
@@ -172,25 +290,6 @@ finish () {
     log_info "${header}Configuration $status"
     #-------------------------------------------
     finish_elapsed_time
-
-    # Clean SGR color sequence codes from the log file..."
-    # - The regex explained:
-    # sed             application binary
-    # -i              perform in-place file editing
-    # "               open double quote
-    # s               substitution flag
-    # /               delimeter '/'
-    # \x1b            match the SGR escape sequence '\x1b' before the color or attribute code
-    # \[              matches the first open bracket - escape '\[' to distinguish from regex [
-    # [0-79;]\{1,11\} matches '1 to 11' of any character in '012345679;' - escape '\{' the curly braces
-    #                 to keep the shell from mangling them - replace '.' by '[0-79;]' for more accuracy
-    #                 we have 11 times due to bold, dim, italic, underline and color * 2 plus reset * 1
-    # m               match the SGR escape sequence reset character 'm' - this trails the color code
-    # //              empty string between delimeters '/' to replace everything with
-    # g               match globally - i.e., multiple times per line
-    # "               close double quote
-    # "$LOG"          the log file: auto_config.sh.log
-    sed -i "s/\x1b\[[0-79;]\{1,11\}m//g" "$LOG"
 }
 
 trap finish EXIT
@@ -276,7 +375,7 @@ bash_version_at_or_above_4_4() {
     [[ -z $BASH_VERSION ]] && return 1
     local required_ver="4.4"
     if [ "$(printf '%s\n' "$required_ver" "$BASH_VERSION" | sort -V | head -n1)" = "$required_ver" ]; then
-       return 0 
+       return 0
     fi
     return 1
 }
@@ -531,8 +630,7 @@ privilage() {
 }
 
 prompt_message() {
-    local BOLD_CYAN
-    BOLD_CYAN=$(sgr "${BOLD}36")
+    local BOLD_CYAN="${SGR}${BOLD}36m"
     local prompt_message="${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}$1${END} ${WHITE}password for command:${END}"
     echo -e "$prompt_message ${BLUE}$([ "$1" == "su" ] && echo "su -c" || echo "su")${END}"
 }
@@ -865,13 +963,11 @@ validate_domain_vars() {
         val="${DOMAINS[$i]}"
 
         domain_var var "$sub"
-        
-        var_name="${MAGENTA}${var}:${END}"
-        val_name="${CYAN}${val}${END}"
+
         if declare -p "$var" &>/dev/null; then
-            echo -e "${NOTICE} ${WHITE}-${END} ${var_name} ${val_name}"
+            log_notice "${WHITE}-${END} ${MAGENTA}${var}:${END} ${CYAN}${val}"
         else
-            echo -e "${NOTICE} ${WHITE}-${END} ${var} ${RED}is not a valid variable!${END}"
+            log_notice "${WHITE}-${END} ${RED}${var} is not a valid variable!"
         fi
     done
 }
