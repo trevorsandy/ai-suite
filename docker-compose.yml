@@ -74,19 +74,17 @@ x-n8n: &service-n8n
 
     - NODES_EXCLUDE=${NODES_EXCLUDE}
 
-    - OLLAMA_HOST=${OLLAMA_HOST}
-
     # HTTPS via reverse proxy
-
     #- N8N_HOST=${N8N_HOSTNAME:-${N8N_HOST}}
-
     #- N8N_PORT=${N8N_PORT}
-
     #- N8N_PROTOCOL=${N8N_PROTOCOL}
-
     #- N8N_PROXY_HOPS=${N8N_PROXY_HOPS}
 
+    # May be better to use OLLAMA_HOST env_var for LLAMACPP_HOST
+
     - LLAMACPP_HOST=${LLAMACPP_HOST}
+
+    - OLLAMA_HOST=${OLLAMA_HOST}
     - PROJECTS_PATH=${PROJECTS_PATH}
     - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
 
@@ -420,22 +418,23 @@ services:
         condition: service_healthy
 
   nginx:
-    profiles:
-      - nginx
+    profiles: ["nginx"]
+    image: jonasal/nginx-certbot:6.0.1-nginx1.29.5    
     container_name: nginx
     restart: unless-stopped
     ports:
       - 80:80/tcp
       - 443:443/tcp
-    depends_on:
-      kong:
-        condition: service_healthy
-      authelia:
-        condition: service_healthy
-    image: jonasal/nginx-certbot:6.0.1-nginx1.29.5
+                                                  
+    expose:
+      - 81/tcp
+      - 443/tcp
+      - 443/udp
+      - 80/tcp
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?error}
       CERTBOT_EMAIL: ${AC_EMAIL:?error}
+      TZ: ${GENERIC_TIMEZONE}
       USE_LOCAL_CA: 1
     volumes:
       - ./access/nginx:/etc/nginx/user_conf.d
@@ -446,16 +445,9 @@ services:
       - |
         envsubst '$${NGINX_SERVER_NAME}' < /etc/nginx/user_conf.d/nginx.template > /etc/nginx/user_conf.d/nginx.conf \
         && /scripts/start_nginx_certbot.sh
-  ngnix:
-    expose:
-      - 81/tcp
-      - 443/tcp
-      - 443/udp
-      - 80/tcp
-    TZ: France/Paris
 
   authelia:
-    profiles: [caddy, nginx, ai-all]
+    profiles: ["caddy", "nginx", "ai-all"]
     container_name: authelia
     image: authelia/authelia:4.38
     volumes:
@@ -477,6 +469,7 @@ services:
       AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:?error}
       AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:?error}
       AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}
+
   langfuse-worker:
     profiles: ["langfuse", "ai-all"]
     image: langfuse/langfuse-worker:3

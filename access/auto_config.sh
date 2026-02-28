@@ -1343,20 +1343,19 @@ if [[ "$with_authelia" == true ]]; then
     log_info "${BODY}Write Authelia configuration.yml file"
     #-------------------------------------------
     export_domain_envs() {
-        local sub var env
-        for sub in "${subdomains[@]}"; do
+        local sub var env array
+        array=("${subdomains[@]}")
+        array+=(llama)
+        for sub in "${array[@]}"; do
             domain_var var "$sub"
-    
             declare -n ref="$var"
             env=${var,,}
-    
             export "$env=$ref"
         done
     }
-    
+
     (
         export_domain_envs
-    
         host="$host" \
         registered_domain="$registered_domain" \
         authelia_url="$protocol://$WEBUI_DOMAIN/authenticate" \
