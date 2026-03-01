@@ -33,9 +33,9 @@ VERSION="0.2.0"
 SECONDS=0
 
 # Colors
-# Core SGR support detection
 SGR=''
 END=''
+# Core SGR support detection
 if [[ "$SILENT" == 0 && -t 1 ]]; then
     if colors=$(tput colors 2>/dev/null) && [[ "$colors" -ge 8 ]]; then
         SGR='\033['
@@ -97,7 +97,7 @@ if [[ -n "$SGR" ]]; then
     APP="${SGR}3;94m${APP_NAME}${COLON}${END}"
 fi
 
-# Log level definitions
+# Log level names
 declare -A LOG_LEVEL_NAME=(
     [NOTICE]='NOTICE'
     [QUESTION]='QUESTION'
@@ -108,6 +108,7 @@ declare -A LOG_LEVEL_NAME=(
     [INFO]='INFO'
 )
 
+# Log level styles
 declare -A LOG_LEVEL_STYLE=(
     [NOTICE]="${SGR}${BOLD}95m"     # MAGENTA
     [QUESTION]="${SGR}${BOLD}92m"   # GREEN
@@ -118,6 +119,7 @@ declare -A LOG_LEVEL_STYLE=(
     [INFO]="${SGR}36m"              # CYAN
 )
 
+# Log message styles
 declare -A LOG_MESSAGE_STYLE=(
     [NOTICE]="$BOLD_MAGENTA"
     [QUESTION]="$GREEN"
@@ -249,9 +251,9 @@ finish () {
     fi
 
     if [ "$status" == "Completed" ]; then
-        local binaries=()
+        local bin binaries=()
         for bin in "$yq_bin" "$url_parser_bin"; do [ -f "$bin" ] && binaries+=("$bin") ; done
-        if (( ${#binaries[@]} != 0 )); then log_info "Clean downloaded binaries..." ; fi
+        if (( ${#binaries[@]} > 0 )); then log_info "Clean downloaded binaries..." ; fi
         for bin in "${binaries[@]}"; do log_info "  ✘ $(basename "${bin}")"; (rm "$bin"); done
     fi
 
@@ -355,7 +357,6 @@ has_argument() {
 extract_argument() { echo "${2:-${1#*=}}"; }
 
 update_subdomains() {
-    local exists=false
     local sub_domain
     local sub_domains=()
     log_debug "update_subdomains - @ (${#@}): ${*}"
@@ -363,7 +364,7 @@ update_subdomains() {
         IFS=' ' read -r -a sub_domains <<< "$sub_domain"
     done
     for sub_domain in "${sub_domains[@]}"; do
-        exists=false
+        local exists=false
         local subdomain
         for subdomain in "${subdomains[@]}"; do
             [[ "$sub_domain" == "$subdomain" ]] && { exists=true; break; }
@@ -410,7 +411,7 @@ while [ $# -gt 0 ]; do
         ;;
     --subdomains)
         shift
-        [[ $# -eq 0 ]] && critical_exit "--subdomains require at least one container name."
+        [[ $# -eq 0 ]] && critical_exit "--subdomains option require at least one arguement."
         update_subdomains "$1"
         ;;
     --internal-elevated)
@@ -451,6 +452,7 @@ fi
 : "${AC_SEARXNG:=false}"
 : "${AC_LLAMA:=false}"
 : "${AC_LLAMACPP:=false}"
+
 if [ "$AC" == true ]; then
     SUDO_USER="${AC_SUDO_USER}"
     with_authelia="${AC_WITH_AUTHELIA}"
@@ -473,7 +475,9 @@ if [ "$AC" == true ]; then
     log_info "${BODY}AC:${END} ${WHITE}true"
     while IFS= read -r var; do
         [[ $var == AC_* ]] || continue
-        declare -n ref="$var"
+        declare -n _ref="$var"
+        ref=$_ref
+        [[ $var == AC_*ASSWORD ]] && ref='***'
         log_info "${BODY}$var:${END} ${WHITE}$ref"
     done < <(compgen -A variable)
 elif [ "$CI" == true ]; then
@@ -502,21 +506,23 @@ log_info "${BODY}User Confirmation:${END} ${WHITE}${ac_user_confirm}" || :
 [ "${DEBUG_ON}" == true ] && log_debug "Enabled"
 
 detect_arch() {
+    local -n _ref=$1
     case $(uname -m) in
-    x86_64) echo "amd64" ;;
-    aarch64 | arm64) echo "arm64" ;;
-    armv7l) echo "arm" ;;
-    i686 | i386) echo "386" ;;
-    *) echo "err" ;;
+    x86_64) _ref='amd64' ;;
+    aarch64 | arm64) _ref='arm64' ;;
+    armv7l) _ref='arm' ;;
+    i686 | i386) _ref='386' ;;
+    *) _ref='err' ;;
     esac
 }
 
 #https://stackoverflow.com/a/18434831/18954618
 detect_os() {
+    local -n _ref=$1
     case $(uname | tr '[:upper:]' '[:lower:]') in
-    linux*) echo "linux" ;;
-    # darwin*) echo "darwin" ;;
-    *) echo "err" ;;
+    linux*) _ref='linux' ;;
+    # darwin*) _ref='darwin' ;;
+    *) _ref='err' ;;
     esac
 }
 
@@ -528,8 +534,10 @@ is_wsl() {
     esac
 }
 
-arch="$(detect_arch)"
-os="$(detect_os)"
+arch=''
+detect_arch arch
+os=''
+detect_os os
 
 case "$os" in
 linux*)
@@ -553,10 +561,22 @@ if [[ "$arch" == "err" ]]; then critical_exit "Unsupported CPU architecture"; fi
 is_unix_root() { if [ -n "$1" ]; then return "$(id -u "$1")"; else return "$(id -u)"; fi }
 
 is_windows_admin() {
-    powershell.exe -NoProfile -Command \
-      "[bool](([Security.Principal.WindowsPrincipal] \
-      [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole( \
-      [Security.Principal.WindowsBuiltInRole]::Administrator))"
+    local -n _ref=$1
+    local var
+    IFS= read -r var < <(
+        powershell.exe -NoProfile -Command \
+        "[int]([Security.Principal.WindowsPrincipal] \
+        [Security.Principal.WindowsIdentity]::GetCurrent() \
+        ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
+    )
+    var=${var%$'\r'}
+    if [[ $var -eq 1 ]]; then
+        _ref=true
+        return 0
+    else
+        _ref=false
+        return 1
+    fi
 }
 
 available() { command -v "$1" >/dev/null; }
@@ -610,25 +630,13 @@ package_is_installed() {
     return $i
 }
 
-privilage() {
-    local prompt
-    if is_unix_root; then
-        echo "is_unix__root"
-    elif prompt=$(sudo -nv 2>&1); then
-        echo "has_sudo__pass_set"
-    elif echo "$prompt" | grep -q '^sudo:'; then
-        echo "has_sudo__needs_pass"
-    elif command -v su >/dev/null 2>&1; then
-        echo "has_su__needs_pass"
-    else
-        echo "none"
-    fi
-}
-
-prompt_message() {
+format_prompt() {
+    local -n _ref=$1
+    local user=$2
     local BOLD_CYAN="${SGR}${BOLD}36m"
-    local prompt_message="${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}$1${END} ${WHITE}password for command:${END}"
-    echo -e "$prompt_message ${BLUE}$([ "$1" == "su" ] && echo "su -c" || echo "su")${END}"
+    local prompt="${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}$user${END} ${WHITE}password for command:${END}"
+    [[ "$user" == "su" ]] && user="su -c"
+    _ref='%b %b%b%b' "$prompt" "${BLUE}" "$user" "${END}"
 }
 
 sudo_prompt() {
@@ -636,29 +644,67 @@ sudo_prompt() {
     if [ -n "${AC_SUDO_PASSWORD}" ]; then
         (sudo -S -v <<<"${AC_SUDO_PASSWORD}" > /dev/null 2>&1)
     else
-        echo -e "$(prompt_message "sudo") ${WHITE}$1${END}"
+        local prompt
+        format_prompt prompt 'sudo'
+        printf '%b %b%b%b\n' "$prompt" "${WHITE}" "$1" "${END}"
     fi
+}
+
+unix_privilage() {
+    local -n _ref=$1
+    local current
+	local privilage
+    if is_unix_root; then
+        privilage='is_unix__root'
+    elif current=$(sudo -nv 2>&1); then
+        privilage='has_sudo__pass_set'
+    elif echo "$current" | grep -q '^sudo:'; then
+        privilage='has_sudo__needs_pass'
+    elif command -v su >/dev/null 2>&1; then
+        privilage='has_su__needs_pass'
+    else
+        privilage='none'
+    fi
+
+    _ref="$privilage"
+
+    case "$privilage" in
+    has_sudo__pass_set)
+        sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
+        ;;
+    has_sudo__needs_pass)
+        [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode requires passwordless sudo."
+        sudo_prompt '--internal-elevated'
+        sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
+        ;;
+    has_su__needs_pass)
+        [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode cannot use su."
+        local prompt
+        local cmd="bash $0 --internal-elevated ${ORIGINAL_ARGS[*]}"
+        format_prompt prompt 'su'
+        echo -e "$prompt ${WHITE}$cmd${END}"
+        su -c "$cmd"
+        ;;
+    none)
+        critical_exit "No privilege escalation available."
+        ;;
+    esac
 }
 
 run_pkg_cmd() {
     local cmd=$*
+
+    if [[ "$INTERNAL_ELEVATED" -eq 1 ]]; then
+        $cmd
+        return
+    fi
+
     local user_privilage
-    user_privilage=$(privilage)
-    case "$user_privilage" in
-    is_unix__root)
-        $cmd ;;
-    has_sudo__pass_set)
-        # shellcheck disable=SC2086
-        sudo $cmd ;;
-    has_sudo__needs_pass)
-        sudo_prompt "$cmd"
-        # shellcheck disable=SC2086
-        sudo $cmd ;;
-    has_su__needs_pass)
-        echo -e "$(prompt_message "su") ${WHITE}$cmd${END}"
-        su -c "$cmd" ;;
-    *) : ;;
-    esac
+    unix_privilage user_privilage
+
+    if [[ "$user_privilage" == "is_unix_root" ]]; then
+        $cmd
+    fi
 }
 
 install_packages() {
@@ -783,7 +829,7 @@ log_info "$(bin_status "$yq_bin") ${WHITE}yq"
 format_prompt() { echo -e "${QUESTION} ${GREEN}$1${END}"; }
 
 confirmation_prompt() {
-    local __var="$1"
+    local -n _ref="$1"
     local answer=""
     read -rp "$(format_prompt "$2")" answer
 
@@ -801,8 +847,7 @@ confirmation_prompt() {
         ;;
     esac
 
-
-    if [ -n "$answer" ]; then printf -v "$__var" '%s' "$answer"; fi
+    [[ -n "$answer" ]] && _ref="$answer"
 }
 
 elide() {
@@ -815,11 +860,11 @@ log_info "${HEADER}Populate Domain Names"
 #-------------------------------------------
 DOMAINS=()
 domain_var() {
-    local __var=$1
+    local -n _ref=$1
     local sub=$2
     local base=${sub/open-webui/WEBUI}
     base=${base//-/_}
-    printf -v "$__var" '%s_DOMAIN' "${base^^}"
+    _ref="${base^^}_DOMAIN"
 }
 
 unset_domain_vars() {
@@ -843,11 +888,12 @@ construct_domain_vars() {
         [[ "$val" == "$d" ]] && { add_domain=false; break; }
     done
     [[ "$add_domain" == true ]] && DOMAINS+=("$val")
+    
+	local -n _ref="$var"
+    _ref="$val"
 
-    printf -v "$var" '%s' "$val"
-    # shellcheck disable=SC2163
-    export "$var"
-    log_debug "${WHITE}-${END} ${YELLOW}$var:${END} ${WHITE}$val"
+    log_debug " ${WHITE}-${END} ${YELLOW}$var:${END} ${WHITE}$_ref"
+    export _ref
 }
 
 export_domain_envs() {
@@ -864,7 +910,7 @@ export_domain_envs() {
 }
 
 get_domain_var() {
-    local var=$1
+    local -n _ref=$1
     local arg=$2
     local i sub val
     for (( i=0; i<${#subdomains[@]}; i++ )); do
@@ -872,7 +918,7 @@ get_domain_var() {
         sub="${subdomains[$i]}"
         val="${DOMAINS[$i]}"
         [[ "$arg" == "$sub" ]] && {\
-        printf -v "$var" '%s' "$val"; \
+        _ref="$val"; \
         return; }
     done
 }
@@ -947,7 +993,7 @@ set_domain_names() {
             url=""
             ;;
         esac
-        if (( attempts >= max_attempts )); then
+        if (( attempts == max_attempts )); then
             log_warning "Maximum URL parse attempts ($max_attempts) reached."
             break
         fi
@@ -1913,6 +1959,7 @@ unix_hosts_add() {
     ! grep -q "^$header" "$HOSTS_PATH"; then \
     printf "%s\n" "$header" >> "$HOSTS_PATH"; fi
 
+    local d
     for d in "${DOMAINS[@]}"; do
         local pattern="^\\s*$HOST_IP\\s+$d"
         if ! grep -qE "$pattern" "$HOSTS_PATH"; then
@@ -1928,42 +1975,27 @@ unix_hosts_add() {
 
 unix_hosts_edit() {
     if [[ "$INTERNAL_ELEVATED" -eq 1 ]]; then
+        log_info "${BODY}Running normal"
         unix_hosts_add
         return
     fi
 
     local user_privilage
-    user_privilage=$(privilege)
+    unix_privilage user_privilage
 
     if [[ "$user_privilage" == "is_unix_root" ]]; then
+        log_info "${BODY}Running as${END} ${WHITE}Root"
         unix_hosts_add
-        return
     fi
-
-    case "$user_privilage" in
-    has_sudo__pass_set)
-        sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
-        ;;
-    has_sudo__needs_pass)
-        [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode requires passwordless sudo."
-        sudo_prompt "--internal-elevated"
-        sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
-        ;;
-    has_su__needs_pass)
-        [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode cannot use su."
-        local cmd="bash $0 --internal-elevated ${ORIGINAL_ARGS[*]}"
-        echo -e "$(prompt_message "su") ${WHITE}$cmd${END}"
-        su -c "$cmd"
-        ;;
-    none)
-        critical_exit "No privilege escalation available."
-        ;;
-    esac
 }
 
 windows_hosts_edit() {
-    local is_elevated
-    is_elevated=$(is_windows_admin)
+    local elevated
+    if is_windows_admin elevated; then
+	    log_info "${BODY}Running as${END} ${WHITE}Administrator"
+    else
+        log_info "${BODY}Running normal"
+    fi
     local ps_script_path="./access/ps_edit_hosts.ps1"
     local header="# $APP_NAME Local Domains:"
     local footer="# End of $APP_NAME section"
@@ -2034,12 +2066,12 @@ if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
     log_debug "ps_script: $ps_script"
 
     if [[ $SILENT -eq 1 ]]; then
-        if [[ "$is_elevated" != "True" ]]; then
+        if [[ "$elevated" != true ]]; then
             critical_exit "Silent mode requires Administrator privilage."
         fi
     fi
 
-    if [[ "$is_elevated" == "True" ]]; then
+    if [[ "$elevated" == true ]]; then
         powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$ps_script_path"
     else
         powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
@@ -2099,7 +2131,7 @@ if [[ "$AC_LOCAL" == true ]]; then
     [[ $DRY_RUN -eq 1 ]] && { check_host_arg="--quiet"; }
     check_host_domains "$check_host_arg"
     if (( ${#mal_domains[@]} > 0 )); then
-        log_info "${HEADER}Set Domains"
+        log_info "${HEADER}Set Local Domains"
         #-------------------------------------------
         [[ "$DRY_RUN" == 1 ]] && { mal_domains=(); }
         case "$PLATFORM" in
