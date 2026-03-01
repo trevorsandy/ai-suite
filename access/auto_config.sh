@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update February 28, 2026
+# Last Update March, 01 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -42,7 +42,6 @@ if [[ "$SILENT" == 0 && -t 1 ]]; then
         END="${SGR}0m"
     fi
 fi
-
 # Primitive style flags
 BOLD=''
 DIM=''
@@ -110,16 +109,16 @@ declare -A LOG_LEVEL_NAME=(
 )
 
 declare -A LOG_LEVEL_STYLE=(
-    [NOTICE]='1;95'     # BOLD; MAGENTA
-    [QUESTION]='1;92'   # BOLD; GREEN
-    [CRITICAL]='1;41'   # BOLD; RED_BG
-    [ERROR]='1;91'      # BOLD; RED
-    [WARNING]='1;4;93'  # BOLD; YELLOW
-    [DEBUG]='1;97'      # BOLD; WHITE
-    [INFO]='36'         #       CYAN
+    [NOTICE]="${SGR}${BOLD}95m"     # MAGENTA
+    [QUESTION]="${SGR}${BOLD}92m"   # GREEN
+    [CRITICAL]="${SGR}${BOLD}41m"   # RED_BG
+    [ERROR]="${SGR}${BOLD}91m"      # RED
+    [WARNING]="${SGR}${BOLD}${UNDERLINE}93m" # YELLOW
+    [DEBUG]="${SGR}${BOLD}97m"      # WHITE
+    [INFO]="${SGR}36m"              # CYAN
 )
 
-declare -A LOG_BODY_STYLE=(
+declare -A LOG_MESSAGE_STYLE=(
     [NOTICE]="$BOLD_MAGENTA"
     [QUESTION]="$GREEN"
     [CRITICAL]="$ITALIC_RED_BG"
@@ -129,23 +128,13 @@ declare -A LOG_BODY_STYLE=(
     [INFO]="$DIM_CYAN"
 )
 
-declare -A LOG_OUTPUT=(
-    [CRITICAL]='stderr'
-    [ERROR]='stderr'
-    [WARNING]='stdout'
-    [NOTICE]='stdout'
-    [QUESTION]='stdout'
-    [DEBUG]='stdout'
-    [INFO]='stdout'
-)
-
 # Prefix cache (precomputed for speed)
 log_header_prefix() {
     local -n header_prefix_ref=$1
     local level=$2
     local prefix
     if [[ -n "$SGR" ]]; then
-        prefix="${APP} ${SGR}${LOG_LEVEL_STYLE[$level]}m${LOG_LEVEL_NAME[$level]}${END}"
+        prefix="${APP} ${LOG_LEVEL_STYLE[$level]}${LOG_LEVEL_NAME[$level]}${END}"
     else
         prefix="${APP} ${LOG_LEVEL_NAME[$level]}"
     fi
@@ -159,7 +148,6 @@ for level in "${!LOG_LEVEL_NAME[@]}"; do
     log_header_prefix LOG_HEADER_PREFIX["$level"] "$level"
 done
 
-LOG_JSON="${LOG_JSON:-false}"
 LOG_TIMESTAMP="${LOG_TIMESTAMP:-false}"
 
 # Injection-aware logger
@@ -167,44 +155,23 @@ log() {
     local level="$1"; shift
     [[ "$level" == DEBUG && "$DEBUG_ON" != true ]] && return
 
-    local message="$*"
     local header="${LOG_HEADER_PREFIX[$level]}"
-    local body_style="${LOG_BODY_STYLE[$level]}"
+    local message="${LOG_MESSAGE_STYLE[$level]}"
 
-    # JSON mode (unchanged)
-    if [[ "$LOG_JSON" == true ]]; then
-        local now
-        now=$(date '+%Y-%m-%d %H:%M:%S')
-        printf '{"time":"%s","level":"%s","app":"%s","msg":"%s"}\n' \
-            "$now" "$level" "$APP_NAME" "$message"
-        return
-    fi
-
-    # Timestamp
-    if [[ "$LOG_TIMESTAMP" == true ]]; then
-        local now
-        now=$(date '+%Y-%m-%d %H:%M:%S')
-        header="$now $header"
-    fi
-
-    # Inject END or preserve default body style
-    local body_prefix="$body_style"
-    if [[ -n "$SGR" && "$message" == "$SGR"* ]]; then
-        body_prefix="$END"
-    fi
-
-    if [[ "${LOG_OUTPUT[$level]}" == stderr ]]; then
-        printf '%b %b%b%b\n' \
-            "$header" \
-            "$body_prefix" \
-            "$message" \
-            "$END" >&2
+    if [[ -n "$SGR" && "$*" == "$SGR"* ]]; then
+        message="${END}$*"
     else
-        printf '%b %b%b%b\n' \
-            "$header" \
-            "$body_prefix" \
-            "$message" \
-            "$END"
+        message="${message}$*"
+    fi
+
+    if [[ "$LOG_TIMESTAMP" == true ]]; then
+        header="$(date '+%Y-%m-%d %H:%M:%S') $header"
+    fi
+
+    if [[ "$level" == CRITICAL || "$level" == ERROR ]]; then
+        printf '%b %b%b\n' "$header" "$message" "$END" >&2
+    else
+        printf '%b %b%b\n' "$header" "$message" "$END"
     fi
 }
 
@@ -227,8 +194,8 @@ critical_exit() {
 }
 
 # Real-time tee with SGR stripping
-SCRIPT="${0##*/}"
-if [[ "$SCRIPT" == "auto_config.sh" ]]; then
+SCRIPT="${BASH_SOURCE[0]##*/}"
+if [[ "$SCRIPT" == "${0##*/}" ]]; then
     AC_LOG_PATH="${AC_LOG_PATH:-$(pwd)}"
     LOG="$AC_LOG_PATH/$SCRIPT.log"
     [[ -f "$LOG" && -r "$LOG" ]] && rm "$LOG"
@@ -265,6 +232,7 @@ finish_elapsed_time() {
 # shellcheck disable=SC2329
 finish () {
     local vars=(AC_SUDO_PASSWORD AC_PASSWORD password confirm_password)
+    local var
     for var in "${vars[@]}"; do [ -v "$var" ] && unset "$var" ; done
 
     local header="${END}✅ ${HEADER}"
@@ -375,7 +343,7 @@ bash_version_at_or_above_4_4() {
     [[ -z $BASH_VERSION ]] && return 1
     local required_ver="4.4"
     if [ "$(printf '%s\n' "$required_ver" "$BASH_VERSION" | sort -V | head -n1)" = "$required_ver" ]; then
-       return 0
+       return
     fi
     return 1
 }
@@ -388,18 +356,22 @@ extract_argument() { echo "${2:-${1#*=}}"; }
 
 update_subdomains() {
     local exists=false
+    local sub_domain
     local sub_domains=()
+    log_debug "update_subdomains - @ (${#@}): ${*}"
     for sub_domain in "$@"; do
         IFS=' ' read -r -a sub_domains <<< "$sub_domain"
     done
     for sub_domain in "${sub_domains[@]}"; do
         exists=false
+        local subdomain
         for subdomain in "${subdomains[@]}"; do
-            [[  "$sub_domain" == "$subdomain"  ]] && { exists=true; break; }
+            [[ "$sub_domain" == "$subdomain" ]] && { exists=true; break; }
         done
         [[ "$exists" == false ]] && \
         subdomains+=("$sub_domain")
     done
+    log_debug "update - subdomains (${#subdomains[@]}): ${subdomains[*]}"
 }
 
 completion=''
@@ -445,7 +417,7 @@ while [ $# -gt 0 ]; do
         INTERNAL_ELEVATED=1
         ;;
     *)
-        echo -e "${ERROR} ${RED}Invalid option:${END} $1" >&2
+        echo -e "${ERROR} ${RED}Invalid option:${END} ${WHITE}$1${END}" >&2
         usage
         exit 1
         ;;
@@ -461,19 +433,30 @@ if [[ "$proxy" != "caddy" && "$proxy" != "nginx" ]]; then
     critical_exit "Only caddy or nginx proxy supported - received $proxy"
 fi
 
-# Set all subdomains if no subdomain specified, else append default domains
-if [[ "$AC" == true ]]; then
-    update_subdomains "${AC_SUBDOMAINS[@]}"
-fi
-if (( ${#subdomains[@]} == 0 )); then
-    subdomains+=(open-webui n8n supabase flowise langfuse searxng neo4j llamacpp ollama)
-fi
-
+: "${AC:=false}"
+: "${AC_SUDO_PASSWORD:=}"
+: "${AC_SUDO_USER:="$SUDO_USER"}"
+: "${AC_DOMAIN:=}"
+: "${AC_LOCAL:=false}"
+: "${AC_PROXY:="$proxy"}"
+: "${AC_USERNAME:=}"
+: "${AC_PASSWORD:=}"
+: "${AC_CONFIRM:=false}"
+: "${AC_WITH_AUTHELIA:="$with_authelia"}"
+: "${AC_EMAIL:=}"
+: "${AC_DISPLAY_NAME:=}"
+: "${AC_WITH_REDIS:="$WITH_REDIS"}"
+: "${AC_SUBDOMAINS:=}"
+: "${AC_LOG_PATH:=}"
+: "${AC_SEARXNG:=false}"
+: "${AC_LLAMA:=false}"
+: "${AC_LLAMACPP:=false}"
 if [ "$AC" == true ]; then
-    SUDO_USER="${AC_SUDO_USER:=${SUDO_USER}}"
-    with_authelia="${AC_WITH_AUTHELIA:=${with_authelia}}"
-    WITH_REDIS="${AC_WITH_REDIS:=${WITH_REDIS}}"
-    proxy="${AC_PROXY:=${proxy}}"
+    SUDO_USER="${AC_SUDO_USER}"
+    with_authelia="${AC_WITH_AUTHELIA}"
+    WITH_REDIS="${AC_WITH_REDIS}"
+    proxy="${AC_PROXY}"
+    update_subdomains "${AC_SUBDOMAINS[@]}"
     if [ "$AC_CONFIRM" == true ]; then
         ac_user_confirm="Email notification"
     else
@@ -485,11 +468,26 @@ if [ "$AC" == true ]; then
     else
         ac_install_type="Public (Global)"
     fi
+    log_info "${HEADER}Auto-configure Environment Variables"
+    #-------------------------------------------
+    log_info "${BODY}AC:${END} ${WHITE}true"
+    while IFS= read -r var; do
+        [[ $var == AC_* ]] || continue
+        declare -n ref="$var"
+        log_info "${BODY}$var:${END} ${WHITE}$ref"
+    done < <(compgen -A variable)
 elif [ "$CI" == true ]; then
     ac_config_mode="Continuous integration"
 else
     ac_config_mode="Interactive"
 fi
+
+# Set all subdomains if no subdomain specified
+if (( ${#subdomains[@]} == 0 )); then
+    subdomains+=(open-webui n8n supabase flowise langfuse searxng neo4j llamacpp ollama)
+fi
+
+log_debug "subdomains (${#subdomains[@]}): ${subdomains[*]}"
 
 log_info "${HEADER}Configuration Summary"
 #-------------------------------------------
@@ -521,8 +519,6 @@ detect_os() {
     *) echo "err" ;;
     esac
 }
-
-# is_wsl() { grep -qi microsoft /proc/version 2>/dev/null ; }
 
 is_wsl() {
     case "$(uname -r)" in
@@ -787,7 +783,7 @@ log_info "$(bin_status "$yq_bin") ${WHITE}yq"
 format_prompt() { echo -e "${QUESTION} ${GREEN}$1${END}"; }
 
 confirmation_prompt() {
-    local variable_to_update_name="$1"
+    local __var="$1"
     local answer=""
     read -rp "$(format_prompt "$2")" answer
 
@@ -805,8 +801,8 @@ confirmation_prompt() {
         ;;
     esac
 
-    # Use eval to dynamically assign the new value to the variable name. This indirectly updates the variable in the caller's scope.
-    if [ -n "$answer" ]; then eval "$variable_to_update_name=$answer"; fi
+
+    if [ -n "$answer" ]; then printf -v "$__var" '%s' "$answer"; fi
 }
 
 elide() {
@@ -818,53 +814,68 @@ elide() {
 log_info "${HEADER}Populate Domain Names"
 #-------------------------------------------
 DOMAINS=()
-N8N_DOMAIN=''
-OLLAMA_DOMAIN=''
-LLAMACPP_DOMAIN=''
-SUPABASE_DOMAIN=''
+domain_var() {
+    local __var=$1
+    local sub=$2
+    local base=${sub/open-webui/WEBUI}
+    base=${base//-/_}
+    printf -v "$__var" '%s_DOMAIN' "${base^^}"
+}
 
 unset_domain_vars() {
     local sub var
-
     for sub in "${subdomains[@]}"; do
         domain_var var "$sub"
-
         declare -p "$var" &>/dev/null || continue
         unset "$var"
         log_debug "Unset domain variable: $var"
     done
 }
 
-domain_var() {
-    local __out=$1
-    local sub=$2
-
-    local base=${sub/open-webui/WEBUI}
-    base=${base//-/_}
-
-    printf -v "$__out" '%s_DOMAIN' "${base^^}"
-}
-
 construct_domain_vars() {
     local sub=$1
-    local var val
-
+    local d var val
     domain_var var "$sub"
-
     val="${sub}.${registered_domain}"
 
     local add_domain=true
     for d in "${DOMAINS[@]}"; do \
-    [[ "$val" == "$d" ]] && add_domain=false; break || : ; done
+        [[ "$val" == "$d" ]] && { add_domain=false; break; }
+    done
     [[ "$add_domain" == true ]] && DOMAINS+=("$val")
 
     printf -v "$var" '%s' "$val"
     # shellcheck disable=SC2163
     export "$var"
-    #echo -e "${DEBUG} ${WHITE}-${END} ${YELLOW}$var:${END} ${WHITE}$val${END}"
+    log_debug "${WHITE}-${END} ${YELLOW}$var:${END} ${WHITE}$val"
 }
 
-# Modules listedd in reverse order
+export_domain_envs() {
+    local sub var env array
+    array=("${subdomains[@]}")
+    array+=(llama)
+    for sub in "${array[@]}"; do
+        domain_var var "$sub"
+        declare -p "$var" &>/dev/null || continue
+        local -n ref="$var"
+        env=${var,,}
+        export "$env=$ref"
+    done
+}
+
+get_domain_var() {
+    local var=$1
+    local arg=$2
+    local i sub val
+    for (( i=0; i<${#subdomains[@]}; i++ )); do
+        (( i >= ${#DOMAINS[@]} )) && continue
+        sub="${subdomains[$i]}"
+        val="${DOMAINS[$i]}"
+        [[ "$arg" == "$sub" ]] && {\
+        printf -v "$var" '%s' "$val"; \
+        return; }
+    done
+}
 # url_parser --url argument and options:
 # --url: URL to parse. (e.g., https://subdomain.example.com:1234/path/resource?user=123#section1)
 # host: Host with port number if present (e.g., subdomain.example.com:1234)
@@ -879,95 +890,103 @@ construct_domain_vars() {
 # registeredDomain: Registered domain from host (e.g., example.com)
 # query.<parameter>: The value of the user query parameter (e.g., query.user: 123).
 set_domain_names() {
-    local domain_variable="$1"
-    local subdomain="$2"
-    local scheme="https"
+    local subdomain="${1:-}"
     local url=""
+    local attempts=0
+    local max_attempts=5
+    local _protocol="https"
+    local _host=""
+    local _registered_domain=""
+    local _subdomain="$subdomain"
 
     unset_domain_vars
 
+    : "${url_parser_bin:?url_parser_bin is not set}"
+    ! declare -p subdomains 2>/dev/null | grep -q 'declare \-a' && \
+        critical_exit "The subdomains variable must be a declared array"
+    (( ${#subdomains[@]} > 0 )) || \
+        critical_exit "The subdomains array is empty"
+
     while [ -z "$url" ]; do
-        if test -z "$subdomain"; then subdomain="${subdomains[0]}"; fi
-        if [ "$CI" == true ]; then
-            url="$scheme://$subdomain.example.com"
-        elif [ "$AC" == true ]; then
-            url="$scheme://$subdomain.${AC_DOMAIN:-"local.pc"}"
+        ((++attempts))
+        [[ -z "$_subdomain" ]] && _subdomain="${subdomains[0]}"
+        if [[ "$CI" == true ]]; then
+            url="${_protocol}://${_subdomain}.example.com"
+        elif [[ "$AC" == true ]]; then
+            url="${_protocol}://${_subdomain}.${AC_DOMAIN:-local.pc}"
         else
-            read -rp "$(format_prompt "Enter your hostname URL:") " url
+            read -r -p "$(format_prompt "Enter your domain URL:") " url
+            if ! _protocol="$("$url_parser_bin" --url "$url" --get scheme 2>/dev/null)"; then
+                log_error "Could not extract protocol from hostname URL: $url."
+                url="" && _protocol=""
+            fi
         fi
 
-        if ! protocol="$("$url_parser_bin" --url "$url" --get scheme 2>/dev/null)"; then
-            log_error "Could not extract protocol from hostname URL: $url."
-            protocol=""
-        fi
-
-        if ! host="$("$url_parser_bin" --url "$url" --get host 2>/dev/null)"; then
+        if ! _host="$("$url_parser_bin" --url "$url" --get host 2>/dev/null)"; then
             log_error "Could not extract host from hostname URL: $url."
-            host=""
+            url="" && _host=""
         fi
-        if ! test "$AC" == true && test -z "$protocol" || test -z "$host"; then url="" && continue; fi
-
-        # cookies.authelia_url needs to be https https://www.authelia.com/configuration/session/introduction/#authelia_url
-        if [[ "$with_authelia" == true && "$protocol" != "https" ]]; then
-            log_error "As --with-authelia is enabled, the hostname URL protocol must be https."
-            protocol=""
-        elif [[ "$protocol" != "http" && "$protocol" != "https" ]]; then
-            log_error "The hostname URL protocol must be http or https"
-            protocol=""
+        if ! _registered_domain="$("$url_parser_bin" --url "$url" --get registeredDomain 2>/dev/null)"; then
+            _registered_domain=""
         fi
-        if ! test "$AC" == true && test -z "$protocol"; then url="" && continue; fi
-
-        if [[ -z "$domain_variable" || "$with_authelia" == true ]]; then
-            if ! registered_domain="$("$url_parser_bin" --url "$url" --get registeredDomain 2>/dev/null)"; then
-                registered_domain=""
-            fi
-            if test -z "$registered_domain" || test "$registered_domain" == "."; then
-                registered_domain=""
-            fi
-            if [ -z "$registered_domain" ]; then
-                log_error "Failed to extract the registered domain from $url."
-                if ! test "$AC" == true; then url="" && continue; fi
-            fi
+        [[ "$_registered_domain" == "." ]] && _registered_domain=""
+        if [ -z "$_registered_domain" ]; then
+            log_error "Parser failed to extract the registered domain from $url."
+            url=""
         fi
+        case "$_protocol" in
+        https) ;;
+        http)
+            if [[ "$with_authelia" == true ]]; then
+                log_error "Using --with-authelia requires https URL protocol."
+                url="" && _protocol=""
+            fi
+            ;;
+        *)
+            log_error "Domain URL protocol must be http or https."
+            url=""
+            ;;
+        esac
+        if (( attempts >= max_attempts )); then
+            log_warning "Maximum URL parse attempts ($max_attempts) reached."
+            break
+        fi
+        [[ -z "$url" && "$AC" != true ]] && continue
     done
 
-    if [[ -n "$protocol" && -n "$host" ]]; then
-        if test -n "$domain_variable"; then
-            if ! registered_domain="$("$url_parser_bin" --url "$url" --get registeredDomain 2>/dev/null)"; then
-                log_error "Failed to extract the registered domain from $url."
-            else
-                 construct_domain_vars "$subdomain"
-            fi
-        elif test -n "$registered_domain"; then
-            for sub in "${subdomains[@]}"; do
-                construct_domain_vars "$sub"
-            done
-        else
-            critical_exit "Failed to get registered domain from hostname URL."
-        fi
+    if [[ -n "$url" ]]; then
+        [[ -n "$_protocol" ]] && protocol="$_protocol"
+        [[ -n "$_host" ]] && host="$_host"
+        [[ -n "$_registered_domain" ]] && registered_domain="$_registered_domain"
     else
-        critical_exit "Failed to get protocol and host from hostname URL."
+        critical_exit "Failed to set domain attributes for URL."
+    fi
+
+    if [[ -n "$subdomain" ]]; then
+        construct_domain_vars "$subdomain"
+    else
+        local sub
+        for sub in "${subdomains[@]}"; do
+            construct_domain_vars "$sub"
+        done
     fi
 }
 
-# If 'module_DOMAIN' 'subdomain' arguments are empty, all AI Suite domains will be populated.
-set_domain_names "" ""
+# If 'subdomain' argument is empty, all AI Suite domains will be populated.
+set_domain_names ""
 
 log_info "${BODY}Confirm subdomains converted to domain names"
 
 validate_domain_vars() {
     local i sub var val
-
     for (( i=0; i<${#subdomains[@]}; i++ )); do
         sub="${subdomains[$i]}"
-        val="${DOMAINS[$i]}"
-
         domain_var var "$sub"
-
         if declare -p "$var" &>/dev/null; then
+            val="${DOMAINS[$i]}"
             log_notice "${WHITE}-${END} ${MAGENTA}${var}:${END} ${CYAN}${val}"
         else
-            log_notice "${WHITE}-${END} ${RED}${var} is not a valid variable!"
+            log_notice "${WHITE}-${END} ${YELLOW}${var}${END} ${WHITE}is not declared"
         fi
     done
 }
@@ -978,14 +997,19 @@ log_info "${BODY}protocol:${END} ${WHITE}$protocol"
 log_info "${BODY}host (${APP_NAME}):${END} ${WHITE}$host"
 log_info "${BODY}registered_domain:${END} ${WHITE}$registered_domain"
 
-log_info "${BODY}SUPABASE_PUBLIC_URL:${END} ${WHITE}$protocol://$SUPABASE_DOMAIN"
+SUPABASE_domain='localhost'
+declare -p SUPABASE_DOMAIN &>/dev/null && \
+SUPABASE_domain=$SUPABASE_DOMAIN
+
+log_info "${BODY}SUPABASE_PUBLIC_URL:${END} ${WHITE}$protocol://$SUPABASE_domain"
+declare -p N8N_DOMAIN &>/dev/null && \
 log_info "${BODY}N8N WEBHOOK_URL:${END} ${WHITE}$protocol://$N8N_DOMAIN"
 
-LLAMA_DOMAIN=''
+LLAMA_DOMAIN='undefined'
 if [[ "$AC_LLAMACPP" == true ]]; then
-    LLAMA_DOMAIN="$LLAMACPP_DOMAIN"
+    get_domain_var LLAMA_DOMAIN 'llamacpp'
 else
-    LLAMA_DOMAIN="$OLLAMA_DOMAIN"
+    get_domain_var LLAMA_DOMAIN 'ollama'
 fi
 log_info "${BODY}LLAMA_DOMAIN:${END} ${WHITE}$LLAMA_DOMAIN"
 
@@ -1002,7 +1026,6 @@ elif [[ "$AC" == true ]]; then username="$AC_USERNAME"; fi
 
 while [ -z "$username" ]; do
     read -rp "$(format_prompt "Enter username:") " username
-
     # https://stackoverflow.com/questions/18041761
     if [[ ! "$username" =~ ^[a-zA-Z0-9]+$ ]]; then
         log_warning "Only alphanumeric characters are allowed. Your rsponse: $username"
@@ -1168,8 +1191,8 @@ sed -e "3d" \
     -e "s|SECRET_KEY_BASE.*|SECRET_KEY_BASE=$(gen_hex 32)|" \
     -e "s|VAULT_ENC_KEY.*|VAULT_ENC_KEY=$(gen_hex 16)|" \
     -e "s|PG_META_CRYPTO_KEY.*|PG_META_CRYPTO_KEY=$(gen_hex 16)|" \
-    -e "s|API_EXTERNAL_URL.*|API_EXTERNAL_URL=$protocol://$SUPABASE_DOMAIN/goapi|" \
-    -e "s|SUPABASE_PUBLIC_URL.*|SUPABASE_PUBLIC_URL=$protocol://$SUPABASE_DOMAIN|" \
+    -e "s|API_EXTERNAL_URL.*|API_EXTERNAL_URL=$protocol://$SUPABASE_domain/goapi|" \
+    -e "s|SUPABASE_PUBLIC_URL.*|SUPABASE_PUBLIC_URL=$protocol://$SUPABASE_domain|" \
     -e "s|ENABLE_EMAIL_AUTOCONFIRM.*|ENABLE_EMAIL_AUTOCONFIRM=$auto_confirm|" \
     -e "s|POOLER_TENANT_ID.*|POOLER_TENANT_ID=1100|" \
     -e "s|LOGFLARE_PUBLIC_ACCESS_TOKEN.*|LOGFLARE_PUBLIC_ACCESS_TOKEN=$(gen_hex 16)|" \
@@ -1438,18 +1461,6 @@ if [[ "$with_authelia" == true ]]; then
     # WRITE AUTHELIA configuration.yml file (Supabase target)
     log_info "${BODY}Write Authelia configuration.yml file"
     #-------------------------------------------
-    export_domain_envs() {
-        local sub var env array
-        array=("${subdomains[@]}")
-        array+=(llama)
-        for sub in "${array[@]}"; do
-            domain_var var "$sub"
-            declare -n ref="$var"
-            env=${var,,}
-            export "$env=$ref"
-        done
-    }
-
     (
         export_domain_envs
         host="$host" \
@@ -1520,9 +1531,7 @@ done
 # | ++ | ++ | `LLaMA.cpp`             | llamacpp:8040/                    | localhost:8040/          |
 
 # NOTE: LLAMA and SearXNG are disabled in proxy config by default.
-# Set the following env_vars (to anything other than empty) to enable:
-AC_LLAMA=''
-AC_SEARXNG=''
+# Set AC_LLAMA and AC_SEARXNG to anything other than empty, to enable:
 
 # WRITE LOCAL Caddyfile
 if [[ "$proxy" == "caddy" ]]; then
@@ -1958,7 +1967,7 @@ windows_hosts_edit() {
     local ps_script_path="./access/ps_edit_hosts.ps1"
     local header="# $APP_NAME Local Domains:"
     local footer="# End of $APP_NAME section"
-    local ps_domains=""
+    local d ps_domains=""
     for d in "${DOMAINS[@]}"; do
         ps_domains+="\"$d\","
     done
@@ -2054,14 +2063,13 @@ if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
         done
         ! grep -q "^$footer" "$HOSTS_PATH" && \
         echo "[DRY-RUN] $footer"
-        echo ""
     else
         rm "$ps_script_path"
     fi
 }
 
 check_host_domains() {
-    local quiet=false
+    local d quiet=false
     quiet=$([[ "$1" == "--quiet" ]] && echo true)
 
     [[ "$quiet" == false ]] && \
