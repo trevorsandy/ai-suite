@@ -1,7 +1,9 @@
 .env
 .env.test
-*.log
+.ac.env
+*.log*
 *.ps1
+.n8n.*
 access/authelia/*
 !access/authelia/configuration.yml
 access/authelia/db/*

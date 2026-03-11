@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update February 26, 2026
+Last Update March 11, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1097,7 +1097,7 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
         if modules:
             if any(m for m in modules if m in ['n8n', 'n8n-all', 'ai-all']):
                 default_secrets.extend([
-                    'N8N_ENCRYPTION_KEY=change_me_to_a_long_super-secret-key',
+                    'N8N_ENCRYPTION_KEY=change_me_to_the_long-n8n-generated-secret-key',
                     'N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key',
                     'N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret',
                     'POSTGRES_PASSWORD=your-super-secret-postgres-password'])
@@ -1883,7 +1883,7 @@ def main():
     agent_all_profiles = open_webui_all_profiles + ['opencode']
     server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j']
     subdomain_profiles = n8n_profiles + open_webui_profiles + server_profiles + \
-                         llama_host_profiles   
+                         llama_host_profiles
     proxy_profiles = ['caddy', 'nginx']
     profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + \
                llama_host_profiles + llama_docker_profiles + proxy_profiles
@@ -2106,11 +2106,23 @@ def main():
                     if profile.endswith('-all'):
                         profile.replace('-all', '')
                     ac_subdomains.append(profile)
+        ac_env_vars.append(f'AC_LLAMA={str(False).lower()}')
+        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
+        ac_env_vars.append(f'AC_SEARXNG={str(False).lower()}')
         if ac_subdomains:
             ac_env_vars.append(f'AC_SUBDOMAINS="{" ".join(ac_subdomains)}"')
+        ac_env_vars.append(f'APP_NAME={name}')
         if log_level == logging.DEBUG:
             ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
-        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
+            with open("access/.ac.env", "w", newline="\n") as f:
+                for var in ac_env_vars:
+                    pair = var.split('=')
+                    key = str(pair[0]).strip()
+                    val = str(pair[1]).rstrip("\r\n")
+                    is_bool = True if (val == "true" or val == "false") else False
+                    val = val.replace('"', '')
+                    val = f'{val}\n' if is_bool else f'"{val}"\n'
+                    f.write(f'{key}={val}')
         run_ai_suite_ac_auto_config(ac_env_vars)
     if ac_auto_config: # TEMP: End here if working on auto-config and no breakpoints set...
         log.debug("TEMP: Finished!")

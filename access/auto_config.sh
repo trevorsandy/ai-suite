@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 01 2026
+# Last Update March, 14 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -16,7 +16,12 @@
 
 set -euo pipefail
 
-VERSION="0.2.0"
+VERSION="0.3.0"
+
+# If AC is unset we assume the script is being run manually for debugging
+# shellcheck disable=SC1091
+[[ -z ${AC+x} && -f access/.ac.env ]] && {
+set -a && source access/.ac.env && set +a ; }
 
 # https://stackoverflow.com/a/28085062/18954618
 : "${CI:=false}"
@@ -25,9 +30,9 @@ VERSION="0.2.0"
 : "${SUDO_USER:="$(whoami)"}"
 : "${DEBUG_ON:=false}"
 : "${BACKUP:=1}"
+: "${VERBOSE:=1}" # toggle verbose messages in hosts edit payload
 : "${SILENT:=$([[ "$CI" == true ]] && echo 1 || echo 0)}"
 : "${DRY_RUN:=$([[ "$DEBUG_ON" == true ]] && echo 1 || echo 0)}"
-: "${INTERNAL_ELEVATED:=0}"
 
 # Reset BASH time counter
 SECONDS=0
@@ -36,9 +41,9 @@ SECONDS=0
 SGR=''
 END=''
 # Core SGR support detection
-if [[ "$SILENT" == 0 && -t 1 ]]; then
+if [[ "${SILENT:-0}" == 0 && -t 1 ]]; then
     if colors=$(tput colors 2>/dev/null) && [[ "$colors" -ge 8 ]]; then
-        SGR='\033['
+        SGR=$'\033['
         END="${SGR}0m"
     fi
 fi
@@ -65,7 +70,7 @@ HEADER=''
 BODY='  - '
 COLON=':'
 APP="${APP_NAME}${COLON}"
-QUESTION="${APP} QUESTION"
+PROMPT="${APP} PROMPT"
 ERROR="${APP} ERROR"
 INFO="${APP} INFO"
 
@@ -78,7 +83,6 @@ if [[ -n "$SGR" ]]; then
 
     RED="${SGR}31m"
     GREEN="${SGR}32m"
-    # shellcheck disable=SC2034
     YELLOW="${SGR}33m"
     BLUE="${SGR}34m"
     MAGENTA="${SGR}35m"
@@ -93,14 +97,14 @@ if [[ -n "$SGR" ]]; then
     HEADER="${SGR}${BOLD}${UNDERLINE}92m"
     BODY="${SGR}37m  -${END} ${SGR}32m"
 
-    COLON="${SGR}97m:${END}"
+    COLON="${SGR}97m:"
     APP="${SGR}3;94m${APP_NAME}${COLON}${END}"
 fi
 
 # Log level names
 declare -A LOG_LEVEL_NAME=(
     [NOTICE]='NOTICE'
-    [QUESTION]='QUESTION'
+    [PROMPT]='PROMPT'
     [CRITICAL]='CRITICAL'
     [ERROR]='ERROR'
     [WARNING]='WARNING'
@@ -111,7 +115,7 @@ declare -A LOG_LEVEL_NAME=(
 # Log level styles
 declare -A LOG_LEVEL_STYLE=(
     [NOTICE]="${SGR}${BOLD}95m"     # MAGENTA
-    [QUESTION]="${SGR}${BOLD}92m"   # GREEN
+    [PROMPT]="${SGR}${BOLD}92m"     # GREEN
     [CRITICAL]="${SGR}${BOLD}41m"   # RED_BG
     [ERROR]="${SGR}${BOLD}91m"      # RED
     [WARNING]="${SGR}${BOLD}${UNDERLINE}93m" # YELLOW
@@ -122,7 +126,7 @@ declare -A LOG_LEVEL_STYLE=(
 # Log message styles
 declare -A LOG_MESSAGE_STYLE=(
     [NOTICE]="$BOLD_MAGENTA"
-    [QUESTION]="$GREEN"
+    [PROMPT]="$GREEN"
     [CRITICAL]="$ITALIC_RED_BG"
     [ERROR]="$RED"
     [WARNING]="$UNDERLINE_YELLOW"
@@ -132,7 +136,7 @@ declare -A LOG_MESSAGE_STYLE=(
 
 # Prefix cache (precomputed for speed)
 log_header_prefix() {
-    local -n header_prefix_ref=$1
+    local -n _ref=$1
     local level=$2
     local prefix
     if [[ -n "$SGR" ]]; then
@@ -140,8 +144,7 @@ log_header_prefix() {
     else
         prefix="${APP} ${LOG_LEVEL_NAME[$level]}"
     fi
-    # shellcheck disable=SC2034
-    header_prefix_ref=$prefix
+    _ref=$prefix
 }
 
 declare -A LOG_HEADER_PREFIX
@@ -160,25 +163,25 @@ log() {
     local header="${LOG_HEADER_PREFIX[$level]}"
     local message="${LOG_MESSAGE_STYLE[$level]}"
 
-    if [[ -n "$SGR" && "$*" == "$SGR"* ]]; then
+    if [[ -n "$SGR" && "$*" == *$'\033['* ]]; then
         message="${END}$*"
     else
         message="${message}$*"
     fi
 
     if [[ "$LOG_TIMESTAMP" == true ]]; then
-        header="$(date '+%Y-%m-%d %H:%M:%S') $header"
+        printf -v header '%(%Y-%m-%d %H:%M:%S)T %s' -1 "$header"
     fi
 
     if [[ "$level" == CRITICAL || "$level" == ERROR ]]; then
-        printf '%b %b%b\n' "$header" "$message" "$END" >&2
+        printf '%s %s%s\n' "$header" "$message" "$END" >&2
     else
-        printf '%b %b%b\n' "$header" "$message" "$END"
+        printf '%s %s%s\n' "$header" "$message" "$END"
     fi
 }
 
 # Semantic tokens
-log_header_prefix QUESTION 'QUESTION'
+log_header_prefix PROMPT 'PROMPT'
 log_header_prefix ERROR 'ERROR'
 log_header_prefix INFO 'INFO'
 
@@ -198,8 +201,8 @@ critical_exit() {
 # Real-time tee with SGR stripping
 SCRIPT="${BASH_SOURCE[0]##*/}"
 if [[ "$SCRIPT" == "${0##*/}" ]]; then
-    AC_LOG_PATH="${AC_LOG_PATH:-$(pwd)}"
-    LOG="$AC_LOG_PATH/$SCRIPT.log"
+    LOG_PATH="${AC_LOG_PATH:-$PWD}"
+    LOG="$LOG_PATH/$SCRIPT.log"
     [[ -f "$LOG" && -r "$LOG" ]] && rm "$LOG"
     # Strip SGR color sequence codes from output"
     exec > >(tee >(sed 's/\x1b\[[0-79;]\{1,11\}m//g' >> "$LOG"))
@@ -227,8 +230,8 @@ finish_elapsed_time() {
     set +x
     local ELAPSED
     ELAPSED="$((SECONDS / 3600))hrs $(((SECONDS / 60) % 60))min $((SECONDS % 60))sec"
-    echo -e "${INFO} ${CYAN}Elapsed time:${END} ${GREEN}$ELAPSED${END}"
-    echo -e "${INFO} ${GREEN}-------------------------------------------${END}"
+    printf '%s' "${INFO} ${CYAN}Elapsed time:${END} ${GREEN}$ELAPSED${END}"
+    printf '%s' "${INFO} ${GREEN}-------------------------------------------${END}"
 }
 
 # shellcheck disable=SC2329
@@ -246,7 +249,7 @@ finish () {
         header="${END}⚠️ ${HEADER}"
         status="Finished"
     else
-        header="${END}❌ ${SGR}${UNDERLINE}91m"
+        header="${END}❌ ${SGR}${BOLD}${UNDERLINE}91m"
         status="Terminated"
     fi
 
@@ -281,7 +284,7 @@ Environment:
   WITH_REDIS:bool Set Authelia to use Redis - optional if --with-authelia, default: $WITH_REDIS
   DEBUG_ON:bool   Turn on debug mode, log_debug statements enabled - default: $DEBUG_ON
   DRY_RUN:int     Simulate adding domains to hosts file - 1 when DEBUG_ON=true, default: $DRY_RUN
-  SILENT:int      No prompt for elevated privilage - 1 when CI=true, default: $SILENT
+  SILENT:int      No prompt for elevated privilege - 1 when CI=true, default: $SILENT
   BACKUP:int      Backup hosts file before update - default: $BACKUP
 
   Auto-configure environment variables:
@@ -301,9 +304,9 @@ Environment:
   AC_SUBDOMAINS:str      Subdomain(s) to create domain name(s) - 5. all subdomains used if not set
   AC_LOG_PATH:str        Directory path where configuration runtime log is deposited
 
-  AC_SEARXNG:false  Configure proxy for SearXNG domain name
-  AC_LLAMA:false    Configure proxy for LLAMA (LLaMA.cpp/Ollama) domain name
-  AC_LLAMACPP:false Using LLaMA.cpp LLM (instead of Ollama)
+  AC_SEARXNG:false       Configure proxy for SearXNG domain name
+  AC_LLAMA:false         Configure proxy for LLAMA (LLaMA.cpp/Ollama) domain name
+  AC_LLAMACPP:false      Using LLaMA.cpp LLM (instead of Ollama)
 
   1. Automatically adds your local domain name(s) to the hosts file to loop back to your
      machine like localhost - for example: 127.0.0.1   open-webui.local.pc.
@@ -359,7 +362,7 @@ extract_argument() { echo "${2:-${1#*=}}"; }
 update_subdomains() {
     local sub_domain
     local sub_domains=()
-    log_debug "update_subdomains - @ (${#@}): ${*}"
+    log_debug "subdomains - args @ (${#@}): ${*}"
     for sub_domain in "$@"; do
         IFS=' ' read -r -a sub_domains <<< "$sub_domain"
     done
@@ -372,22 +375,26 @@ update_subdomains() {
         [[ "$exists" == false ]] && \
         subdomains+=("$sub_domain")
     done
-    log_debug "update - subdomains (${#subdomains[@]}): ${subdomains[*]}"
+    log_debug "subdomains - init (${#subdomains[@]}): ${subdomains[*]}"
 }
 
 completion=''
 subdomains=()
-ac_install_type=''
-ac_user_confirm=''
 with_authelia=false
 using_sudo_user=false
-proxy="caddy"
-url_parser_bin="./access/url-parser"
-yq_bin="./access/yq"
+proxy='caddy'
+install_type='Default'
+user_confirm='Default'
+config_mode="Interactive"
+url_parser_bin='./access/url-parser'
+yq_bin='./access/yq'
 
-ORIGINAL_ARGS=("$@")
-PLATFORM="unknown"
-HOSTS_PATH="/etc/hosts"
+PLATFORM='unknown'
+HOST_IP='127.0.0.1'
+HOSTS_PATH='/etc/hosts'
+WIN_HOSTS_PATH='C:\\Windows\\System32\\drivers\\etc\\hosts'
+
+[ "${DEBUG_ON}" == true ] && log_debug "Enabled"
 
 # https://medium.com/@wujido20/handling-flags-in-bash-scripts-4b06b4d0ed04
 while [ $# -gt 0 ]; do
@@ -414,9 +421,6 @@ while [ $# -gt 0 ]; do
         [[ $# -eq 0 ]] && critical_exit "--subdomains option require at least one arguement."
         update_subdomains "$1"
         ;;
-    --internal-elevated)
-        INTERNAL_ELEVATED=1
-        ;;
     *)
         echo -e "${ERROR} ${RED}Invalid option:${END} ${WHITE}$1${END}" >&2
         usage
@@ -434,25 +438,6 @@ if [[ "$proxy" != "caddy" && "$proxy" != "nginx" ]]; then
     critical_exit "Only caddy or nginx proxy supported - received $proxy"
 fi
 
-: "${AC:=false}"
-: "${AC_SUDO_PASSWORD:=}"
-: "${AC_SUDO_USER:="$SUDO_USER"}"
-: "${AC_DOMAIN:=}"
-: "${AC_LOCAL:=false}"
-: "${AC_PROXY:="$proxy"}"
-: "${AC_USERNAME:=}"
-: "${AC_PASSWORD:=}"
-: "${AC_CONFIRM:=false}"
-: "${AC_WITH_AUTHELIA:="$with_authelia"}"
-: "${AC_EMAIL:=}"
-: "${AC_DISPLAY_NAME:=}"
-: "${AC_WITH_REDIS:="$WITH_REDIS"}"
-: "${AC_SUBDOMAINS:=}"
-: "${AC_LOG_PATH:=}"
-: "${AC_SEARXNG:=false}"
-: "${AC_LLAMA:=false}"
-: "${AC_LLAMACPP:=false}"
-
 if [ "$AC" == true ]; then
     SUDO_USER="${AC_SUDO_USER}"
     with_authelia="${AC_WITH_AUTHELIA}"
@@ -460,15 +445,13 @@ if [ "$AC" == true ]; then
     proxy="${AC_PROXY}"
     update_subdomains "${AC_SUBDOMAINS[@]}"
     if [ "$AC_CONFIRM" == true ]; then
-        ac_user_confirm="Email notification"
-    else
-        ac_user_confirm="Default"
+        user_confirm="Email notification"
     fi
-    ac_config_mode="Auto-configuration"
+    config_mode="Auto-configuration"
     if [ "$AC_LOCAL" == true ]; then
-        ac_install_type="Private (Local)"
+        install_type="Private (Local)"
     else
-        ac_install_type="Public (Global)"
+        install_type="Public (Global)"
     fi
     log_info "${HEADER}Auto-configure Environment Variables"
     #-------------------------------------------
@@ -480,30 +463,49 @@ if [ "$AC" == true ]; then
         [[ $var == AC_*ASSWORD ]] && ref='***'
         log_info "${BODY}$var:${END} ${WHITE}$ref"
     done < <(compgen -A variable)
-elif [ "$CI" == true ]; then
-    ac_config_mode="Continuous integration"
 else
-    ac_config_mode="Interactive"
+    : "${AC:=false}"
+    : "${AC_SUDO_PASSWORD:=}"
+    : "${AC_SUDO_USER:="$SUDO_USER"}"
+    : "${AC_DOMAIN:=}"
+    : "${AC_LOCAL:=false}"
+    : "${AC_PROXY:="$proxy"}"
+    : "${AC_USERNAME:=}"
+    : "${AC_PASSWORD:=}"
+    : "${AC_CONFIRM:=false}"
+    : "${AC_WITH_AUTHELIA:="$with_authelia"}"
+    : "${AC_EMAIL:=}"
+    : "${AC_DISPLAY_NAME:=}"
+    : "${AC_WITH_REDIS:="$WITH_REDIS"}"
+    : "${AC_SUBDOMAINS:=}"
+    : "${AC_LOG_PATH:=}"
+    : "${AC_SEARXNG:=false}"
+    : "${AC_LLAMA:=false}"
+    : "${AC_LLAMACPP:=false}"
+    [[ "$CI" == true ]] && \
+    config_mode="Continuous integration"
 fi
 
 # Set all subdomains if no subdomain specified
 if (( ${#subdomains[@]} == 0 )); then
     subdomains+=(open-webui n8n supabase flowise langfuse searxng neo4j llamacpp ollama)
 fi
-
-log_debug "subdomains (${#subdomains[@]}): ${subdomains[*]}"
+log_info "${HEADER}Subdomains (${#subdomains[@]})"
+#-------------------------------------------
+for subdoman in $(printf '%s\n' "${subdomains[@]}" | sort); do
+    log_info "${BODY}$subdoman"
+done
 
 log_info "${HEADER}Configuration Summary"
 #-------------------------------------------
+log_info "${BODY}Name:${END} ${WHITE}${APP_NAME}"
 log_info "${BODY}Proxy:${END} ${WHITE}${proxy}"
 log_info "${BODY}Authelia 2FA:${END} ${WHITE}${with_authelia}"
 log_info "${BODY}Redis:${END} ${WHITE}${WITH_REDIS}"
-log_info "${BODY}Setup Mode:${END} ${WHITE}${ac_config_mode}"
-[ -n "${ac_install_type}" ] && \
-log_info "${BODY}Installation:${END} ${WHITE}${ac_install_type}" || :
-[ -n "${ac_user_confirm}" ] && \
-log_info "${BODY}User Confirmation:${END} ${WHITE}${ac_user_confirm}" || :
-[ "${DEBUG_ON}" == true ] && log_debug "Enabled"
+log_info "${BODY}Setup Mode:${END} ${WHITE}${config_mode}"
+log_info "${BODY}Installation:${END} ${WHITE}${install_type}"
+log_info "${BODY}User Confirmation:${END} ${WHITE}${user_confirm}"
+log_info "${BODY}Log File:${END} ${WHITE}${LOG}"
 
 detect_arch() {
     local -n _ref=$1
@@ -542,7 +544,7 @@ detect_os os
 case "$os" in
 linux*)
     if is_wsl; then
-        HOSTS_PATH="/mnt/c/Windows/System32/drivers/etc/hosts"
+        HOSTS_PATH=$(wslpath "$WIN_HOSTS_PATH")
         PLATFORM="wsl"
     else
         PLATFORM="linux"
@@ -551,10 +553,6 @@ linux*)
 darwin*) PLATFORM="mac" ;;
 err) critical_exit "Unsupported platform." ;;
 esac
-
-log_debug "PLATFORM: $PLATFORM"
-log_debug "BASH_VERSION: $BASH_VERSION"
-log_debug "HOSTS_PATH: $HOSTS_PATH"
 
 if [[ "$arch" == "err" ]]; then critical_exit "Unsupported CPU architecture"; fi
 
@@ -568,6 +566,27 @@ is_windows_admin() {
         "[int]([Security.Principal.WindowsPrincipal] \
         [Security.Principal.WindowsIdentity]::GetCurrent() \
         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
+    )
+    var=${var%$'\r'}
+    if [[ $var -eq 1 ]]; then
+        _ref=true
+        return 0
+    else
+        _ref=false
+        return 1
+    fi
+}
+
+hosts_write_uac() {
+    local -n _ref=$1
+    local var
+    # shellcheck disable=SC2016
+    IFS= read -r var < <(
+        powershell.exe -NoProfile -Command '
+          $HostsPath  = [System.IO.Path]::GetFullPath("'"$2"'");
+          $TargetPath = [System.IO.Path]::GetFullPath("'"$3"'");
+          [int]([string]::Equals($HostsPath,$TargetPath,
+                [System.StringComparison]::OrdinalIgnoreCase))'
     )
     var=${var%$'\r'}
     if [[ $var -eq 1 ]]; then
@@ -630,60 +649,68 @@ package_is_installed() {
     return $i
 }
 
-format_prompt() {
-    local -n _ref=$1
-    local user=$2
-    local BOLD_CYAN="${SGR}${BOLD}36m"
-    local prompt="${INFO} ${WHITE}Supply${END} ${BOLD_CYAN}$user${END} ${WHITE}password for command:${END}"
-    [[ "$user" == "su" ]] && user="su -c"
-    _ref='%b %b%b%b' "$prompt" "${BLUE}" "$user" "${END}"
-}
-
 sudo_prompt() {
     # https://superuser.com/questions/553932
     if [ -n "${AC_SUDO_PASSWORD}" ]; then
         (sudo -S -v <<<"${AC_SUDO_PASSWORD}" > /dev/null 2>&1)
-    else
-        local prompt
-        format_prompt prompt 'sudo'
-        printf '%b %b%b%b\n' "$prompt" "${WHITE}" "$1" "${END}"
     fi
 }
 
-unix_privilage() {
+unix_privilege() {
     local -n _ref=$1
-    local current
-	local privilage
-    if is_unix_root; then
-        privilage='is_unix__root'
-    elif current=$(sudo -nv 2>&1); then
-        privilage='has_sudo__pass_set'
-    elif echo "$current" | grep -q '^sudo:'; then
-        privilage='has_sudo__needs_pass'
-    elif command -v su >/dev/null 2>&1; then
-        privilage='has_su__needs_pass'
-    else
-        privilage='none'
+
+    if is_unix_root ""; then
+        _ref='is_unix__root'
+        return
     fi
+    if command -v sudo >/dev/null 2>&1; then
+        if sudo -n true 2>/dev/null; then
+            _ref='has_sudo__pass_set'
+        else
+            _ref='has_sudo__needs_pass'
+        fi
+        return
+    fi
+    if command -v su >/dev/null 2>&1; then
+        _ref='has_su__needs_pass'
+        return
+    fi
+    _ref='none'
+}
 
-    _ref="$privilage"
-
-    case "$privilage" in
+run_pkg_cmd() {
+    local cmd=$*
+    local pld=0
+    local user_privilege
+    unix_privilege user_privilege
+    if [[ "$user_privilege" == "is_unix_root" ]]; then
+        log_info "${BODY}Running as${END} ${WHITE}Root"
+    else
+        local user="user with no privilege"
+        case "$user_privilege" in
+        has_su__*) user="${END}${WHITE}Super User" ;;
+        has_sudo__*) user="User with${END} ${WHITE}sudo${END} ${GREEN}privilege" ;;
+        esac
+        log_info "${BODY}Running as $user"
+    fi
+    [[ $1 == -payload ]] && { pld=1; cmd=$2; }
+    case "$user_privilege" in
+    is_unix__root)
+        if [[ $pld -eq 0 ]]; then $cmd; else bash -c "$cmd"; fi
+        ;;
     has_sudo__pass_set)
-        sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
+        # shellcheck disable=SC2086
+        if [[ $pld -eq 0 ]]; then sudo $cmd; else sudo bash -c "$cmd"; fi
         ;;
     has_sudo__needs_pass)
         [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode requires passwordless sudo."
-        sudo_prompt '--internal-elevated'
-        sudo bash "$0" --internal-elevated "${ORIGINAL_ARGS[@]}"
+        sudo_prompt
+        # shellcheck disable=SC2086
+        if [[ $pld -eq 0 ]]; then sudo $cmd; else sudo bash -c "$cmd"; fi
         ;;
     has_su__needs_pass)
         [[ "$SILENT" -eq 1 ]] && critical_exit "Silent mode cannot use su."
-        local prompt
-        local cmd="bash $0 --internal-elevated ${ORIGINAL_ARGS[*]}"
-        format_prompt prompt 'su'
-        echo -e "$prompt ${WHITE}$cmd${END}"
-        su -c "$cmd"
+        if [[ $pld -eq 0 ]]; then su -c "$cmd"; else su -s /bin/bash -c "$cmd"; fi
         ;;
     none)
         critical_exit "No privilege escalation available."
@@ -691,27 +718,12 @@ unix_privilage() {
     esac
 }
 
-run_pkg_cmd() {
-    local cmd=$*
-
-    if [[ "$INTERNAL_ELEVATED" -eq 1 ]]; then
-        $cmd
-        return
-    fi
-
-    local user_privilage
-    unix_privilage user_privilage
-
-    if [[ "$user_privilage" == "is_unix_root" ]]; then
-        $cmd
-    fi
-}
-
 install_packages() {
     case "${package_manager}" in
     apt-get)
+        export DEBIAN_FRONTEND="noninteractive"
         run_pkg_cmd apt-get update
-        run_pkg_cmd export DEBIAN_FRONTEND="noninteractive" apt-get install -y "${packages[@]}"
+        run_pkg_cmd apt-get install -y "${packages[@]}"
         ;;
     apk)
         run_pkg_cmd apk update
@@ -787,7 +799,7 @@ fi
 repo_base="https://github.com/trevorsandy"
 repo_url="${repo_base}/ai-suite"
 if [ "$AC" == true ]; then
-    directory="$(pwd)"
+    directory="$PWD"
 else
     directory="$(basename "$repo_url")"
 fi
@@ -826,7 +838,7 @@ bin_status () { if test -x "$1"; then echo "${GREEN}  ✔"; else echo "${RED}  �
 log_info "$(bin_status "$url_parser_bin")${END} ${WHITE}url_parser"
 log_info "$(bin_status "$yq_bin") ${WHITE}yq"
 
-format_prompt() { echo -e "${QUESTION} ${GREEN}$1${END}"; }
+format_prompt() { echo -e "${PROMPT} ${GREEN}$1${END}"; }
 
 confirmation_prompt() {
     local -n _ref="$1"
@@ -851,8 +863,10 @@ confirmation_prompt() {
 }
 
 elide() {
+    local max=35
+    [[ "$#" -gt 1 ]] && { max=${1:-35}; shift || true; }
     echo "$@" | \
-    awk -v max=35 '{ if (length($0) > max) print substr($0, 1, max-3) "..."; else print; }'
+    awk -v max="${max}" '{ if (length($0) > max) print substr($0, 1, max-3) "..."; else print; }'
 }
 
 # Populate module hostname (URL)
@@ -888,11 +902,11 @@ construct_domain_vars() {
         [[ "$val" == "$d" ]] && { add_domain=false; break; }
     done
     [[ "$add_domain" == true ]] && DOMAINS+=("$val")
-    
-	local -n _ref="$var"
+
+    local -n _ref="$var"
     _ref="$val"
 
-    log_debug " ${WHITE}-${END} ${YELLOW}$var:${END} ${WHITE}$_ref"
+    log_debug " ${WHITE}-${END}    ${YELLOW}$var:${END} ${WHITE}$_ref"
     export _ref
 }
 
@@ -1018,6 +1032,8 @@ set_domain_names() {
     fi
 }
 
+log_info "${BODY}Create domains from subdomain containers"
+
 # If 'subdomain' argument is empty, all AI Suite domains will be populated.
 set_domain_names ""
 
@@ -1030,18 +1046,20 @@ validate_domain_vars() {
         domain_var var "$sub"
         if declare -p "$var" &>/dev/null; then
             val="${DOMAINS[$i]}"
-            log_notice "${WHITE}-${END} ${MAGENTA}${var}:${END} ${CYAN}${val}"
+            log_notice "${WHITE}-${END}    ${MAGENTA}${var}:${END} ${CYAN}${val}"
         else
-            log_notice "${WHITE}-${END} ${YELLOW}${var}${END} ${WHITE}is not declared"
+            log_notice "${WHITE}-${END}    ${YELLOW}${var}${END} ${WHITE}is not declared"
         fi
     done
 }
 
 validate_domain_vars
 
-log_info "${BODY}protocol:${END} ${WHITE}$protocol"
-log_info "${BODY}host (${APP_NAME}):${END} ${WHITE}$host"
-log_info "${BODY}registered_domain:${END} ${WHITE}$registered_domain"
+log_info "${BODY}Domain name attributes"
+
+log_info "${BODY}   protocol:${END} ${WHITE}$protocol"
+log_info "${BODY}   host (${APP_NAME}):${END} ${WHITE}$host"
+log_info "${BODY}   registered_domain:${END} ${WHITE}$registered_domain"
 
 SUPABASE_domain='localhost'
 declare -p SUPABASE_DOMAIN &>/dev/null && \
@@ -1050,6 +1068,17 @@ SUPABASE_domain=$SUPABASE_DOMAIN
 log_info "${BODY}SUPABASE_PUBLIC_URL:${END} ${WHITE}$protocol://$SUPABASE_domain"
 declare -p N8N_DOMAIN &>/dev/null && \
 log_info "${BODY}N8N WEBHOOK_URL:${END} ${WHITE}$protocol://$N8N_DOMAIN"
+
+# shellcheck disable=SC1091
+[[ -z ${N8N_ENCRYPTION_KEY+x} && -f n8n/.n8n.encryption.key ]] && {
+    while IFS='=' read -r key val; do
+        [[ -z "$key" || "$key" == \#* ]] && continue
+        [[ -z "$val" ]] && continue
+        export "$key=$val"
+    done < n8n/.n8n.encryption.key
+    [[ -n ${N8N_ENCRYPTION_KEY+x} ]] && \
+    log_info "${BODY}N8N_ENCRYPTION_KEY:${END} ${WHITE}$(elide "$N8N_ENCRYPTION_KEY")"
+}
 
 LLAMA_DOMAIN='undefined'
 if [[ "$AC_LLAMACPP" == true ]]; then
@@ -1130,11 +1159,11 @@ if [[ "$with_authelia" == true ]]; then
     if [[ "$CI" == true ]]; then
         email="johndoe@gmail.com"
         display_name="Inder Singh"
-        if [[ "$WITH_REDIS" == true ]]; then setup_redis=true; fi
+        setup_redis="$WITH_REDIS"
     elif [[ "$AC" == true ]]; then
         email="$AC_EMAIL"
         display_name="$AC_DISPLAY_NAME"
-        setup_redis="$WITH_REDIS"
+        setup_redis="${AC_WITH_REDIS}"
     fi
 
     log_info "${BODY}Authelia Email Address"
@@ -1176,11 +1205,12 @@ bcrypt_rounds=12
 if [[ "$proxy" == "nginx" && "$with_authelia" == false ]]; then bcrypt_rounds=6; fi
 
 # https://www.baeldung.com/linux/bcrypt-hash#using-htpasswd
-password=$(htpasswd -bnBC "$bcrypt_rounds" "" "$password" | cut -d : -f 2)
+bcrypt_password=$(htpasswd -bnBC "$bcrypt_rounds" "" "$password" | cut -d : -f 2)
 
-gen_hex() { openssl rand -hex "$1"; }
+# shellcheck disable=SC2329
+gen_bcrypt() { printf '%s' "${bcrypt_password}"; }
 
-jwt_secret="$(gen_hex 20)"
+gen_hex() { openssl rand -hex "${1:-32}"; }
 
 base64_url_encode() { openssl enc -base64 -A | tr '+/' '-_' | tr -d '='; }
 
@@ -1189,9 +1219,21 @@ header_base64=$(printf %s "$header" | base64_url_encode)
 # iat and exp for both tokens has to be same thats why initializing here
 iat=$(date +%s)
 exp=$(("$iat" + 5 * 3600 * 24 * 365)) # 5 years expiry
+jwt_secret=$(gen_hex 20)
 
+# shellcheck disable=SC2329
+gen_jwt() { [[ $1 == "secret" ]] && printf '%s' "${jwt_secret}"; }
+
+# shellcheck disable=SC2329
 gen_token() {
-    local payload
+    [[ "$1" =~ ^[0-9]+$ ]] && {
+        local len="$1"
+        (( len < 1 || len > 512 )) && return 1
+        local bytes=$(( len * 2 ))
+        openssl rand -base64 "$bytes" | tr -d '=+/' | cut -c1-"$len"
+        return 0
+    }
+
     payload=$(jq -nc ".iat=($iat | tonumber) | .exp=($exp | tonumber) | .iss=\"supabase\" | .role=\"$1\"")
     local payload_base64
     payload_base64=$(printf %s "$payload" | base64_url_encode)
@@ -1203,110 +1245,274 @@ gen_token() {
     printf '%s' "${signed_content}.${signature}"
 }
 
-anon_token=$(gen_token "anon")
-service_role_token=$(gen_token "service_role")
+# shellcheck disable=SC2329
+gen_n8ncrypt() {
+    [[ -n ${N8N_ENCRYPTION_KEY+x} ]] && {
+        printf '%s' "${N8N_ENCRYPTION_KEY}"
+        return
+    }
+    gen_hex:32
+}
 
-log_info "${BODY}jwt_secret:${END} ${WHITE}$(elide "$jwt_secret")"
-log_info "${BODY}anon_token:${END} ${WHITE}$(elide "$anon_token")"
-log_info "${BODY}service_role_token:${END} ${WHITE}$(elide "$service_role_token")"
+create_dot_env_file() {
+    local dot_env_path="${1:-${ENV_FILE:-.env}}"
+    local compose_path="${2:-${COMPOSE_FILE:-docker-compose.yml}}"
+    local template_path="${ENV_TEMPLATE_FILE:-.env.example}"
+    local template_count=0
+    local compose_count=0
+    local dot_env_count=0
+    local generated_count=0
+    local inherited_count=0
+    local default_count=0
+    local written_count=0
+    local compose_files=()
+    local TEMPLATE_KEYS=()     # preserves template order
+    declare -A TEMPLATE ENV    # .env.example template defaults
+    declare -A DOT_ENV_VARS=() # existing .env vars
+    declare -A COMPOSE_VARS=() # compose interpolation vars
+    declare -A GENERATORS=(    # external secret generators
+        [gen_n8ncrypt]=gen_n8ncrypt
+        [gen_bcrypt]=gen_bcrypt
+        [gen_token]=gen_token
+        [gen_hex]=gen_hex
+        [gen_jwt]=gen_jwt
+    )
 
-log_info "${BODY}sudo_user:${END} ${WHITE}${SUDO_USER}"
-log_info "${BODY}using_sudo_user:${END} ${WHITE}$using_sudo_user"
+    # shellcheck disable=SC2153
+    if declare -p COMPOSE_FILES 2>/dev/null | grep -q 'declare \-a'; then
+        [[ ${#COMPOSE_FILES[@]} -ne 0 ]] && compose_files=(COMPOSE_FILES[@])
+    else
+        compose_files=("${compose_path}")
+    fi
+
+    load_template_vars() {
+        local template_file="$1"
+        [[ -f "$template_file" ]] || return 0
+        log_info "${BODY}Load defaults from $template_file"
+        while IFS='=' read -r key val; do
+            [[ -z "$key" || "$key" == \#* ]] && continue
+            TEMPLATE["$key"]="${val%$'\r'}"
+            ENV["$key"]="${val%$'\r'}"  # initialize ENV with template defaults
+            TEMPLATE_KEYS+=("$key")
+        done < "$template_file"
+    }
+
+    load_dot_env_vars() {
+        local file_path="$1"
+        [[ -f "$file_path" ]] || return 0
+        log_info "${BODY}Overlay existing .env from $file_path"
+        while IFS='=' read -r key val; do
+            [[ -z "$key" || "$key" == \#* ]] && continue
+            if [[ -n ${TEMPLATE[$key]+x} ]]; then
+                ENV["$key"]="${val%$'\r'}"
+            else
+                ENV["$key"]="${val%$'\r'}"
+                DOT_ENV_VARS["$key"]="${val%$'\r'}"
+            fi
+        done < "$file_path"
+    }
+
+    load_compose_vars() {
+        local compose_file="$1"
+        [[ -f "$compose_file" ]] || return 0
+        log_info "${BODY}Load variables from $compose_file"
+        while IFS= read -r line; do
+            while [[ $line =~ \$\{([A-Za-z0-9_]+)(:?[-+?])?([^}]*)\} ]]; do
+                local var="${BASH_REMATCH[1]}"
+                local op="${BASH_REMATCH[2]}"
+                local val="${BASH_REMATCH[3]}"
+                local match="${BASH_REMATCH[0]}"
+                [[ "$op" == *"+"* || "$op" == *"?"* ]] && { line="${line#*$match}"; continue; }
+                [[ -n ${COMPOSE_VARS["$compose_file:$var"]+x} ]] && { line="${line#*$match}"; continue; }
+                [[ -z ${TEMPLATE[$var]+x} && -z ${ENV[$var]+x} ]] && \
+                    COMPOSE_VARS["$compose_file:$var"]="$val"
+                line="${line#*$match}"
+            done
+        done < "$compose_file"
+    }
+
+    iterate_compose_vars() {
+        local compose_file key var
+        for compose_file in "${compose_files[@]}"; do
+            for var in $(
+                for key in "${!COMPOSE_VARS[@]}"; do
+                    [[ ${key%%:*} == "$compose_file" ]] && printf '%s\n' "${key#*:}"
+                done | sort
+            ); do
+                printf '%s|%s|%s\n' "$compose_file" "$var" \
+                    "${COMPOSE_VARS["$compose_file:$var"]}"
+            done
+        done
+    }
+
+    resolve_dot_env_vars() {
+        log_info "${BODY}Resolve variables from $template_path"
+        for var in "${TEMPLATE_KEYS[@]}"; do
+            local val="${ENV[$var]-}"
+            local tmpl_val="${TEMPLATE[$var]-}"
+            if [[ $val == generate\ using\ * ]]; then
+                local spec="${val#generate using }"
+                local gen="${spec%%:*}"
+                local arg="${spec#*:}"
+                [[ "$spec" == "$gen" ]] && arg=""
+                [[ -n ${GENERATORS[$gen]+x} ]] || \
+                { log_error "Unknown secret generator: $gen"; return 1; }
+                val=$(
+                    if [[ -n "$arg" ]]; then
+                        "${GENERATORS[$gen]}" "${arg%$'\r'}"
+                    else
+                        "${GENERATORS[$gen]}"
+                    fi
+                )
+                val="${val//$'\n'/}"
+                ((++generated_count))
+                log_info "${BODY}  $(elide "$var"): $(elide 30 "$val") $gen${arg:+:$arg}"
+            elif [[ -n "$val" ]]; then
+                ((++inherited_count))
+                log_info "${BODY}  $(elide "$var"): $(elide 30 "$val")"
+            else
+                val="$tmpl_val"
+                ENV["$var"]="$val"
+                ((++default_count))
+                log_info "${BODY}  $(elide "$var"): $(elide 30 "$val")"
+            fi
+            ENV["$var"]="$val"
+        done
+        if [[ ${#DOT_ENV_VARS[@]} -gt 0 ]]; then
+            log_info "${BODY}Resolve variables from existing .env"
+            for dot_env_var in $(printf '%s\n' "${!DOT_ENV_VARS[@]}" | sort); do
+                ((++inherited_count))
+                log_info "${BODY}  $dot_env_var=${DOT_ENV_VARS[$dot_env_var]}"
+            done
+        fi
+        local last_file=""
+        while IFS='|' read -r compose_file var default; do
+            if [[ "$compose_file" != "$last_file" ]]; then
+                last_file="$compose_file"
+                log_info "${BODY}Resolve variables from $compose_file"
+            fi
+            ENV["$var"]="$default"
+            ((++inherited_count))
+            log_info "${BODY}  $var=${default}"
+        done < <(iterate_compose_vars)
+    }
+
+    write_dot_env() {
+        local output_file="${1:-${ENV_FILE:-.env}}"
+        local tmp
+        tmp=$(mktemp)
+        local date_time
+        date_time="$(date +%Y/%m/%d-%H:%M:%S)"
+        local tmp_count=0
+        template_count=${#TEMPLATE_KEYS[@]}
+        dot_env_count=${#DOT_ENV_VARS[@]}
+        log_info "${BODY}Write variables to $output_file"
+        printf '# Generated by %s from %s on %s\n' "$APP_NAME" "$template_path" "$date_time" >> "$tmp"
+        ((++template_count)); ((++tmp_count))
+        for key in "${TEMPLATE_KEYS[@]}"; do
+            printf '%s=%s\n' "$key" "${ENV[$key]-}" >> "$tmp"
+            ((++tmp_count))
+        done
+        if [[ $dot_env_count -gt 0 ]]; then
+            printf '\n# Variables not in %s\n' "$template_path" >> "$tmp"
+            ((dot_env_count+=2)); ((tmp_count+=2))
+            for dot_env_var in $(printf '%s\n' "${!DOT_ENV_VARS[@]}" | sort); do
+                printf '%s=%s\n' "$dot_env_var" "${DOT_ENV_VARS[$dot_env_var]}" >> "$tmp"
+                ((++tmp_count))
+            done
+        fi
+        local last_file=""
+        while IFS='|' read -r compose_file var default; do
+            if [[ "$compose_file" != "$last_file" ]]; then
+                printf '\n# Variables from %s\n' "$compose_file" >> "$tmp"
+                ((tmp_count+=2))
+                last_file="$compose_file"
+            fi
+            if [[ -n "$default" ]]; then
+                printf '%s=%s\n' "$var" "$default" >> "$tmp"
+            else
+                printf '%s=\n' "$var" >> "$tmp"
+            fi
+            ((++tmp_count))
+        done < <(iterate_compose_vars)
+
+        # ---------- Sanity checks ----------
+        for compose_file in "${compose_files[@]}"; do
+            local n=0
+            for key in "${!COMPOSE_VARS[@]}"; do
+                [[ ${key%%:*} == "$compose_file" ]] && ((++n))
+            done
+            (( n > 0 )) && ((compose_count += n + 2)) # +2 for blank line + comment
+        done
+        expected_count=$((
+            + template_count
+            + dot_env_count
+            + compose_count
+        ))
+        if [[ "$tmp_count" -lt "$expected_count" ]]; then
+            log_error "Sanity check failed: tmp .env has fewer lines ($tmp_count) than expected ($expected_count)"
+            rm -f "$tmp"
+            return 1
+        fi
+        mv "$tmp" "$output_file"
+        written_count=$(wc -l < "$output_file")
+        if [[ "$written_count" -ne "$tmp_count" ]]; then
+            log_error "Sanity check failed: written .env lines ($written_count) differ from tmp ($tmp_count)"
+            rm -f "$output_file"
+            return 1
+        fi
+        log_info "${BODY}  .env file written successfully"
+    }
+
+    # ---------- Summarize ----------
+    summarize_results() {
+        log_info "${BODY}Variables summary:"
+        log_info "${BODY}  Generated: $generated_count"
+        log_info "${BODY}  Inherited: $inherited_count"
+        log_info "${BODY}  Defaults : $default_count"
+        log_info "${BODY}  Template : $template_count"
+        [[ $dot_env_count -gt 0 ]] && \
+        log_info "${BODY}  Dot Env : $dot_env_count"
+        log_info "${BODY}  Compose : $compose_count"
+        log_info "${BODY}Lines summary:"
+        log_info "${BODY}  Written : $written_count"
+    }
+
+    # ---------- Execution flow ----------
+    load_template_vars "$template_path"
+    load_dot_env_vars "$dot_env_path"
+    load_compose_vars "$compose_path"
+    load_compose_vars "supabase/docker/docker-compose.yml"
+    resolve_dot_env_vars
+    write_dot_env
+    summarize_results
+}
 
 log_info "${BODY}proxy:${END} ${WHITE}$proxy"
 log_info "${BODY}auto_confirm:${END} ${WHITE}$auto_confirm"
 log_info "${BODY}with_authelia:${END} ${WHITE}$with_authelia"
-log_info "${BODY}setup_redis:${END} ${WHITE}$setup_redis"
+log_info "${BODY}setup_redis:${END} ${WHITE}$WITH_REDIS"
 log_info "${BODY}username:${END} ${WHITE}$username"
 log_info "${BODY}display_name:${END} ${WHITE}$display_name"
 log_info "${BODY}email:${END} ${WHITE}$email"
 
+log_info "${BODY}sudo_user:${END} ${WHITE}${SUDO_USER}"
+log_info "${BODY}using_sudo_user:${END} ${WHITE}$using_sudo_user"
+
+if [[ "$AC" == true ]]; then
+   log_info "${BODY}Enable n8n proxy variables"
+    sed -i \
+        -e "s|#- N8N_HOST=.*|- N8N_HOST=\${N8N_HOSTNAME:-\${N8N_HOST}}|" \
+        -e "s|#- N8N_PORT=.*|- N8N_PORT=\${N8N_PORT}|" \
+        -e "s|#- N8N_PROTOCOL=.*|- N8N_PROTOCOL=\${N8N_PROTOCOL}|" \
+        -e "s|#- N8N_PROXY_HOPS=.*|- N8N_PROXY_HOPS=\${N8N_PROXY_HOPS}|" \
+        docker-compose.yml
+fi
+
 # Create .env file from .env.example template
 log_info "${HEADER}Create .env File"
 #-------------------------------------------
-yml_bool() { echo "$(tr '[:lower:]' '[:upper:]' <<< "${1:0:1}")${1:1}" ; }
-
-log_info "${BODY}Set Supabase and Postgres credentials"
-sed -e "3d" \
-    -e "s|POSTGRES_PASSWORD.*|POSTGRES_PASSWORD=$(gen_hex 16)|" \
-    -e "s|JWT_SECRET.*|JWT_SECRET=$jwt_secret|" \
-    -e "s|ANON_KEY.*|ANON_KEY=$anon_token|" \
-    -e "s|SERVICE_ROLE_KEY.*|SERVICE_ROLE_KEY=$service_role_token|" \
-    -e "s|DASHBOARD_USERNAME.*|DASHBOARD_USERNAME=supabase|" \
-    -e "s|DASHBOARD_PASSWORD.*|DASHBOARD_PASSWORD=not_used|" \
-    -e "s|SECRET_KEY_BASE.*|SECRET_KEY_BASE=$(gen_hex 32)|" \
-    -e "s|VAULT_ENC_KEY.*|VAULT_ENC_KEY=$(gen_hex 16)|" \
-    -e "s|PG_META_CRYPTO_KEY.*|PG_META_CRYPTO_KEY=$(gen_hex 16)|" \
-    -e "s|API_EXTERNAL_URL.*|API_EXTERNAL_URL=$protocol://$SUPABASE_domain/goapi|" \
-    -e "s|SUPABASE_PUBLIC_URL.*|SUPABASE_PUBLIC_URL=$protocol://$SUPABASE_domain|" \
-    -e "s|ENABLE_EMAIL_AUTOCONFIRM.*|ENABLE_EMAIL_AUTOCONFIRM=$auto_confirm|" \
-    -e "s|POOLER_TENANT_ID.*|POOLER_TENANT_ID=1100|" \
-    -e "s|LOGFLARE_PUBLIC_ACCESS_TOKEN.*|LOGFLARE_PUBLIC_ACCESS_TOKEN=$(gen_hex 16)|" \
-    -e "s|LOGFLARE_PRIVATE_ACCESS_TOKEN.*|LOGFLARE_PRIVATE_ACCESS_TOKEN=$(gen_hex 16)|" \
-    -e "s|S3_PROTOCOL_ACCESS_KEY_ID.*|S3_PROTOCOL_ACCESS_KEY_ID=$(gen_hex 16)|" \
-    -e "s|S3_PROTOCOL_ACCESS_KEY_SECRET.*|S3_PROTOCOL_ACCESS_KEY_SECRET=$(gen_hex 32)|" \
-    -e "s|MINIO_ROOT_PASSWORD.*|MINIO_ROOT_PASSWORD=$(gen_hex 16)|" \
-    -e "s|SMTP_PASS.*|SMTP_PASS=$(gen_hex 16)|" \
-    .env.example >.env
-
-if [[ "$AC" == true ]]; then
-log_info "${BODY}Set ${APP_NAME} module credentials"
-sed -i \
-    -e "s|N8N_ENCRYPTION_KEY.*|N8N_ENCRYPTION_KEY=$(gen_hex 32)|" \
-    -e "s|N8N_RUNNERS_AUTH_TOKEN.*|N8N_RUNNERS_AUTH_TOKEN=$(gen_hex 32)|" \
-    -e "s|N8N_USER_MANAGEMENT_JWT_SECRET.*|N8N_USER_MANAGEMENT_JWT_SECRET=$(gen_hex 32)|" \
-    -e "s|FLOWISE_PASSWORD.*|FLOWISE_PASSWORD=$(gen_hex 16)|" \
-    -e "s|NEO4J_AUTH.*|NEO4J_AUTH=neo4j/$(gen_hex 16)|" \
-    -e "s|CLICKHOUSE_PASSWORD.*|CLICKHOUSE_PASSWORD=$(gen_hex 16)|" \
-    -e "s|LANGFUSE_SALT.*|LANGFUSE_SALT=$(gen_hex 16)|" \
-    -e "s|NEXTAUTH_SECRET.*|NEXTAUTH_SECRET=$(gen_hex 16)|" \
-    -e "s|ENCRYPTION_KEY.*|ENCRYPTION_KEY=$(gen_hex 16)|" \
-    .env
-
-log_info "${BODY}Enable  module credentials"
-sed -i \
-    -e "s|^AC=.*|AC=$(yml_bool "${AC}")|" \
-    -e "s|AC_SUDO_USER.*|AC_SUDO_USER=${AC_SUDO_USER}|" \
-    -e "s|AC_DOMAIN.*|AC_DOMAIN=${AC_DOMAIN}|" \
-    -e "s|AC_LOCAL.*|AC_LOCAL=$(yml_bool "${AC_LOCAL}")|" \
-    -e "s|AC_PROXY.*|AC_PROXY=${AC_PROXY}|" \
-    -e "s|AC_USERNAME.*|AC_USERNAME=${AC_USERNAME}|" \
-    -e "s|AC_PASSWORD.*|AC_PASSWORD=${AC_PASSWORD}|" \
-    -e "s|AC_CONFIRM.*|AC_CONFIRM=$(yml_bool "${AC_CONFIRM}")|" \
-    -e "s|AC_WITH_AUTHELIA.*|AC_WITH_AUTHELIA=$(yml_bool "${AC_WITH_AUTHELIA}")|" \
-    -e "s|AC_EMAIL.*|AC_EMAIL=${AC_EMAIL}|" \
-    -e "s|AC_DISPLAY_NAME.*|AC_DISPLAY_NAME=${AC_DISPLAY_NAME}|" \
-    -e "s|AC_WITH_REDIS.*|AC_WITH_REDIS=$(yml_bool "${AC_WITH_REDIS}")|" \
-    -e "s|AC_LOG_PATH.*|AC_LOG_PATH=${AC_LOG_PATH}|" \
-    -e "s|# N8N_PROTOCOL.*|N8N_PROTOCOL=$protocol|" \
-    -e "s|# N8N_PROXY_HOPS.*|N8N_PROXY_HOPS=3|" \
-    .env
-
-[[ "$proxy" == "caddy" ]] && { \
-log_info "${BODY}Enable Caddy hostname variables" ;
-sed -i \
-    -e "s|# WEBUI_HOSTNAME.*|WEBUI_HOSTNAME=openwebui.\${AC_DOMAIN}|" \
-    -e "s|# N8N_HOSTNAME.*|N8N_HOSTNAME=n8n.\${AC_DOMAIN}|" \
-    -e "s|# FLOWISE_HOSTNAME.*|FLOWISE_HOSTNAME=flowise.\${AC_DOMAIN}|" \
-    -e "s|# SUPABASE_HOSTNAME.*|SUPABASE_HOSTNAME=supabase.\${AC_DOMAIN}|" \
-    -e "s|# LANGFUSE_HOSTNAME.*|LANGFUSE_HOSTNAME=langfuse.\${AC_DOMAIN}|" \
-    -e "s|# SEARXNG_HOSTNAME.*|SEARXNG_HOSTNAME=searxng.\${AC_DOMAIN}|" \
-    -e "s|# NEO4J_HOSTNAME.*|NEO4J_HOSTNAME=neo4j.\${AC_DOMAIN}|" \
-    -e "s|# OLLAMA_HOSTNAME.*|OLLAMA_HOSTNAME=ollama.\${AC_DOMAIN}|" \
-    -e "s|# LLAMACPP_HOSTNAME.*|LLAMACPP_HOSTNAME=llamacpp.\${AC_DOMAIN}|" \
-    -e "s|# WEBHOOK_URL=.*|WEBHOOK_URL=$protocol://\${N8N_HOSTNAME}|" \
-    -e "s|# LETSENCRYPT_EMAIL.*|LETSENCRYPT_EMAIL=\${AC_EMAIL}|" \
-    .env ;
-}
-
-log_info "${BODY}Enable n8n proxy variables"
-sed -i \
-    -e "s|#- N8N_HOST=.*|- N8N_HOST=\${N8N_HOSTNAME:-\${N8N_HOST}}|" \
-    -e "s|#- N8N_PORT=.*|- N8N_PORT=\${N8N_PORT}|" \
-    -e "s|#- N8N_PROTOCOL=.*|- N8N_PROTOCOL=\${N8N_PROTOCOL}|" \
-    -e "s|#- N8N_PROXY_HOPS=.*|- N8N_PROXY_HOPS=\${N8N_PROXY_HOPS}|" \
-    docker-compose.yml
-fi
+create_dot_env_file
 
 # Update yaml file using yq package
 update_yaml_file() {
@@ -1396,7 +1602,7 @@ fi
 if [[ "$with_authelia" == false ]]; then
     log_info "${BODY}Nginx basic authorization Docker service insert"
     #-------------------------------------------
-    update_env_vars "PROXY_AUTH_USERNAME=$username" "PROXY_AUTH_PASSWORD='$password'"
+    update_env_vars "PROXY_AUTH_USERNAME=$username"
 
     proxy_service_yaml="${proxy_service_yaml} |
                         .services.$proxy.environment.PROXY_AUTH_USERNAME = \"\${PROXY_AUTH_USERNAME:?error}\" |
@@ -1429,9 +1635,9 @@ if [[ "$with_authelia" == true ]]; then
     # adding disabled=false after updating style to double so that every value except disabled is double quoted
     log_info "${BODY}Write Authelia users_database.yml file"
     #-------------------------------------------
-    yaml_path=".users.$username" display_name="$display_name" password="$password" email="$email" \
+    yaml_path=".users.$username" display_name="$display_name" bcrypt_password="$bcrypt_password" email="$email" \
         "$yq_bin" -n 'eval(strenv(yaml_path)).displayname = strenv(display_name) |
-               eval(strenv(yaml_path)).password = strenv(password) |
+               eval(strenv(yaml_path)).password = strenv(bcrypt_password) |
                eval(strenv(yaml_path)).email = strenv(email) |
                eval(strenv(yaml_path)).groups = ["admins","dev"] |
                .. style="double" |
@@ -1464,8 +1670,6 @@ if [[ "$with_authelia" == true ]]; then
     # auth implementation
     authelia_config_file_yaml="${authelia_config_file_yaml} | .server.endpoints.authz.$server_endpoints.implementation=\"$implementation\""
 
-    update_env_vars "AUTHELIA_SESSION_SECRET=$(gen_hex 32)" "AUTHELIA_STORAGE_ENCRYPTION_KEY=$(gen_hex 32)" "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=$(gen_hex 32)"
-
     # DEFINE AUTHELIA configuration.yml file
     log_info "${BODY}Define Authelia Docker service"
     #-------------------------------------------
@@ -1493,7 +1697,7 @@ if [[ "$with_authelia" == true ]]; then
     authelia_docker_supabase_service_yaml='.services.db.environment.AUTHELIA_SCHEMA = strenv(authelia_schema) |
        .services.db.volumes += "./access/authelia/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
 
-    if [[ "$setup_redis" == true ]]; then
+    if [[ "$WITH_REDIS" == true ]]; then
         log_info "${BODY}Authelia Redis configuration"
         #-------------------------------------------
         redis_docker_service_yaml=".services.authelia.profiles=[\"$proxy\", \"n8n\", \"langfuse\", \"ai-all\"]"
@@ -1947,207 +2151,721 @@ if [[ "$using_sudo_user" == true ]]; then
 fi
 
 # Update hosts file if local install
-unix_hosts_add() {
-    local header="# $APP_NAME Local Domains:"
-    local footer="# End of $APP_NAME section"
+managed_hosts_edit() {
+    local return_code=0
+    local error_log="${LOG}"
+    local date_time
+    date_time="$(date +%Y/%m/%d-%H:%M:%S)"
+    local header="# >>> $APP_NAME Local Domains Begin >>>"
+    local footer="# <<< $APP_NAME Local Domains End <<<"
+    case "$PLATFORM" in
+    linux|mac)
+        local privilege
+        unix_privilege privilege
+        local domains
+        domains=$(printf '"%s" ' "${DOMAINS[@]}")
+        local payload
+        # Single-quote heredoc so no escape needed but also no expansion
+        read -r -d '' payload <<'EOF' || true
+#!/usr/bin/env bash
+# __DATE_TIME__ Edit hosts, update __APP_NAME__ local domains
 
-    if [[ "$BACKUP" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
-        cp "$HOSTS_PATH" "$HOSTS_PATH.bak.$(date +%Y%m%d%H%M%S)"
+set -euo pipefail
+
+DOMAINS=(__DOMAINS__)
+DRY_RUN=__DRY_RUN__
+BACKUP=__BACKUP__
+SILENT=__SILENT__
+VERBOSE=__VERBOSE__
+SGR_SEQ='__SGR_SEQ__'
+HOST_IP="__HOST_IP__"
+APP_NAME="__APP_NAME__"
+HOSTS_PATH="__HOSTS_PATH__"
+PRIVILEGE="__PRIVILEGE__"
+DATE_TIME="__DATE_TIME__"
+HEADER="__HEADER__"
+FOOTER="__FOOTER__"
+
+#------------------------
+
+SGR=''
+END=''
+WHITE=''
+BOLD_CYAN=''
+BOLD_YELLOW=''
+APP="${APP_NAME}:"
+if [[ "$SILENT" == 0 && -n "$SGR_SEQ" ]]; then
+    SGR="$SGR_SEQ"
+    END="${SGR}0m"
+    WHITE="${SGR}37m"
+    BOLD_CYAN="${SGR}1;36m"
+    BOLD_YELLOW="${SGR}1;33m"
+    APP="${SGR}3;94m${APP_NAME}${END}${SGR}97m:${END}"
+fi
+
+log() {
+    local COL="${BOLD_CYAN}"
+    local pfx="INFO"
+    local msg="${WHITE}${1:-}${END}"
+    [[ "$DRY_RUN" -eq 1 ]] && {
+    COL="${BOLD_YELLOW}"; pfx="DRY-RUN"; }
+    printf '%s %s%s%s %s\n' "${APP}" "${COL}" "${pfx}" "${END}" "${msg}"
+}
+logv() { [[ "$VERBOSE" -eq 1 ]] && log "$*" ; }
+
+snapshot_lines() {
+    local file=$1
+    local count=${2:-5}
+    logv "Snapshot first $count lines:"
+    head -n "$count" "$file" | nl -w2 -s'. ' | while read -r l; do logv "$l"; done
+    logv "Snapshot last $count lines:"
+    tail -n "$count" "$file" | nl -w2 -s'. ' | while read -r l; do logv "$l"; done
+}
+
+hosts_tmp=$(mktemp /tmp/hosts.XXXXXX)
+chmod 644 "$hosts_tmp"
+
+declare -A existing_map
+EXISTING=()
+
+found_block=0
+inside_block=0
+
+if [[ ! -f "$HOSTS_PATH" ]]; then
+    log "Error: Hosts file not found."
+    exit 1
+fi
+
+line_count=$(wc -l < "$HOSTS_PATH")
+
+#------------------------
+# Scan existing hosts
+#------------------------
+while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" == "$HEADER" ]]; then
+        inside_block=1
+        found_block=1
+        continue
+    fi
+    if [[ "$line" == "$FOOTER" ]]; then
+        inside_block=0
+        continue
     fi
 
-    if [[ $DRY_RUN -eq 1 ]]; then echo "[DRY-RUN] $header"; elif \
-    ! grep -q "^$header" "$HOSTS_PATH"; then \
-    printf "%s\n" "$header" >> "$HOSTS_PATH"; fi
+    if (( inside_block )); then
+        set -- $line
+        [[ $# -ge 2 ]] && EXISTING+=("$2")
+        continue
+    fi
+done < "$HOSTS_PATH"
 
-    local d
-    for d in "${DOMAINS[@]}"; do
-        local pattern="^\\s*$HOST_IP\\s+$d"
-        if ! grep -qE "$pattern" "$HOSTS_PATH"; then
-            [[ $DRY_RUN -eq 1 ]] && { echo -e "[DRY-RUN] $HOST_IP\t$d"; continue; }
-            printf "%s\t%s\n" "$HOST_IP" "$d" >> "$HOSTS_PATH"
+log "Hosts file loaded."
+logv "Lines read: $line_count"
+snapshot_lines "$HOSTS_PATH"
+
+# Build map for O(1) lookup
+for d in "${EXISTING[@]}"; do existing_map[$d]=1; done
+
+#------------------------
+# Determine changes
+#------------------------
+update_required=0
+domains_added=0
+domains_unchanged=0
+domains_removed=0
+
+for d in "${DOMAINS[@]}"; do
+    if [[ -n "${existing_map[$d]:-}" ]]; then
+        log "Keep domain: $d"
+        ((++domains_unchanged))
+    else
+        log "Add domain: $d"
+        ((++domains_added))
+        update_required=1
+    fi
+done
+
+declare -A desired_map
+for d in "${DOMAINS[@]}"; do desired_map[$d]=1; done
+for d in "${EXISTING[@]}"; do
+    if [[ -z "${desired_map[$d]:-}" ]]; then
+        log "Remove domain: $d"
+        ((++domains_removed))
+        update_required=1
+    fi
+done
+
+((domains_unchanged>0)) && logv "Domains unchanged: $domains_unchanged"
+((domains_added>0)) && logv "Domains added: $domains_added"
+((domains_removed>0)) && logv "Domains removed: $domains_removed"
+
+if [[ $update_required -eq 0 ]]; then
+    log "$DATE_TIME Hosts file already up to date."
+    exit 0
+fi
+
+#------------------------
+# Optional backup
+#------------------------
+if [[ "$BACKUP" -eq 1 ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log "Backup: $HOSTS_PATH"
+    else
+        backup_file="$HOSTS_PATH.bak.$(date +%Y%m%d%H%M%S)"
+        cp "$HOSTS_PATH" "$backup_file"
+        chmod 644 "$backup_file"
+        log "Backup created: $backup_file"
+    fi
+fi
+
+#------------------------
+# Optimized Reconstruction (Single-Pass)
+#------------------------
+{
+    inside_block=0
+    block_written=0
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == "$HEADER" ]]; then
+            inside_block=1
+            found_block=1
+
+            # Write replacement block once
+            if (( block_written == 0 )); then
+                echo "$HEADER"
+                for d in "${DOMAINS[@]}"; do
+                    echo -e "$HOST_IP\t$d"
+                done
+                echo "$FOOTER"
+                block_written=1
+            fi
+            continue
+        fi
+
+        if [[ "$line" == "$FOOTER" ]]; then
+            inside_block=0
+            continue
+        fi
+
+        (( inside_block )) && continue
+
+        # Lines outside the managed block
+        echo "$line"
+
+    done < "$HOSTS_PATH"
+
+    # Append managed block if no block existed
+    if (( found_block == 0 )); then
+        echo "$HEADER"
+        for d in "${DOMAINS[@]}"; do
+            echo -e "$HOST_IP\t$d"
+        done
+        echo "$FOOTER"
+    fi
+
+} > "$hosts_tmp"
+
+lines_written=$(wc -l < "$hosts_tmp")
+logv "Lines written: $lines_written"
+snapshot_lines "$hosts_tmp"
+
+#------------------------
+# Atomic write with sanity check + rollback
+#------------------------
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "Hosts file NOT modified."
+else
+    ms=0.2
+    max_attempts=5
+    for attempt in $(seq 1 $max_attempts); do
+        mv "$hosts_tmp" "$HOSTS_PATH" || sleep $ms
+        chown root:root "$HOSTS_PATH"
+        lines_actual=$(wc -l < "$HOSTS_PATH")
+        if [[ "$lines_written" -eq "$lines_actual" ]]; then
+            log "$DATE_TIME: Hosts file updated successfully."
+            break
+        elif [[ $attempt -eq $max_attempts ]]; then
+            log "Error: Atomic write failed after $max_attempts attempts."
+            [[ -f "$backup_file" ]] && {
+                mv "$backup_file" "$HOSTS_PATH" || sleep $ms
+                chown root:root "$HOSTS_PATH"
+                log "$DATE_TIME: Hosts restored from backup."
+            }
+            exit 1
+        else
+            logv "Write attempt $attempt failed, retrying..."
+            sleep $ms
         fi
     done
+fi
+EOF
 
-    if [[ $DRY_RUN -eq 1 ]]; then echo "[DRY-RUN] $footer"; elif \
-    ! grep -q "^$footer" "$HOSTS_PATH"; then \
-    printf "%s\n" "$footer" >> "$HOSTS_PATH"; fi
-}
+        #---------------------------------------------
+        # Inject payload environment variables
+        #---------------------------------------------
+        payload="${payload//__SGR_SEQ__/$SGR}"
+        payload="${payload//__PRIVILEGE__/$privilege}"
+        payload="${payload//__DOMAINS__/$domains}"
+        payload="${payload//__DRY_RUN__/$DRY_RUN}"
+        payload="${payload//__SILENT__/$SILENT}"
+        payload="${payload//__VERBOSE__/$VERBOSE}"
+        payload="${payload//__BACKUP__/$BACKUP}"
+        payload="${payload//__DATE_TIME__/$date_time}"
+        payload="${payload//__APP_NAME__/$APP_NAME}"
+        payload="${payload//__HOSTS_PATH__/$HOSTS_PATH}"
+        payload="${payload//__HOST_IP__/$HOST_IP}"
+        payload="${payload//__HEADER__/$header}"
+        payload="${payload//__FOOTER__/$footer}"
 
-unix_hosts_edit() {
-    if [[ "$INTERNAL_ELEVATED" -eq 1 ]]; then
-        log_info "${BODY}Running normal"
-        unix_hosts_add
-        return
-    fi
+        log_debug "Hosts edit payload:"
+        printf '%s' "$payload"
 
-    local user_privilage
-    unix_privilage user_privilage
+        run_pkg_cmd -payload "$payload"
+        return_code=$?
+        ;;
+    wsl)
+        local role="User"
+        local elevated=false
+        if is_windows_admin elevated; then
+            role="Administrator"
+        fi
+        if [[ "$SILENT" -eq 1 && "$elevated" != true ]]; then
+            critical_exit "Silent mode requires Administrator privilege."
+        fi
+        log_info "${BODY}Running as${END} ${WHITE}$role"
+        local target_path='C:\\Windows\\System32\\drivers\\etc\\hosts'
+        local restricted=false
+        if hosts_write_uac restricted "$WIN_HOSTS_PATH" "$target_path"; then
+            log_info "${BODY}Hosts file access is${END} ${WHITE}restricted"
+        else
+            log_info "${BODY}Hosts file access is${END} ${WHITE}open"
+        fi
+        if [[ $SILENT -eq 1 && "$elevated" != true ]]; then
+            critical_exit "Silent mode requires Administrator privilege."
+        fi
+        local date_stamp
+        date_stamp=$(date +%Y%m%d%H%M%S)
+        local script_name="hosts_win_${date_stamp}.ps1"
+        local win_temp_dir
+        # shellcheck disable=SC2016
+        win_temp_dir=$(powershell.exe -NoProfile -Command '$env:TEMP' | tr -d '\r')
 
-    if [[ "$user_privilage" == "is_unix_root" ]]; then
-        log_info "${BODY}Running as${END} ${WHITE}Root"
-        unix_hosts_add
-    fi
-}
+        local win_log_path
+        win_log_path=$(wslpath -w "${LOG}")
+        win_log_path="${win_log_path//.sh.log/.ps.log}"
+        log_debug "WIN_LOG_PATH: $win_log_path"
 
-windows_hosts_edit() {
-    local elevated
-    if is_windows_admin elevated; then
-	    log_info "${BODY}Running as${END} ${WHITE}Administrator"
-    else
-        log_info "${BODY}Running normal"
-    fi
-    local ps_script_path="./access/ps_edit_hosts.ps1"
-    local header="# $APP_NAME Local Domains:"
-    local footer="# End of $APP_NAME section"
-    local d ps_domains=""
-    for d in "${DOMAINS[@]}"; do
-        ps_domains+="\"$d\","
-    done
-    ps_domains="@(${ps_domains%,})"
-    local ps_script="# Edit hosts - update $APP_NAME domains
-\$Domains    = $ps_domains
-\$Backup     = $BACKUP
-\$DryRun     = $DRY_RUN
-\$Ip         = \"$HOST_IP\"
-\$Header     = \"$header\"
-\$Footer     = \"$footer\"
-\$HostsPath  = [System.IO.Path]::GetFullPath(\"$WIN_HOSTS_PATH\")
-\$TargetPath = [System.IO.Path]::GetFullPath('C:\\Windows\\System32\\drivers\\etc\\hosts')
-\$Restricted = [string]::Equals(\$HostsPath, \$TargetPath, [System.StringComparison]::OrdinalIgnoreCase)
-\$Elevated   = ([Security.Principal.WindowsPrincipal] \`
-  [Security.Principal.WindowsIdentity]::GetCurrent()
+        local posix_log_path
+        posix_log_path=$(wslpath "${win_log_path}")
+        log_debug "POSIX_LOG_PATH: $posix_log_path"
+
+        local win_script_path="${win_temp_dir}\\$script_name"
+        log_debug "WIN_SCRIPT_PATH: $win_script_path"
+
+        local posix_script_path
+        posix_script_path=$(wslpath "$win_script_path")
+        log_debug "POSIX_SCRIPT_PATH: $posix_script_path"
+
+        local win_ps_launcher_path="${win_temp_dir}\\ps_launcher_${date_stamp}.ps1"
+        log_debug "WIN_PS_LAUNCHER_PATH: $win_ps_launcher_path"
+
+        local posix_ps_launcher_path
+        posix_ps_launcher_path=$(wslpath "$win_ps_launcher_path")
+        log_debug "POSIX_PS_LAUNCHER_PATH: $posix_ps_launcher_path"
+
+        local win_rc_path="${win_temp_dir}\\hosts_rc_${$}_${date_stamp}.tmp"
+        log_debug "WIN_RC_PATH: $win_rc_path"
+
+        local posix_rc_path
+        posix_rc_path="$(wslpath "${win_rc_path}")"
+        log_debug "POSIX_RC_PATH: $posix_rc_path"
+
+        local domains_ps
+        domains_ps=$(printf '"%s",' "${DOMAINS[@]}")
+        domains_ps="@(${domains_ps%,})"
+
+        #---------------------------------------------
+        # Construct PowerShell payload
+        #---------------------------------------------
+        # Single-quote heredoc so no escape needed but also no expansion
+        local ps_payload
+        read -r -d '' ps_payload <<'PSH' || true
+# __DATE_TIME__ Edit hosts, update __APP_NAME__ local domains
+
+param()
+$Domains     = __DOMAINS__
+$DryRun      = __DRY_RUN__
+$Backup      = __BACKUP__
+$Verbose     = __VERBOSE__
+$HostIp      = "__HOST_IP__"
+$AppName     = "__APP_NAME__"
+$Header      = "__HEADER__"
+$Footer      = "__FOOTER__"
+$DateTime    = "__DATE_TIME__"
+$LogPath     = '__LOG_PATH__'
+$PsRcPath    = '__PS_RC_PATH__'
+$HostsPath   = [System.IO.Path]::GetFullPath('__HOSTS_PATH__')
+$TargetPath  = "$env:SystemDrive\\Windows\\System32\\drivers\\etc\\hosts"
+$Restricted  = [string]::Equals($HostsPath, $TargetPath)
+$Elevated    = ([Security.Principal.WindowsPrincipal] `
+    [Security.Principal.WindowsIdentity]::GetCurrent()
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-if (\$Restricted -and -not \$Elevated) {
-    \$ScriptPath = [System.IO.Path]::GetFullPath(\$MyInvocation.MyCommand.Path)
-    Start-Process powershell.exe \`
-        -ArgumentList @(
-            '-NoProfile',
-            '-ExecutionPolicy','Bypass',
-            '-File', \$ScriptPath
-        ) \`
-        -Verb RunAs \`
-        -WindowStyle Hidden \`
-        -Wait
-    exit \$LASTEXITCODE
+function Log {
+    param( [string]$Message = "" )
+    $Prefix = if ($DryRun) { "DRY-RUN" } else { "INFO" }
+    $Record = ("{0}: {1} {2}" -f $AppName, $Prefix, $Message)
+    try { Add-Content -Path $LogPath -Value $Record -Encoding utf8 }
+    catch { Write-Warning "${AppName}: Failed to write to log: $_" }
 }
 
-if (\$Backup -eq 1 -and \$DryRun -eq 0) {
-    \$Ts = Get-Date -Format \"yyyyMMddHHmmss\"
-    Copy-Item \"\$HostsPath\" \"\$HostsPath.bak.\$Ts\"
+function LogV {
+    param([string]$Message = "")
+    if ($Verbose -ne 1) { return }
+    Log "$Message"
 }
 
-\$Pattern = \"^\$Header\"
-if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
-    if (\$DryRun -ne 1) {
-        Add-Content -Path \"\$HostsPath\" -Value \"\$Header\"
+function SnapshotLines {
+    param([string[]]$Lines, [int]$Count = 5)
+    $Hdr = if ($DryRun) { "${AppName}: DRY-RUN" } else { "${AppName}: INFO" }
+    @{ First = ($Lines | Select-Object -First $Count |
+           ForEach-Object -Begin { $n = 0 } -Process { "{0} {1}. {2}" -f $Hdr, (++$n), $_ }
+         ) -join [Environment]::NewLine
+       Last  = ($Lines | Select-Object -Last $Count |
+           ForEach-Object -Begin { $n = 0 } -Process { "{0} {1}. {2}" -f $Hdr, (++$n), $_ }
+         ) -join [Environment]::NewLine
     }
 }
 
-foreach (\$Domain in \$Domains) {
-    \$Pattern = \"^\$Ip\s+\$Domain\"
-    if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
-        if (\$DryRun -ne 1) {
-            Add-Content -Path \"\$HostsPath\" -Value \"\$Ip\`t\$Domain\"
+function SetDomains {
+    param( [string[]]$Lines, [string[]]$Content )
+    $Block = @($Header) + $Content + $Footer
+    $Start = [array]::IndexOf($Lines, $Header)
+    $End   = [array]::IndexOf($Lines, $Footer)
+    if ($Start -ge 0 -and $End -gt $Start) {
+        LogV "Update domains - replace existing block."
+        $Before = $Lines | Select-Object -First $Start
+        $After  = $Lines | Select-Object -Skip ($End + 1)
+        return $Before + $Block + $After
+    } else {
+        LogV "Append domains - no existing block."
+        LogV "Lines added: $($Block.Count)"
+        return $Lines + $Block
+    }
+}
+
+function Finish {
+    param([int]$Rc)
+    if ($null -eq $Rc) { $Rc = 0 }
+    try { Set-Content -Path $PsRcPath -Value $Rc -NoNewline -Encoding ascii -Force }
+    catch { Log "Error: Failed to write RC file: $_.Exception.Message" }
+    LogV "Hosts file update return code: $Rc"
+    Log "---------------------------------------"
+    exit $Rc
+}
+
+if ($Restricted -and -not $DryRun -and -not $Elevated) {
+    Log "This operation requires Administrator privilege."
+    Finish 1
+}
+
+if (Test-Path $PsRcPath) { Remove-Item -Force $PsRcPath }
+
+if (Test-Path $LogPath) {
+    try { Clear-Content -Path $LogPath -Force -ErrorAction Stop }
+    catch { Log "Error: Failed to reset log file: $_.Exception.Message" }
+}
+
+#---------------------------------------------
+# Read existing hosts and snapshots
+#---------------------------------------------
+$Rc = 0
+$Lines = @()
+$Existing = @()
+$Loaded = $false
+if (Test-Path $HostsPath) {
+    try {
+        $Lines = Get-Content $HostsPath -ErrorAction Stop
+        if ($Lines) {
+            $Loaded = $true
+            LogV "Hosts file loaded."
+            LogV "Lines read: $($Lines.Count)"
+            $Snap = SnapshotLines $Lines
+            LogV "Pre-snapshot first 5 lines: `n$($Snap.First)"
+            LogV "Pre-snapshot last 5 lines: `n$($Snap.Last)"
+            $Inside = $false
+            $Existing = foreach ($Line in $Lines) {
+                if ($Line -eq $Header) { $Inside = $true; continue }
+                if ($Line -eq $Footer) { $Inside = $false; continue }
+                if ($Inside) { $Line.Split()[1] }
+            }
+        } else { throw "Hosts file is empty." }
+    } catch {
+        Log "Error: Hosts file load failed: $_.Exception.Message"
+        $Rc = 1
+    }
+} else { Log "Error: Hosts file not found." }
+if (-not $Loaded) { Finish $Rc}
+
+#---------------------------------------------
+# Determine update required
+#---------------------------------------------
+$Update_Required = $false
+foreach ($d in $Domains) {
+    if (-not ($Existing -contains $d)) {
+        $Update_Required = $true
+        LogV "Update required."
+        break
+    }
+}
+
+if (-not $Update_Required) {
+    Log "$DateTime Hosts is up to date - no update required."
+    Finish 0
+}
+
+#---------------------------------------------
+# Backup logic
+#---------------------------------------------
+if ($Backup -eq 1) {
+    if ($DryRun -eq 1) {
+        Log "Backup: $HostsPath"
+    } else {
+        try {
+            $Ts = Get-Date -Format "yyyyMMddHHmmss"
+            $BackupFile = "$HostsPath.bak.$Ts"
+            Copy-Item -Path $HostsPath -Destination $BackupFile -Force
+            Log "Backup created: $BackupFile"
+        } catch {
+            Log "Error: Backup failed: $_.Exception.Message"
+            Finish 1
         }
     }
 }
 
-\$Pattern = \"^\$Footer\"
-if (-not (Select-String -Path \"\$HostsPath\" -Pattern \$Pattern -Quiet)) {
-    if (\$DryRun -ne 1) {
-        Add-Content -Path \"\$HostsPath\" -Value \"\$Footer\"
+#---------------------------------------------
+# Re/Build domain entries
+#---------------------------------------------
+$DomainsAdded = 0
+$DomainsRemoved = 0
+$DomainsUnchanged = 0
+$Entries = foreach ($d in $Domains) {
+    if ($Existing -contains $d) {
+        Log "Keep domain: $d" | Out-Null
+        $DomainsUnchanged++
+    } else {
+        Log "Add domain: $d" | Out-Null
+        $DomainsAdded++
     }
+    "$HostIp`t$d"
 }
-"
+foreach ($d in $Existing) {
+    if (-not ($Domains -contains $d)) { $DomainsRemoved++ }
+}
 
-    echo "$ps_script" > "$ps_script_path"
+if ($DomainsUnchanged -gt 0) {
+LogV "Domains unchanged: $DomainsUnchanged" }
+if ($DomainsAdded -gt 0) {
+LogV "Domains added: $DomainsAdded" }
+if ($DomainsRemoved -gt 0) {
+LogV "Domains removed: $DomainsRemoved" }
+$Lines = SetDomains $Lines $Entries
+LogV "Lines written: $($Lines.Count)"
+$Snap = SnapshotLines $Lines
+LogV "Post-snapshot first 5 lines: `n$($Snap.First)"
+LogV "Post-snapshot last 5 lines: `n$($Snap.Last)"
 
-    log_debug "ps_script: $ps_script"
+#---------------------------------------------
+# Atomic Write Hosts file using temp file + move
+#---------------------------------------------
+if ($DryRun -eq 1) {
+    LogV "Hosts file NOT modified."
+} elseif ($Lines) {
+    $TmpFile = "$env:TEMP\\hosts_tmp_$($PID)_$(Get-Date -Format 'yyyyMMddHHmmss').tmp"
+    $Saved = $false
+    try {
+        $Rc = 0
+        $Retries = 0
+        $Lines | Out-File -FilePath $TmpFile -Encoding ASCII -Force -ErrorAction Stop
+        do {
+            try {
+                Move-Item -Path $TmpFile -Destination $HostsPath -Force -ErrorAction Stop
+                try {
+                    if ((Get-Content $HostsPath -ErrorAction Stop).Count -ne $Lines.Count) {
+                        try { Copy-Item -Path $BackupFile -Destination $HostsPath -Force }
+                        catch { throw "Restore backup failed." }
+                        throw "Sanity check failed - restoring backup."
+                    } else { $Saved = $true; $Rc = 0; break }
+                } catch {
+                    Log "Error: Sanity check failed: $_.Exception.Message"
+                    $Rc = 1
+                }
+            } catch {
+                LogV "Update attempt $($Retries+1) failed: $_"
+                Start-Sleep -Milliseconds 200
+                $Retries++
+            }
+        } while ($Retries -lt 5)
+        if ($Saved) { Log "$DateTime Hosts file updated successfully." }
+        else { throw "Hosts file update failed after $($Retries+1) attempts." }
+    } catch {
+        Log "Error: $($_.Exception.Message)"
+        $Rc = 1
+    }
+} else {
+    Log "Error: Hosts content is empty."
+    $Rc = 1
+}
+Finish $Rc
+PSH
 
-    if [[ $SILENT -eq 1 ]]; then
-        if [[ "$elevated" != true ]]; then
-            critical_exit "Silent mode requires Administrator privilage."
+        #---------------------------------------------
+        # Inject payload environment variables
+        #---------------------------------------------
+        ps_payload="${ps_payload//__DOMAINS__/$domains_ps}"
+        ps_payload="${ps_payload//__DRY_RUN__/$DRY_RUN}"
+        ps_payload="${ps_payload//__VERBOSE__/$VERBOSE}"
+        ps_payload="${ps_payload//__BACKUP__/$BACKUP}"
+        ps_payload="${ps_payload//__HOST_IP__/$HOST_IP}"
+        ps_payload="${ps_payload//__APP_NAME__/$APP_NAME}"
+        ps_payload="${ps_payload//__HOSTS_PATH__/$WIN_HOSTS_PATH}"
+        ps_payload="${ps_payload//__PS_RC_PATH__/$win_rc_path}"
+        ps_payload="${ps_payload//__LOG_PATH__/$win_log_path}"
+        ps_payload="${ps_payload//__DATE_TIME__/$date_time}"
+        ps_payload="${ps_payload//__HEADER__/$header}"
+        ps_payload="${ps_payload//__FOOTER__/$footer}"
+
+        echo "$ps_payload" > "$posix_script_path" && ps_payload=""
+
+        log_debug "Hosts edit script: $win_script_path"
+        cat "$posix_script_path"
+
+        #-----------------------------
+        # Elevation and Restricted check before PowerShell invocation
+        #-----------------------------
+        if [[ "$elevated" != true && "$restricted" == true ]]; then
+            local ps_launcher
+            read -r -d '' ps_launcher <<'LPS' || true
+$proc = Start-Process "$PSHOME\powershell.exe" `
+    -Verb RunAs `
+    -Wait `
+    -WindowStyle Hidden `
+    -PassThru `
+    -ArgumentList @(
+        '-NoProfile',
+        '-ExecutionPolicy Bypass',
+        '-File',
+        '__WIN_SCRIPT__'
+    )
+$proc.WaitForExit()
+if ($proc.ExitCode -ne $null) {
+    exit $proc.ExitCode
+} else {
+    exit $LASTEXITCODE
+}
+LPS
+
+            ps_launcher="${ps_launcher//__WIN_SCRIPT__/$win_script_path}"
+            ps_launcher="${ps_launcher//__WIN_LOG__/$win_log_path}"
+
+            log_info "Launching PowerShell with UAC prompt..."
+
+            echo "$ps_launcher" > "$posix_ps_launcher_path"
+
+            log_debug "PS Payload launcher: $win_ps_launcher_path"
+            cat "$posix_ps_launcher_path"
+
+            ps_payload="$win_ps_launcher_path"
+        else
+            log_info "Launching PowerShell as $role..."
+
+            ps_payload="$win_script_path"
         fi
-    fi
 
-    if [[ "$elevated" == true ]]; then
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$ps_script_path"
-    else
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
-          Start-Process powershell.exe -WindowStyle Hidden -Wait -ArgumentList @(
-             '-NoProfile',
-             '-ExecutionPolicy Bypass',
-             '-File',
-             \"$ps_script_path\"
-          )
-        "
-    fi
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ps_payload" \
+            2> "${posix_log_path}.err"
+        return_code=$?
 
-    if [[ $DRY_RUN -eq 1 ]]; then
-        ! grep -q "^$header" "$HOSTS_PATH" && \
-        echo "[DRY-RUN] $header"
-        for d in "${DOMAINS[@]}"; do
-            local pattern="^\\s*$HOST_IP\\s+$d"
-            if ! grep -qE "$pattern" "$HOSTS_PATH"; then
-                echo -e "[DRY-RUN] $HOST_IP\t$d";
+        # Capture invocation or fallback RC bridge return code
+        if [[ $return_code -gt 0 ]]; then
+            log_debug "PowerShell invocation return code: $return_code"
+            error_log="${posix_log_path}.err"
+        elif [[ -f "$posix_rc_path" ]]; then
+            return_code=$(<"$posix_rc_path")
+            if [[ $return_code -gt 0 ]]; then
+                error_log="${posix_log_path}.ps.err"
+                log_debug "PowerShell RC file return code: $return_code"
             fi
-        done
-        ! grep -q "^$footer" "$HOSTS_PATH" && \
-        echo "[DRY-RUN] $footer"
-    else
-        rm "$ps_script_path"
-    fi
+            rm -f "$posix_rc_path"
+        else
+            return_code=1
+        fi
+
+        rm -f "$posix_script_path"
+
+        # Check status only if DRY_RUN is active
+        if [[ $DRY_RUN -eq 1 ]]; then
+            log_info "[DRY-RUN] $header"
+            for d in "${DOMAINS[@]}"; do
+                log_info "[DRY-RUN] $HOST_IP\t$d";
+            done
+            log_info "[DRY-RUN] $footer"
+        fi
+        ;;
+    *)
+        critical_exit "Invalid platform specified."
+        ;;
+    esac
+
+    [[ $return_code -ne 0 ]] && {
+    log_error "Hosts update failed with return code: $return_code.";
+    log_info "${YELLOW}For details, check log:${END} ${WHITE}$error_log"; }
+
+    # shellcheck disable=SC2086
+    return $return_code
 }
 
 check_host_domains() {
-    local d quiet=false
-    quiet=$([[ "$1" == "--quiet" ]] && echo true)
-
-    [[ "$quiet" == false ]] && \
     log_info "${HEADER}Configured Domains"
     #-------------------------------------------
     mal_domains=()
     for d in "${DOMAINS[@]}"; do
         local pattern="^\\s*$HOST_IP\\s+$d"
         if grep -qE "$pattern" "$HOSTS_PATH"; then
-            [[ "$quiet" == false ]] && \
             log_info "${GREEN}  ✔${END} ${WHITE}$d"
         else
-            [[ "$quiet" == false ]] && \
             log_info "${RED}  ✘${END} ${WHITE}$d"
             mal_domains+=("$d")
         fi
     done
 }
 
-HOST_IP=127.0.0.1
-WIN_HOSTS_PATH="C:\\Windows\\System32\\drivers\\etc\\hosts"
 mal_domains=()
 domains=${#DOMAINS[@]}
 
 if [[ "$AC_LOCAL" == true ]]; then
-    check_host_arg=""
-    [[ $DRY_RUN -eq 1 ]] && { check_host_arg="--quiet"; }
-    check_host_domains "$check_host_arg"
+    check_host_domains
     if (( ${#mal_domains[@]} > 0 )); then
         log_info "${HEADER}Set Local Domains"
         #-------------------------------------------
-        [[ "$DRY_RUN" == 1 ]] && { mal_domains=(); }
-        case "$PLATFORM" in
-        linux|mac)
-            log_info "${BODY}Update Unix hosts"
-            unix_hosts_edit
-            ;;
-        wsl)
-            log_info "${BODY}Update Windows hosts"
-            windows_hosts_edit
-            ;;
-        *)
-            critical_exit "Platform $PLATFORM is unsupported."
-            ;;
-        esac
-        [[ $DRY_RUN -eq 0 ]] && { check_host_domains ""; }
+        log_debug "BASH_VERSION: $BASH_VERSION"
+        log_debug "AC_LOCAL: $AC_LOCAL"
+        log_debug "PLATFORM: $PLATFORM"
+        log_debug "SILENT: $SILENT"
+        log_debug "VERBOSE: $VERBOSE"
+        log_debug "BACKUP: $BACKUP"
+        log_debug "DRY_RUN: $DRY_RUN"
+        log_debug "DEBUG_ON: $DEBUG_ON"
+        log_debug "HOST_IP: $HOST_IP"
+        log_debug "HOSTS_PATH: $HOSTS_PATH"
+        [[ "$PLATFORM" == "wsl" ]] && \
+        log_debug "WIN_HOSTS_PATH: $WIN_HOSTS_PATH"
+        if managed_hosts_edit; then
+            mal_domains=()
+        else
+            log_error "Local domains were not set."
+        fi
+        [[ $DRY_RUN -eq 0 ]] && { check_host_domains; }
     fi
 
     if (( ${#mal_domains[@]} == 0 )); then
