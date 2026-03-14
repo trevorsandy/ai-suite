@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 14 2026
+# Last Update March, 15 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -198,6 +198,26 @@ critical_exit() {
     exit 1
 }
 
+strip_sgr() {
+    local line sgr=$'\033'
+    while IFS= read -r line; do
+        while [[ $line == *"${sgr}["*m* ]]; do
+            line="${line/${sgr}\[[0-79;]\{1,11\}m/}"
+        done
+        printf '%s\n' "$line"
+    done
+    # - The substitution regex explained:
+    # line            original line
+    # /               substitution delimeter '/'
+    # $sgr            match the SGR escape sequence '\x1b' before the color or attribute code
+    # \[              matches the first open bracket - escape '\[' to distinguish from regex [
+    # [0-79;]\{1,11\} matches '1 to 11' of any character in '012345679;' - escape the curly braces
+    #                 with '\{' to keep the shell from mangling them
+    #                 we have 11 times due to bold, dim, italic, underline and color * 2 plus reset * 1
+    # m               match the SGR escape sequence reset character 'm' - this trails the color code
+    # /               substitution delimeter '/'
+}
+
 # Real-time tee with SGR stripping
 SCRIPT="${BASH_SOURCE[0]##*/}"
 if [[ "$SCRIPT" == "${0##*/}" ]]; then
@@ -205,23 +225,8 @@ if [[ "$SCRIPT" == "${0##*/}" ]]; then
     LOG="$LOG_PATH/$SCRIPT.log"
     [[ -f "$LOG" && -r "$LOG" ]] && rm "$LOG"
     # Strip SGR color sequence codes from output"
-    exec > >(tee >(sed 's/\x1b\[[0-79;]\{1,11\}m//g' >> "$LOG"))
-    exec 2> >(tee >(sed 's/\x1b\[[0-79;]\{1,11\}m//g' >> "$LOG") >&2)
-    # - The sed regex explained:
-    # sed             application binary
-    # '               open single quote
-    # s               substitution flag
-    # /               delimeter '/'
-    # \x1b            match the SGR escape sequence '\x1b' before the color or attribute code
-    # \[              matches the first open bracket - escape '\[' to distinguish from regex [
-    # [0-79;]\{1,11\} matches '1 to 11' of any character in '012345679;' - escape the curly braces
-    #                 with '\{' to keep the shell from mangling them
-    #                 we have 11 times due to bold, dim, italic, underline and color * 2 plus reset * 1
-    # m               match the SGR escape sequence reset character 'm' - this trails the color code
-    # //              empty string between delimeters '/' to replace everything with
-    # g               match globally - i.e., multiple times per line
-    # '               close single quote
-    # "$LOG"          the log file: auto_config.sh.log
+    exec > >(tee >(strip_sgr >>"$LOG"))
+    exec 2> >(tee >(strip_sgr >>"$LOG") >&2)
 fi
 
 # Capture elapsed execution time
@@ -628,6 +633,13 @@ else
     critical_exit "Package manager apt, apk, dnf, zypper, pacman, pkg, or brew not found."
 fi
 
+brew_package_is_installed() {
+    brew list --formula | while IFS= read -r p; do
+        [ "$p" = "$1" ] && return 0
+    done
+    return 1
+}
+
 package_is_installed() {
     local i=1 # set i to 0 if package not found
     local package="$1"
@@ -638,7 +650,7 @@ package_is_installed() {
     zypper) rpm -q apache2-utils > /dev/null 2>&1 || { local i=0; } ;;
     pacman) pacman -Qi apache > /dev/null 2>&1 || { local i=0; } ;;
     pkg) pkg info apache24 > /dev/null 2>&1 || { local i=0; } ;;
-    brew) brew list --formula | grep -qx httpd || { local i=0; } ;;
+    brew) brew_package_is_installed httpd || { local i=0; } ;;
     *) type "${package}" > /dev/null 2>&1 || { local i=0; } ;;
     esac
     if [ "$i" == 1 ]; then
@@ -864,9 +876,10 @@ confirmation_prompt() {
 
 elide() {
     local max=35
-    [[ "$#" -gt 1 ]] && { max=${1:-35}; shift || true; }
-    echo "$@" | \
-    awk -v max="${max}" '{ if (length($0) > max) print substr($0, 1, max-3) "..."; else print; }'
+    [[ "$#" -gt 1 ]] && { max=${1:-35}; shift; }
+    local str="$*"
+    local len=${#str}
+    if (( len > max )); then printf '%s...' "${str:0:max-3}"; else printf '%s' "$str"; fi
 }
 
 # Populate module hostname (URL)
@@ -962,7 +975,7 @@ set_domain_names() {
     unset_domain_vars
 
     : "${url_parser_bin:?url_parser_bin is not set}"
-    ! declare -p subdomains 2>/dev/null | grep -q 'declare \-a' && \
+    [[ $(declare -p subdomains 2>/dev/null) == declare\ -a* ]] || \
         critical_exit "The subdomains variable must be a declared array"
     (( ${#subdomains[@]} > 0 )) || \
         critical_exit "The subdomains array is empty"
@@ -1069,16 +1082,21 @@ log_info "${BODY}SUPABASE_PUBLIC_URL:${END} ${WHITE}$protocol://$SUPABASE_domain
 declare -p N8N_DOMAIN &>/dev/null && \
 log_info "${BODY}N8N WEBHOOK_URL:${END} ${WHITE}$protocol://$N8N_DOMAIN"
 
-# shellcheck disable=SC1091
-[[ -z ${N8N_ENCRYPTION_KEY+x} && -f n8n/.n8n.encryption.key ]] && {
-    while IFS='=' read -r key val; do
-        [[ -z "$key" || "$key" == \#* ]] && continue
-        [[ -z "$val" ]] && continue
-        export "$key=$val"
-    done < n8n/.n8n.encryption.key
-    [[ -n ${N8N_ENCRYPTION_KEY+x} ]] && \
-    log_info "${BODY}N8N_ENCRYPTION_KEY:${END} ${WHITE}$(elide "$N8N_ENCRYPTION_KEY")"
-}
+n8n_encrypt_key_status="New key generated by $APP_NAME"
+if [[ -z ${N8N_ENCRYPTION_KEY+x} ]]; then
+    [[ -f n8n/.n8n.encryption.key ]] && {
+        while IFS='=' read -r key val; do
+            [[ -z "$key" || "$key" == \#* ]] && continue
+            [[ -z "$val" ]] && continue
+            export "$key=$val"
+        done < n8n/.n8n.encryption.key
+        [[ -n ${N8N_ENCRYPTION_KEY+x} ]] && \
+        n8n_encrypt_key_status="Existing key imported from file"
+    }
+else
+    n8n_encrypt_key_status="Existing key set from environment variable"
+fi
+log_info "${BODY}N8N_ENCRYPTION_KEY:${END} ${WHITE}$n8n_encrypt_key_status"
 
 LLAMA_DOMAIN='undefined'
 if [[ "$AC_LLAMACPP" == true ]]; then
@@ -1255,9 +1273,9 @@ gen_n8ncrypt() {
 }
 
 create_dot_env_file() {
-    local dot_env_path="${1:-${ENV_FILE:-.env}}"
+    local template_path="${1:-${ENV_TEMPLATE_FILE:-.env.example}}"
     local compose_path="${2:-${COMPOSE_FILE:-docker-compose.yml}}"
-    local template_path="${ENV_TEMPLATE_FILE:-.env.example}"
+    local dot_env_path="${ENV_FILE:-.env}"
     local template_count=0
     local compose_count=0
     local dot_env_count=0
@@ -1279,20 +1297,60 @@ create_dot_env_file() {
     )
 
     # shellcheck disable=SC2153
-    if declare -p COMPOSE_FILES 2>/dev/null | grep -q 'declare \-a'; then
+    if [[ $(declare -p COMPOSE_FILES 2>/dev/null) == declare\ -a* ]]; then
         [[ ${#COMPOSE_FILES[@]} -ne 0 ]] && compose_files=(COMPOSE_FILES[@])
     else
         compose_files=("${compose_path}")
     fi
 
+    normalize_lines() {
+        local ending=$'\n' # LF - Linux/macOS
+        for f in "$@"; do
+            [ -f "$f" ] || continue
+            tmp="${f}.tmp.$$"
+            awk -v e="$ending" '{ sub(/\r$/, ""); printf "%s%s", $0, e }' "$f" > "$tmp" &&
+            mv "$tmp" "$f"
+        done
+    }
+
     load_template_vars() {
         local template_file="$1"
         [[ -f "$template_file" ]] || return 0
         log_info "${BODY}Load defaults from $template_file"
-        while IFS='=' read -r key val; do
-            [[ -z "$key" || "$key" == \#* ]] && continue
-            TEMPLATE["$key"]="${val%$'\r'}"
-            ENV["$key"]="${val%$'\r'}"  # initialize ENV with template defaults
+        normalize_lines "$template_file"
+        declare -A allowed=()
+        for sub in "${subdomains[@]}"; do
+            local base=${sub/open-webui/WEBUI}
+            base=${base//-/_}
+            local key="${base^^}_HOSTNAME"
+            allowed["$key"]=1
+        done
+        allowed["WEBHOOK_URL"]=1
+        allowed["LETSENCRYPT_EMAIL"]=1
+        allowed["N8N_PROTOCOL"]=1
+        allowed["N8N_PROXY_HOPS"]=1
+        allowed_count=0
+        local check_allowed=true
+        while IFS='=' read -r key val || [[ -n "$key" ]]; do
+            [[ -z "$key" ]] && continue
+            if [[ "$key" =~ ^[[:space:]]*\# ]]; then
+                if $check_allowed; then
+                    key="${key#\#}"
+                    key="${key# }"
+                    [[ -z "$key" ]] && continue
+                    if [[ -z ${allowed[$key]-} ]]; then
+                        continue
+                    else
+                        ((++allowed_count))
+                        [[ $allowed_count -eq ${#allowed[@]} ]] && check_allowed=false
+                    fi
+                else
+                    continue
+                fi
+            fi
+            val="${val%$'\r'}"
+            TEMPLATE["$key"]="$val"
+            ENV["$key"]="$val"
             TEMPLATE_KEYS+=("$key")
         done < "$template_file"
     }
@@ -1301,8 +1359,9 @@ create_dot_env_file() {
         local file_path="$1"
         [[ -f "$file_path" ]] || return 0
         log_info "${BODY}Overlay existing .env from $file_path"
+        normalize_lines "$file_path"
         while IFS='=' read -r key val; do
-            [[ -z "$key" || "$key" == \#* ]] && continue
+            [[ -z "$key" || "$key" =~ ^[[:space:]]*\# ]] && continue
             if [[ -n ${TEMPLATE[$key]+x} ]]; then
                 ENV["$key"]="${val%$'\r'}"
             else
@@ -1312,21 +1371,52 @@ create_dot_env_file() {
         done < "$file_path"
     }
 
+    uncomment_compose_vars() {
+        local compose_file="$1"
+        shift
+        [[ -f "$compose_file" ]] || return 0
+        log_info "${BODY}Enable n8n proxy variables in $compose_file"
+        local compose_allowed=(N8N_HOST N8N_PORT N8N_PROTOCOL N8N_PROXY_HOPS)
+        local vars=("$@")
+        [[ ${#vars[@]} -eq 0 ]] && vars=("${compose_allowed[@]}")
+        vars_count=0
+        local check_allowed=true
+        local tmp="${compose_file}.tmp.$$"
+        while IFS= read -r line; do
+            [[ $check_allowed == true ]] && \
+            for var in "${vars[@]}"; do
+                if [[ $line =~ ^([[:space:]]*)\#(.*) ]] && [[ "$line" == *"\${$var"* ]]; then
+                    line="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"  # remove leading #
+                    log_info "${BODY}  $(elide "$line")"
+                    (( ++vars_count ))
+                    [[ $vars_count -eq ${#vars[@]} ]] && check_allowed=false
+                    break
+                fi
+            done
+            printf '%s\n' "$line" >> "$tmp"
+        done < "$compose_file"
+        mv "$tmp" "$compose_file"
+    }
+
     load_compose_vars() {
         local compose_file="$1"
         [[ -f "$compose_file" ]] || return 0
+        [[ "$compose_file" == "$compose_path" ]] && \
+        uncomment_compose_vars "$compose_file"
         log_info "${BODY}Load variables from $compose_file"
-        while IFS= read -r line; do
-            while [[ $line =~ \$\{([A-Za-z0-9_]+)(:?[-+?])?([^}]*)\} ]]; do
+        normalize_lines "$compose_file"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            while [[ $line =~ \$\{([A-Za-z0-9_]+)(:?[-+?])?(.*)\} ]]; do
                 local var="${BASH_REMATCH[1]}"
                 local op="${BASH_REMATCH[2]}"
                 local val="${BASH_REMATCH[3]}"
                 local match="${BASH_REMATCH[0]}"
-                [[ "$op" == *"+"* || "$op" == *"?"* ]] && { line="${line#*$match}"; continue; }
-                [[ -n ${COMPOSE_VARS["$compose_file:$var"]+x} ]] && { line="${line#*$match}"; continue; }
-                [[ -z ${TEMPLATE[$var]+x} && -z ${ENV[$var]+x} ]] && \
-                    COMPOSE_VARS["$compose_file:$var"]="$val"
-                line="${line#*$match}"
+                [[ "$op" == *"+"* || "$op" == *"?"* ]] && break
+                [[ -n ${COMPOSE_VARS["$compose_file:$var"]+x} ]] && break
+                [[ -n ${TEMPLATE[$var]+x} || -n ${ENV[$var]+x} ]] && break
+                COMPOSE_VARS["$compose_file:$var"]="$val"
+                line="${line//"$match"/}"
             done
         done < "$compose_file"
     }
@@ -1366,15 +1456,15 @@ create_dot_env_file() {
                 )
                 val="${val//$'\n'/}"
                 ((++generated_count))
-                log_info "${BODY}  $(elide "$var"): $(elide 30 "$val") $gen${arg:+:$arg}"
+                log_info "${BODY}  $(elide "$var"):${END} ${WHITE}$(elide 30 "$val") $gen${arg:+:$arg}"
             elif [[ -n "$val" ]]; then
                 ((++inherited_count))
-                log_info "${BODY}  $(elide "$var"): $(elide 30 "$val")"
+                log_info "${BODY}  $(elide "$var"):${END} ${WHITE}$(elide 30 "$val")"
             else
                 val="$tmpl_val"
                 ENV["$var"]="$val"
                 ((++default_count))
-                log_info "${BODY}  $(elide "$var"): $(elide 30 "$val")"
+                log_info "${BODY}  $(elide "$var"):${END} ${WHITE}$(elide 30 "$val")"
             fi
             ENV["$var"]="$val"
         done
@@ -1488,26 +1578,16 @@ create_dot_env_file() {
     summarize_results
 }
 
-log_info "${BODY}proxy:${END} ${WHITE}$proxy"
-log_info "${BODY}auto_confirm:${END} ${WHITE}$auto_confirm"
-log_info "${BODY}with_authelia:${END} ${WHITE}$with_authelia"
-log_info "${BODY}setup_redis:${END} ${WHITE}$WITH_REDIS"
-log_info "${BODY}username:${END} ${WHITE}$username"
-log_info "${BODY}display_name:${END} ${WHITE}$display_name"
-log_info "${BODY}email:${END} ${WHITE}$email"
+log_info "${BODY}Proxy:${END} ${WHITE}$proxy"
+log_info "${BODY}Auto confirm:${END} ${WHITE}$auto_confirm"
+log_info "${BODY}With Authelia:${END} ${WHITE}$with_authelia"
+log_info "${BODY}Setup Redis:${END} ${WHITE}$WITH_REDIS"
+log_info "${BODY}User name:${END} ${WHITE}$username"
+log_info "${BODY}Display name:${END} ${WHITE}$display_name"
+log_info "${BODY}Email:${END} ${WHITE}$email"
 
-log_info "${BODY}sudo_user:${END} ${WHITE}${SUDO_USER}"
-log_info "${BODY}using_sudo_user:${END} ${WHITE}$using_sudo_user"
-
-if [[ "$AC" == true ]]; then
-   log_info "${BODY}Enable n8n proxy variables"
-    sed -i \
-        -e "s|#- N8N_HOST=.*|- N8N_HOST=\${N8N_HOSTNAME:-\${N8N_HOST}}|" \
-        -e "s|#- N8N_PORT=.*|- N8N_PORT=\${N8N_PORT}|" \
-        -e "s|#- N8N_PROTOCOL=.*|- N8N_PROTOCOL=\${N8N_PROTOCOL}|" \
-        -e "s|#- N8N_PROXY_HOPS=.*|- N8N_PROXY_HOPS=\${N8N_PROXY_HOPS}|" \
-        docker-compose.yml
-fi
+log_info "${BODY}Sudo user:${END} ${WHITE}${SUDO_USER}"
+log_info "${BODY}Using sudo user:${END} ${WHITE}$using_sudo_user"
 
 # Create .env file from .env.example template
 log_info "${HEADER}Create .env File"
@@ -1527,6 +1607,22 @@ env_vars=()
 update_env_vars() {
     for env_key_value in "$@"; do
         env_vars+=("$env_key_value")
+    done
+}
+
+write_env_vars() {
+    local env_pair=()
+    for env_var in "${env_vars[@]}"; do
+        IFS='=' read -r -a env_pair <<< "$env_var"
+        if (( ${#env_pair[@]} > 1 )); then
+            if cat ".env" | grep -q "^${env_pair[0]}"; then
+                log_info "${BODY}Update ${env_pair[0]}"
+                sed -i "s|${env_pair[0]}.*|${env_pair[0]}=${env_pair[1]}|" .env
+            else
+                log_info "${BODY}Append ${env_pair[0]}"
+                echo -e "${env_pair[0]}=${env_pair[1]}" >>.env
+            fi
+        fi
     done
 }
 
@@ -1736,19 +1832,7 @@ fi
 # WRITE env_vars to .env file
 log_info "${HEADER}Write Additional .env Variables"
 #-------------------------------------------
-env_pair=()
-for env_var in "${env_vars[@]}"; do
-    IFS='=' read -r -a env_pair <<< "$env_var"
-    if (( ${#env_pair[@]} > 1 )); then
-        if cat ".env" | grep -q "^${env_pair[0]}"; then
-            log_info "${BODY}Update ${env_pair[0]}"
-            sed -i "s|${env_pair[0]}.*|${env_pair[0]}=${env_pair[1]}|" .env
-        else
-            log_info "${BODY}Append ${env_pair[0]}"
-            echo -e "${env_pair[0]}=${env_pair[1]}" >>.env
-        fi
-    fi
-done
+write_env_vars "${env_vars[@]}"
 
 # Docker:         http://host.docker.internal:<port>
 # Local:          http://localhost:<port>
