@@ -3,6 +3,7 @@
 .ac.env
 *.log*
 *.ps1
+*.bak.*
 .n8n.*
 access/authelia/*
 !access/authelia/configuration.yml

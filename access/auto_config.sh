@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 15 2026
+# Last Update March, 17 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -18,7 +18,7 @@ set -euo pipefail
 
 VERSION="0.3.0"
 
-# If AC is unset we assume the script is being run manually for debugging
+# If AC is unset we assume the script is being run manually
 # shellcheck disable=SC1091
 [[ -z ${AC+x} && -f access/.ac.env ]] && {
 set -a && source access/.ac.env && set +a ; }
@@ -29,8 +29,8 @@ set -a && source access/.ac.env && set +a ; }
 : "${WITH_REDIS:=false}"
 : "${SUDO_USER:="$(whoami)"}"
 : "${DEBUG_ON:=false}"
-: "${BACKUP:=1}"
-: "${VERBOSE:=1}" # toggle verbose messages in hosts edit payload
+: "${BACKUP:=1}"      # on local install, backup hosts file before update
+: "${VERBOSE:=1}"     # toggle verbose messages in hosts edit payload script
 : "${SILENT:=$([[ "$CI" == true ]] && echo 1 || echo 0)}"
 : "${DRY_RUN:=$([[ "$DEBUG_ON" == true ]] && echo 1 || echo 0)}"
 
@@ -98,7 +98,7 @@ if [[ -n "$SGR" ]]; then
     BODY="${SGR}37m  -${END} ${SGR}32m"
 
     COLON="${SGR}97m:"
-    APP="${SGR}3;94m${APP_NAME}${COLON}${END}"
+    APP="${SGR}${ITALIC}94m${APP_NAME}${COLON}${END}"
 fi
 
 # Log level names
@@ -260,7 +260,7 @@ finish () {
 
     if [ "$status" == "Completed" ]; then
         local bin binaries=()
-        for bin in "$yq_bin" "$url_parser_bin"; do [ -f "$bin" ] && binaries+=("$bin") ; done
+        for bin in "$yq_bin" "$up_bin"; do [ -f "$bin" ] && binaries+=("$bin") ; done
         if (( ${#binaries[@]} > 0 )); then log_info "Clean downloaded binaries..." ; fi
         for bin in "${binaries[@]}"; do log_info "  ✘ $(basename "${bin}")"; (rm "$bin"); done
     fi
@@ -391,7 +391,9 @@ proxy='caddy'
 install_type='Default'
 user_confirm='Default'
 config_mode="Interactive"
-url_parser_bin='./access/url-parser'
+up_ver="v1.1.0"
+up_bin='./access/url-parser'
+yq_ver="v4.45.4"
 yq_bin='./access/yq'
 
 PLATFORM='unknown'
@@ -448,7 +450,10 @@ if [ "$AC" == true ]; then
     with_authelia="${AC_WITH_AUTHELIA}"
     WITH_REDIS="${AC_WITH_REDIS}"
     proxy="${AC_PROXY}"
-    update_subdomains "${AC_SUBDOMAINS[@]}"
+    if [[ $(declare -p AC_SUBDOMAINS 2>/dev/null) == declare\ -a* ]]; then
+        [[ ${#AC_SUBDOMAINS[@]} -ne 0 ]] && \
+        update_subdomains "${AC_SUBDOMAINS[@]}"
+    fi
     if [ "$AC_CONFIRM" == true ]; then
         user_confirm="Email notification"
     fi
@@ -604,7 +609,9 @@ hosts_write_uac() {
 }
 
 available() { command -v "$1" >/dev/null; }
+
 packages=(curl wget jq openssl git)
+
 if available apt-get; then
     packages+=("apt-get:apache2-utils")
 elif available apk; then
@@ -670,7 +677,6 @@ sudo_prompt() {
 
 unix_privilege() {
     local -n _ref=$1
-
     if is_unix_root ""; then
         _ref='is_unix__root'
         return
@@ -705,7 +711,7 @@ run_pkg_cmd() {
         esac
         log_info "${BODY}Running as $user"
     fi
-    [[ $1 == -payload ]] && { pld=1; cmd=$2; }
+    [[ "$1" == "-payload" ]] && { pld=1; cmd=$2; }
     case "$user_privilege" in
     is_unix__root)
         if [[ $pld -eq 0 ]]; then $cmd; else bash -c "$cmd"; fi
@@ -808,8 +814,6 @@ if (( ${#packages[@]} != 0 )); then
     fi
 fi
 
-repo_base="https://github.com/trevorsandy"
-repo_url="${repo_base}/ai-suite"
 if [ "$AC" == true ]; then
     directory="$PWD"
 else
@@ -821,6 +825,8 @@ if [[ "$AC" == true && -d "$directory" ]]; then
 elif [ -d "$directory" ]; then
     log_info "$directory directory present, skipping git clone"
 else
+    repo_url="https://github.com/trevorsandy/ai-suite"
+    log_info "Cloning repository from ${repo_url}..."
     git clone --depth=1 "$repo_url" "$directory"
 fi
 
@@ -834,21 +840,20 @@ if [ ! -f ".env.example" ]; then critical_exit ".env.example file not found. Exi
 log_info "${HEADER}Downloaded Binaries"
 #-------------------------------------------
 download_binary() { wget "$1" -O "$2" &>/dev/null && chmod +x "$2" &>/dev/null; }
-repo_base="https://github.com/singh-inder"
-
-if [ ! -x "$url_parser_bin" ]; then
-    log_info "Downloading url-parser from ${repo_base}/url-parser..."
-    download_binary "${repo_base}"/url-parser/releases/download/v1.1.0/url-parser-"$os"-"$arch" "$url_parser_bin"
+if [ ! -x "$up_bin" ]; then
+    repo_base="https://github.com/singh-inder"
+    log_info "Downloading url-parser $up_ver from ${repo_base}/url-parser..."
+    download_binary "${repo_base}"/url-parser/releases/download/"$up_ver"/url-parser-"$os"-"$arch" "$up_bin"
 fi
 
 if [ ! -x "$yq_bin" ]; then
-    log_info "Downloading yq from https://github.com/mikefarah/yq..."
-    download_binary https://github.com/mikefarah/yq/releases/download/v4.45.4/yq_"$os"_"$arch" "$yq_bin"
+    log_info "Downloading yq $yq_ver from https://github.com/mikefarah/yq..."
+    download_binary https://github.com/mikefarah/yq/releases/download/"$yq_ver"/yq_"$os"_"$arch" "$yq_bin"
 fi
 
 bin_status () { if test -x "$1"; then echo "${GREEN}  ✔"; else echo "${RED}  ✘"; fi }
-log_info "$(bin_status "$url_parser_bin")${END} ${WHITE}url_parser"
-log_info "$(bin_status "$yq_bin") ${WHITE}yq"
+log_info "$(bin_status "$up_bin")${END} ${WHITE}url_parser $up_ver"
+log_info "$(bin_status "$yq_bin") ${WHITE}yq $yq_ver"
 
 format_prompt() { echo -e "${PROMPT} ${GREEN}$1${END}"; }
 
@@ -894,17 +899,7 @@ domain_var() {
     _ref="${base^^}_DOMAIN"
 }
 
-unset_domain_vars() {
-    local sub var
-    for sub in "${subdomains[@]}"; do
-        domain_var var "$sub"
-        declare -p "$var" &>/dev/null || continue
-        unset "$var"
-        log_debug "Unset domain variable: $var"
-    done
-}
-
-construct_domain_vars() {
+construct_domain_var() {
     local sub=$1
     local d var val
     domain_var var "$sub"
@@ -923,19 +918,6 @@ construct_domain_vars() {
     export _ref
 }
 
-export_domain_envs() {
-    local sub var env array
-    array=("${subdomains[@]}")
-    array+=(llama)
-    for sub in "${array[@]}"; do
-        domain_var var "$sub"
-        declare -p "$var" &>/dev/null || continue
-        local -n ref="$var"
-        env=${var,,}
-        export "$env=$ref"
-    done
-}
-
 get_domain_var() {
     local -n _ref=$1
     local arg=$2
@@ -949,6 +931,44 @@ get_domain_var() {
         return; }
     done
 }
+
+unset_domain_vars() {
+    local sub var
+    for sub in "${subdomains[@]}"; do
+        domain_var var "$sub"
+        declare -p "$var" &>/dev/null || continue
+        unset "$var"
+        log_debug "Unset domain variable: $var"
+    done
+}
+
+export_domain_vars() {
+    local sub var env array
+    array=("${subdomains[@]}")
+    array+=(llama)
+    for sub in "${array[@]}"; do
+        domain_var var "$sub"
+        declare -p "$var" &>/dev/null || continue
+        local -n ref="$var"
+        env=${var,,}
+        export "$env=$ref"
+    done
+}
+
+validate_domain_vars() {
+    local i sub var val
+    for (( i=0; i<${#subdomains[@]}; i++ )); do
+        sub="${subdomains[$i]}"
+        domain_var var "$sub"
+        if declare -p "$var" &>/dev/null; then
+            val="${DOMAINS[$i]}"
+            log_notice "${WHITE}-${END}    ${MAGENTA}${var}:${END} ${CYAN}${val}"
+        else
+            log_notice "${WHITE}-${END}    ${YELLOW}${var}${END} ${WHITE}is not declared"
+        fi
+    done
+}
+
 # url_parser --url argument and options:
 # --url: URL to parse. (e.g., https://subdomain.example.com:1234/path/resource?user=123#section1)
 # host: Host with port number if present (e.g., subdomain.example.com:1234)
@@ -974,7 +994,7 @@ set_domain_names() {
 
     unset_domain_vars
 
-    : "${url_parser_bin:?url_parser_bin is not set}"
+    : "${up_bin:?url parser binary is not set}"
     [[ $(declare -p subdomains 2>/dev/null) == declare\ -a* ]] || \
         critical_exit "The subdomains variable must be a declared array"
     (( ${#subdomains[@]} > 0 )) || \
@@ -989,17 +1009,17 @@ set_domain_names() {
             url="${_protocol}://${_subdomain}.${AC_DOMAIN:-local.pc}"
         else
             read -r -p "$(format_prompt "Enter your domain URL:") " url
-            if ! _protocol="$("$url_parser_bin" --url "$url" --get scheme 2>/dev/null)"; then
+            if ! _protocol="$("$up_bin" --url "$url" --get scheme 2>/dev/null)"; then
                 log_error "Could not extract protocol from hostname URL: $url."
                 url="" && _protocol=""
             fi
         fi
 
-        if ! _host="$("$url_parser_bin" --url "$url" --get host 2>/dev/null)"; then
+        if ! _host="$("$up_bin" --url "$url" --get host 2>/dev/null)"; then
             log_error "Could not extract host from hostname URL: $url."
             url="" && _host=""
         fi
-        if ! _registered_domain="$("$url_parser_bin" --url "$url" --get registeredDomain 2>/dev/null)"; then
+        if ! _registered_domain="$("$up_bin" --url "$url" --get registeredDomain 2>/dev/null)"; then
             _registered_domain=""
         fi
         [[ "$_registered_domain" == "." ]] && _registered_domain=""
@@ -1036,35 +1056,21 @@ set_domain_names() {
     fi
 
     if [[ -n "$subdomain" ]]; then
-        construct_domain_vars "$subdomain"
+        construct_domain_var "$subdomain"
     else
         local sub
         for sub in "${subdomains[@]}"; do
-            construct_domain_vars "$sub"
+            construct_domain_var "$sub"
         done
     fi
 }
 
-log_info "${BODY}Create domains from subdomain containers"
+log_info "${BODY}Set domain names from subdomains - Docker containers"
 
 # If 'subdomain' argument is empty, all AI Suite domains will be populated.
-set_domain_names ""
+set_domain_names
 
-log_info "${BODY}Confirm subdomains converted to domain names"
-
-validate_domain_vars() {
-    local i sub var val
-    for (( i=0; i<${#subdomains[@]}; i++ )); do
-        sub="${subdomains[$i]}"
-        domain_var var "$sub"
-        if declare -p "$var" &>/dev/null; then
-            val="${DOMAINS[$i]}"
-            log_notice "${WHITE}-${END}    ${MAGENTA}${var}:${END} ${CYAN}${val}"
-        else
-            log_notice "${WHITE}-${END}    ${YELLOW}${var}${END} ${WHITE}is not declared"
-        fi
-    done
-}
+log_info "${BODY}Confirm domain name environment variables"
 
 validate_domain_vars
 
@@ -1085,7 +1091,7 @@ log_info "${BODY}N8N WEBHOOK_URL:${END} ${WHITE}$protocol://$N8N_DOMAIN"
 n8n_encrypt_key_status="New key generated by $APP_NAME"
 if [[ -z ${N8N_ENCRYPTION_KEY+x} ]]; then
     [[ -f n8n/.n8n.encryption.key ]] && {
-        while IFS='=' read -r key val; do
+        while IFS='=' read -r key val || [[ -n "$key" ]]; do
             [[ -z "$key" || "$key" == \#* ]] && continue
             [[ -z "$val" ]] && continue
             export "$key=$val"
@@ -1213,7 +1219,7 @@ if [[ "$with_authelia" == true ]]; then
     done
 fi
 
-log_info "${HEADER}Process Credentials"
+log_info "${HEADER}Configure Secret Generators"
 #-------------------------------------------
 # In caddy basic_auth, hashed password is loaded in memory
 # In nginx basic_auth, websites slows down a lot if bcrypt rounds number is
@@ -1252,8 +1258,8 @@ gen_token() {
         return 0
     }
 
+    local payload payload_base64
     payload=$(jq -nc ".iat=($iat | tonumber) | .exp=($exp | tonumber) | .iss=\"supabase\" | .role=\"$1\"")
-    local payload_base64
     payload_base64=$(printf %s "$payload" | base64_url_encode)
 
     local signed_content="${header_base64}.${payload_base64}"
@@ -1269,10 +1275,63 @@ gen_n8ncrypt() {
         printf '%s' "${N8N_ENCRYPTION_KEY}"
         return
     }
-    gen_hex:32
+    gen_hex 32
 }
 
-create_dot_env_file() {
+log_info "${BODY}Proxy:${END} ${WHITE}$proxy"
+log_info "${BODY}Auto confirm:${END} ${WHITE}$auto_confirm"
+log_info "${BODY}With Authelia:${END} ${WHITE}$with_authelia"
+log_info "${BODY}Setup Redis:${END} ${WHITE}$WITH_REDIS"
+log_info "${BODY}User name:${END} ${WHITE}$username"
+log_info "${BODY}Display name:${END} ${WHITE}$display_name"
+log_info "${BODY}Email:${END} ${WHITE}$email"
+
+log_info "${BODY}Sudo user:${END} ${WHITE}${SUDO_USER}"
+log_info "${BODY}Using sudo user:${END} ${WHITE}$using_sudo_user"
+
+# Create .env file from .env.example template
+log_info "${HEADER}Generate .env File"
+#-------------------------------------------
+rename() {
+    local src="${1:?source file required}"
+    local dst="${2:?destination file required}"
+    mv_backup=''
+    if [[ -f $dst ]]; then
+        mv_backup="${dst}.bak.$(date +%Y%m%d%H%M%S)"
+        cp "$dst" "$mv_backup" || { log_error "Backup failed for $dst"; return 1; }
+    fi
+    [[ -f $src ]] || { log_error "File $src" not found; return 1; }
+    mv "$src" "$dst" || { log_error "Rename failed for $dst"; return 1; }
+}
+
+restore() {
+    local dst="${1:?destination file required}"
+    [[ -f "$mv_backup" ]] && {
+        [[ $mv_backup =~ $dst.bak.* ]] || \
+        { log_error "File $mv_backup is not a backup of $dst"; return 1; }
+        rm -f "$dst" 2>/dev/null
+        mv "$mv_backup" "$dst" || { log_error "Restore failed for $dst"; return 1; }
+        log_info "${BODY}  File $dst restored"
+        mv_backup=''
+    }
+}
+
+cleanup () {
+    [[ -n $mv_backup ]] || return 0
+    [[ -f $mv_backup ]] && rm -f "$mv_backup" 2>/dev/null;
+}
+
+normalize_lines() {
+    local ending=$'\n' # LF - Linux/macOS
+    for f in "$@"; do
+        [ -f "$f" ] || continue
+        tmp="${f}.tmp.$$"
+        awk -v e="$ending" '{ sub(/\r$/, ""); printf "%s%s", $0, e }' "$f" > "$tmp" &&
+        mv "$tmp" "$f"
+    done
+}
+
+generate_dot_env_file() {
     local template_path="${1:-${ENV_TEMPLATE_FILE:-.env.example}}"
     local compose_path="${2:-${COMPOSE_FILE:-docker-compose.yml}}"
     local dot_env_path="${ENV_FILE:-.env}"
@@ -1303,20 +1362,10 @@ create_dot_env_file() {
         compose_files=("${compose_path}")
     fi
 
-    normalize_lines() {
-        local ending=$'\n' # LF - Linux/macOS
-        for f in "$@"; do
-            [ -f "$f" ] || continue
-            tmp="${f}.tmp.$$"
-            awk -v e="$ending" '{ sub(/\r$/, ""); printf "%s%s", $0, e }' "$f" > "$tmp" &&
-            mv "$tmp" "$f"
-        done
-    }
-
     load_template_vars() {
         local template_file="$1"
         [[ -f "$template_file" ]] || return 0
-        log_info "${BODY}Load defaults from $template_file"
+        log_info "${BODY}Load variables default from $template_file"
         normalize_lines "$template_file"
         declare -A allowed=()
         for sub in "${subdomains[@]}"; do
@@ -1326,10 +1375,10 @@ create_dot_env_file() {
             allowed["$key"]=1
         done
         allowed["WEBHOOK_URL"]=1
-        allowed["LETSENCRYPT_EMAIL"]=1
         allowed["N8N_PROTOCOL"]=1
         allowed["N8N_PROXY_HOPS"]=1
-        allowed_count=0
+        allowed["LETSENCRYPT_EMAIL"]=1
+        local allowed_count=0
         local check_allowed=true
         while IFS='=' read -r key val || [[ -n "$key" ]]; do
             [[ -z "$key" ]] && continue
@@ -1358,7 +1407,7 @@ create_dot_env_file() {
     load_dot_env_vars() {
         local file_path="$1"
         [[ -f "$file_path" ]] || return 0
-        log_info "${BODY}Overlay existing .env from $file_path"
+        log_info "${BODY}Overlay variables from existing $file_path"
         normalize_lines "$file_path"
         while IFS='=' read -r key val; do
             [[ -z "$key" || "$key" =~ ^[[:space:]]*\# ]] && continue
@@ -1371,38 +1420,9 @@ create_dot_env_file() {
         done < "$file_path"
     }
 
-    uncomment_compose_vars() {
-        local compose_file="$1"
-        shift
-        [[ -f "$compose_file" ]] || return 0
-        log_info "${BODY}Enable n8n proxy variables in $compose_file"
-        local compose_allowed=(N8N_HOST N8N_PORT N8N_PROTOCOL N8N_PROXY_HOPS)
-        local vars=("$@")
-        [[ ${#vars[@]} -eq 0 ]] && vars=("${compose_allowed[@]}")
-        vars_count=0
-        local check_allowed=true
-        local tmp="${compose_file}.tmp.$$"
-        while IFS= read -r line; do
-            [[ $check_allowed == true ]] && \
-            for var in "${vars[@]}"; do
-                if [[ $line =~ ^([[:space:]]*)\#(.*) ]] && [[ "$line" == *"\${$var"* ]]; then
-                    line="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"  # remove leading #
-                    log_info "${BODY}  $(elide "$line")"
-                    (( ++vars_count ))
-                    [[ $vars_count -eq ${#vars[@]} ]] && check_allowed=false
-                    break
-                fi
-            done
-            printf '%s\n' "$line" >> "$tmp"
-        done < "$compose_file"
-        mv "$tmp" "$compose_file"
-    }
-
     load_compose_vars() {
         local compose_file="$1"
         [[ -f "$compose_file" ]] || return 0
-        [[ "$compose_file" == "$compose_path" ]] && \
-        uncomment_compose_vars "$compose_file"
         log_info "${BODY}Load variables from $compose_file"
         normalize_lines "$compose_file"
         while IFS= read -r line || [[ -n "$line" ]]; do
@@ -1456,15 +1476,15 @@ create_dot_env_file() {
                 )
                 val="${val//$'\n'/}"
                 ((++generated_count))
-                log_info "${BODY}  $(elide "$var"):${END} ${WHITE}$(elide 30 "$val") $gen${arg:+:$arg}"
+                log_info "${BODY}  $(elide "$var")${MAGENTA}=${WHITE}$(elide "$val") ${CYAN}$gen${arg:+:$arg}"
             elif [[ -n "$val" ]]; then
                 ((++inherited_count))
-                log_info "${BODY}  $(elide "$var"):${END} ${WHITE}$(elide 30 "$val")"
+                log_info "${BODY}  $(elide "$var")${MAGENTA}=${WHITE}$(elide "$val")"
             else
                 val="$tmpl_val"
                 ENV["$var"]="$val"
                 ((++default_count))
-                log_info "${BODY}  $(elide "$var"):${END} ${WHITE}$(elide 30 "$val")"
+                log_info "${BODY}  $(elide "$var")${MAGENTA}=${WHITE}$(elide "$val")"
             fi
             ENV["$var"]="$val"
         done
@@ -1472,7 +1492,7 @@ create_dot_env_file() {
             log_info "${BODY}Resolve variables from existing .env"
             for dot_env_var in $(printf '%s\n' "${!DOT_ENV_VARS[@]}" | sort); do
                 ((++inherited_count))
-                log_info "${BODY}  $dot_env_var=${DOT_ENV_VARS[$dot_env_var]}"
+                log_info "${BODY}  $dot_env_var${MAGENTA}=${WHITE}${DOT_ENV_VARS[$dot_env_var]}"
             done
         fi
         local last_file=""
@@ -1483,7 +1503,7 @@ create_dot_env_file() {
             fi
             ENV["$var"]="$default"
             ((++inherited_count))
-            log_info "${BODY}  $var=${default}"
+            log_info "${BODY}  $var${MAGENTA}=${WHITE}${default}"
         done < <(iterate_compose_vars)
     }
 
@@ -1493,29 +1513,29 @@ create_dot_env_file() {
         tmp=$(mktemp)
         local date_time
         date_time="$(date +%Y/%m/%d-%H:%M:%S)"
-        local tmp_count=0
+        local lines_count=0
         template_count=${#TEMPLATE_KEYS[@]}
         dot_env_count=${#DOT_ENV_VARS[@]}
         log_info "${BODY}Write variables to $output_file"
         printf '# Generated by %s from %s on %s\n' "$APP_NAME" "$template_path" "$date_time" >> "$tmp"
-        ((++template_count)); ((++tmp_count))
+        ((++template_count)); ((++lines_count))
         for key in "${TEMPLATE_KEYS[@]}"; do
             printf '%s=%s\n' "$key" "${ENV[$key]-}" >> "$tmp"
-            ((++tmp_count))
+            ((++lines_count))
         done
         if [[ $dot_env_count -gt 0 ]]; then
             printf '\n# Variables not in %s\n' "$template_path" >> "$tmp"
-            ((dot_env_count+=2)); ((tmp_count+=2))
+            ((dot_env_count+=2)); ((lines_count+=2))
             for dot_env_var in $(printf '%s\n' "${!DOT_ENV_VARS[@]}" | sort); do
                 printf '%s=%s\n' "$dot_env_var" "${DOT_ENV_VARS[$dot_env_var]}" >> "$tmp"
-                ((++tmp_count))
+                ((++lines_count))
             done
         fi
         local last_file=""
         while IFS='|' read -r compose_file var default; do
             if [[ "$compose_file" != "$last_file" ]]; then
                 printf '\n# Variables from %s\n' "$compose_file" >> "$tmp"
-                ((tmp_count+=2))
+                ((compose_count+=2)); ((lines_count+=2))
                 last_file="$compose_file"
             fi
             if [[ -n "$default" ]]; then
@@ -1523,49 +1543,40 @@ create_dot_env_file() {
             else
                 printf '%s=\n' "$var" >> "$tmp"
             fi
-            ((++tmp_count))
+            ((++compose_count)); ((++lines_count))
         done < <(iterate_compose_vars)
-
-        # ---------- Sanity checks ----------
-        for compose_file in "${compose_files[@]}"; do
-            local n=0
-            for key in "${!COMPOSE_VARS[@]}"; do
-                [[ ${key%%:*} == "$compose_file" ]] && ((++n))
-            done
-            (( n > 0 )) && ((compose_count += n + 2)) # +2 for blank line + comment
-        done
-        expected_count=$((
-            + template_count
-            + dot_env_count
-            + compose_count
-        ))
-        if [[ "$tmp_count" -lt "$expected_count" ]]; then
-            log_error "Sanity check failed: tmp .env has fewer lines ($tmp_count) than expected ($expected_count)"
+        # ---------- Lines sanity check ----------
+        local expected_count=0
+        expected_count=$(( template_count + dot_env_count + compose_count ))
+        if [[ "$lines_count" -lt "$expected_count" ]]; then
+            log_error "Sanity check failed: .env has fewer lines ($lines_count) than expected ($expected_count)"
             rm -f "$tmp"
             return 1
         fi
-        mv "$tmp" "$output_file"
+        rename "$tmp" "$output_file"
+        # ---------- Written sanity check ----------
         written_count=$(wc -l < "$output_file")
-        if [[ "$written_count" -ne "$tmp_count" ]]; then
-            log_error "Sanity check failed: written .env lines ($written_count) differ from tmp ($tmp_count)"
-            rm -f "$output_file"
+        if [[ "$written_count" -ne "$lines_count" ]]; then
+            log_error "Sanity check failed: written .env lines ($written_count) differ from staged ($lines_count)"
+            restore "$output_file"
             return 1
         fi
+        cleanup
         log_info "${BODY}  .env file written successfully"
     }
 
     # ---------- Summarize ----------
     summarize_results() {
         log_info "${BODY}Variables summary:"
-        log_info "${BODY}  Generated: $generated_count"
-        log_info "${BODY}  Inherited: $inherited_count"
-        log_info "${BODY}  Defaults : $default_count"
-        log_info "${BODY}  Template : $template_count"
+        log_info "${BODY}  Generated: ${WHITE}$generated_count"
+        log_info "${BODY}  Inherited: ${WHITE}$inherited_count"
+        log_info "${BODY}  Defaults : ${WHITE}$default_count"
+        log_info "${BODY}  Template : ${WHITE}$template_count"
         [[ $dot_env_count -gt 0 ]] && \
-        log_info "${BODY}  Dot Env : $dot_env_count"
-        log_info "${BODY}  Compose : $compose_count"
+        log_info "${BODY}  Dot Env  : ${WHITE}$dot_env_count"
+        log_info "${BODY}  Compose  : ${WHITE}$compose_count"
         log_info "${BODY}Lines summary:"
-        log_info "${BODY}  Written : $written_count"
+        log_info "${BODY}  Written  : ${WHITE}$written_count"
     }
 
     # ---------- Execution flow ----------
@@ -1578,58 +1589,149 @@ create_dot_env_file() {
     summarize_results
 }
 
-log_info "${BODY}Proxy:${END} ${WHITE}$proxy"
-log_info "${BODY}Auto confirm:${END} ${WHITE}$auto_confirm"
-log_info "${BODY}With Authelia:${END} ${WHITE}$with_authelia"
-log_info "${BODY}Setup Redis:${END} ${WHITE}$WITH_REDIS"
-log_info "${BODY}User name:${END} ${WHITE}$username"
-log_info "${BODY}Display name:${END} ${WHITE}$display_name"
-log_info "${BODY}Email:${END} ${WHITE}$email"
-
-log_info "${BODY}Sudo user:${END} ${WHITE}${SUDO_USER}"
-log_info "${BODY}Using sudo user:${END} ${WHITE}$using_sudo_user"
-
-# Create .env file from .env.example template
-log_info "${HEADER}Create .env File"
-#-------------------------------------------
-create_dot_env_file
+# shellcheck disable=SC2120
+uncomment_compose_vars() {
+    local compose_path="${1:-${COMPOSE_FILE:-docker-compose.yml}}"
+    [[ -f "$compose_path" ]] || return 0
+    shift || true
+    local vars=("$@")
+    [[ ${#vars[@]} -eq 0 ]] && \
+    vars=(N8N_HOST N8N_PORT N8N_PROTOCOL N8N_PROXY_HOPS)
+    local vars_count=0
+    local check_vars=true
+    local tmp="${compose_path}.tmp.$$"
+    local initial_count=0
+    initial_count=$(wc -l < "$compose_path")
+    while IFS= read -r line; do
+        line="${line%$'\r'}"
+        [[ $check_vars == true ]] && \
+        for var in "${vars[@]}"; do
+            if [[ $line =~ ^([[:space:]]*)\#(.*) ]] && [[ "$line" == *"\${$var"* ]]; then
+                line="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"  # remove leading #
+                if [[ $line =~ ^[[:space:]]*-[[:space:]]*(.*)=(.*) ]]; then
+                    local key="${BASH_REMATCH[1]}"
+                    local val="${BASH_REMATCH[2]}"
+                    log_info "${BODY}  ${key}${MAGENTA}=${WHITE}$(elide "$val")"
+                fi
+                (( ++vars_count ))
+                [[ $vars_count -eq ${#vars[@]} ]] && check_vars=false
+                break
+            fi
+        done
+        printf '%s\n' "$line" >> "$tmp"
+    done < "$compose_path"
+    rename "$tmp" "$compose_path"
+    local written_count
+    written_count=$(wc -l < "$compose_path")
+    if [[ "$written_count" -ne "$initial_count" ]]; then
+        log_error "Sanity check failed: written $compose_path lines ($written_count) differ from expected ($initial_count)"
+        restore "$compose_path"
+        return 1
+    fi
+    cleanup
+    log_info "${BODY}  File $compose_path lines summary:"
+    log_info "${BODY}    Initial: ${WHITE}$initial_count"
+    log_info "${BODY}    Updated: ${WHITE}$vars_count"
+    log_info "${BODY}    Final  : ${WHITE}$written_count"
+}
 
 # Update yaml file using yq package
+# https://github.com/mikefarah/yq/issues/465#issuecomment-2265381565
 update_yaml_file() {
-    # https://github.com/mikefarah/yq/issues/465#issuecomment-2265381565
-    sed -i '/^\r\{0,1\}$/s// #BLANK_LINE/' "$2"
-    "$yq_bin" -i "$1" "$2"
-    sed -i "s/ *#BLANK_LINE//g" "$2"
+    local yaml_file="$2"
+    local initial_count=0
+    initial_count=$(wc -l < "$yaml_file")
+    IFS=$'\n' read -ra la <<< "$1"
+    local update_count="${#la[@]}"
+    local tmp="$yaml_file.tmp.$$"
+    cp "$yaml_file" "$tmp"
+
+    sed -i '/^\r\{0,1\}$/s// #BLANK_LINE/' "$tmp"
+    "$yq_bin" -i "$1" "$tmp"
+    sed -i "s/ *#BLANK_LINE//g" "$tmp"
+
+    local staged_count
+    staged_count=$(wc -l < "$tmp")
+    local changed_count
+    changed_count=$(( staged_count - initial_count ))
+    rename "$tmp" "$yaml_file"
+    local written_count
+    written_count=$(wc -l < "$yaml_file")
+    if [[ "$written_count" -ne "$staged_count" ]]; then
+        log_error "Sanity check failed: written $yaml_file lines ($written_count) differ from staged ($staged_count)"
+        restore "$yaml_file"
+        return 1
+    fi
+    cleanup
+    log_info "${BODY}  File $yaml_file lines summary:"
+    log_info "${BODY}    Initial: ${WHITE}$initial_count"
+    log_info "${BODY}    Changed: ${WHITE}$changed_count"
+    log_info "${BODY}    Updated: ${WHITE}$update_count"
+    log_info "${BODY}    Final  : ${WHITE}$written_count"
 }
 
 # Create env_vars list to append .env file
-env_vars=()
-update_env_vars() {
-    for env_key_value in "$@"; do
-        env_vars+=("$env_key_value")
+dot_env_vars=()
+update_dot_env_vars() {
+    for env_key_val in "$@"; do
+        dot_env_vars+=("$env_key_val")
     done
 }
 
-write_env_vars() {
-    local env_pair=()
+write_dot_env_vars() {
+    local env_vars=("$@")
+    local dot_env_path="${ENV_FILE:-.env}"
+    [[ -f "$dot_env_path" ]] || return 0
+    local tmp="${dot_env_path}.tmp.$$"
+    local updated_count=0
+    local appended_count=0
+    local initial_count=0
+    initial_count=$(wc -l < "$dot_env_path")
+    cp "$dot_env_path" "$tmp"
+    [[ ${#env_vars[@]} -eq 0 ]] && \
+    env_vars=("${dot_env_vars[@]}")
     for env_var in "${env_vars[@]}"; do
-        IFS='=' read -r -a env_pair <<< "$env_var"
-        if (( ${#env_pair[@]} > 1 )); then
-            if cat ".env" | grep -q "^${env_pair[0]}"; then
-                log_info "${BODY}Update ${env_pair[0]}"
-                sed -i "s|${env_pair[0]}.*|${env_pair[0]}=${env_pair[1]}|" .env
-            else
-                log_info "${BODY}Append ${env_pair[0]}"
-                echo -e "${env_pair[0]}=${env_pair[1]}" >>.env
-            fi
+        IFS='=' read -r key val <<< "$env_var"
+        [[ -z "$key" ]] && continue
+        if cat "$tmp" | grep -q "^${key}"; then
+            log_info "${BODY}Update ${key}: ${WHITE}${val}"
+            sed -i "s|${key}.*|${key}=${val}|" "$tmp"
+            ((++updated_count))
+        else
+            log_info "${BODY}Append ${key}:${END} ${WHITE}${val}"
+            printf '%s=%s\n' "${key}" "${val}" >> "$tmp"
+            ((++appended_count))
         fi
     done
+    local expected_count=0
+    expected_count=$(( initial_count + appended_count ))
+    rename "$tmp" "$dot_env_path"
+    local written_count
+    written_count=$(wc -l < "$dot_env_path")
+    if [[ "$written_count" -ne "$expected_count" ]]; then
+        log_error "Sanity check failed: written .env lines ($written_count) differ from expected ($expected_count)"
+        restore "$dot_env_path"
+        return 1
+    fi
+    cleanup
+    log_info "${BODY}  File $dot_env_path lines summary:"
+    log_info "${BODY}    Initial : ${WHITE}$initial_count"
+    log_info "${BODY}    Updated : ${WHITE}$updated_count"
+    log_info "${BODY}    Appended: ${WHITE}$appended_count"
+    log_info "${BODY}    Final   : ${WHITE}$written_count"
 }
+
+compose_path="docker-compose.yml"
+
+log_info "${BODY}Enable n8n proxy variables in $compose_path"
+uncomment_compose_vars
+
+generate_dot_env_file
 
 log_info "${HEADER}Configure Proxy Service"
 #-------------------------------------------
 # DEFINE PROXY service
-proxy_service_yaml=".services.$proxy.profiles=[\"$proxy\"$([[ "$proxy" == "caddy" ]] && echo ", \"ai-all\"")] |
+proxy_service_yaml=".services.$proxy.profiles=[\"$proxy\"] |
 .services.$proxy.container_name=\"$proxy\" |
 .services.$proxy.restart=\"unless-stopped\" |
 .services.$proxy.ports=[\"80:80/tcp\",\"443:443/tcp\"]
@@ -1656,7 +1758,7 @@ if [[ "$proxy" == "caddy" ]]; then
 else
     log_info "${BODY}Define nginx.template and Nginx Docker service insert"
     #-------------------------------------------
-    update_env_vars "NGINX_SERVER_NAME=$host"
+    update_dot_env_vars "NGINX_SERVER_NAME=$host"
     # docker compose nginx service command directive. Passed via yq strenv
     nginx_cmd=""
 
@@ -1698,7 +1800,7 @@ fi
 if [[ "$with_authelia" == false ]]; then
     log_info "${BODY}Nginx basic authorization Docker service insert"
     #-------------------------------------------
-    update_env_vars "PROXY_AUTH_USERNAME=$username"
+    update_dot_env_vars "PROXY_AUTH_USERNAME=$username"
 
     proxy_service_yaml="${proxy_service_yaml} |
                         .services.$proxy.environment.PROXY_AUTH_USERNAME = \"\${PROXY_AUTH_USERNAME:?error}\" |
@@ -1717,8 +1819,7 @@ fi
 # WRITE NGINX PROXY service to docker-compose.yml file
 log_info "${BODY}Write $proxy proxy service to docker-compose.yml file"
 #-------------------------------------------
-compose_file="docker-compose.yml"
-nginx_cmd="${nginx_cmd:=""}" update_yaml_file "$proxy_service_yaml" "$compose_file"
+nginx_cmd="${nginx_cmd:=""}" update_yaml_file "$proxy_service_yaml" "$compose_path"
 
 # AUTHELIA configuration
 if [[ "$with_authelia" == true ]]; then
@@ -1772,7 +1873,7 @@ if [[ "$with_authelia" == true ]]; then
 
     # shellcheck disable=SC2016
     authelia_docker_service_yaml='.services.authelia.container_name = "authelia" |
-       .services.authelia.profiles=["caddy", "nginx", "ai-all"] |
+       .services.authelia.profiles=["authelia"] |
        .services.authelia.image = "authelia/authelia:4.38" |
        .services.authelia.volumes = ["./access/authelia:/config"] |
        .services.authelia.depends_on.db.condition = "service_healthy" |
@@ -1794,10 +1895,10 @@ if [[ "$with_authelia" == true ]]; then
        .services.db.volumes += "./access/authelia/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
 
     if [[ "$WITH_REDIS" == true ]]; then
-        log_info "${BODY}Authelia Redis configuration"
+        log_info "${BODY}Authelia Redis configuration in $compose_path"
         #-------------------------------------------
         redis_docker_service_yaml=".services.authelia.profiles=[\"$proxy\", \"n8n\", \"langfuse\", \"ai-all\"]"
-        update_yaml_file "$redis_docker_service_yaml" "$compose_file"
+        update_yaml_file "$redis_docker_service_yaml" "$compose_path"
 
         authelia_config_file_yaml="${authelia_config_file_yaml}|.session.redis.host=\"redis\" | .session.redis.port=6379"
         authelia_docker_service_yaml="${authelia_docker_service_yaml}|.services.authelia.depends_on.redis.condition=\"service_healthy\""
@@ -1808,7 +1909,7 @@ if [[ "$with_authelia" == true ]]; then
     log_info "${BODY}Write Authelia configuration.yml file"
     #-------------------------------------------
     (
-        export_domain_envs
+        export_domain_vars
         host="$host" \
         registered_domain="$registered_domain" \
         authelia_url="$protocol://$WEBUI_DOMAIN/authenticate" \
@@ -1819,20 +1920,22 @@ if [[ "$with_authelia" == true ]]; then
     # WRITE AUTHELIA service to docker-compose.yml file
     log_info "${BODY}Write Authelia service to docker-compose.yml file"
     #-------------------------------------------
-    authelia_schema="authelia" update_yaml_file "$authelia_docker_service_yaml" "$compose_file"
+    authelia_schema="authelia" update_yaml_file "$authelia_docker_service_yaml" "$compose_path"
 
     # WRITE AUTHELIA service to Supabase docker-compose.yml file
     log_info "${BODY}Write Authelia service to Supabase docker-compose.yml file"
     #-------------------------------------------
-    authelia_schema="authelia" update_yaml_file "$authelia_docker_supabase_service_yaml" "./supabase/docker/$compose_file"
+    authelia_schema="authelia" update_yaml_file "$authelia_docker_supabase_service_yaml" "./supabase/docker/$compose_path"
 fi
 
 # TODO: Setup Exim SMTP server if AC_WITH_EXIM == true (AC_WITH_EXIM is not yet supported)
 
+[[ ${#dot_env_vars[@]} -gt 0 ]] && {
 # WRITE env_vars to .env file
 log_info "${HEADER}Write Additional .env Variables"
 #-------------------------------------------
-write_env_vars "${env_vars[@]}"
+write_dot_env_vars "${dot_env_vars[@]}"
+}
 
 # Docker:         http://host.docker.internal:<port>
 # Local:          http://localhost:<port>
@@ -2850,7 +2953,7 @@ if ($proc.ExitCode -ne $null) {
 LPS
 
             ps_launcher="${ps_launcher//__WIN_SCRIPT__/$win_script_path}"
-            ps_launcher="${ps_launcher//__WIN_LOG__/$win_log_path}"
+            #ps_launcher="${ps_launcher//__WIN_LOG__/$win_log_path}"
 
             log_info "Launching PowerShell with UAC prompt..."
 
@@ -2891,7 +2994,7 @@ LPS
         if [[ $DRY_RUN -eq 1 ]]; then
             log_info "[DRY-RUN] $header"
             for d in "${DOMAINS[@]}"; do
-                log_info "[DRY-RUN] $HOST_IP\t$d";
+                log_info "[DRY-RUN] $HOST_IP    $d";
             done
             log_info "[DRY-RUN] $footer"
         fi

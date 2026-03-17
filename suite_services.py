@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 11, 2026
+Last Update March 17, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1079,6 +1079,7 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
             valid_env_file = os.path.exists(env_file)
             if valid_env_file:
                 auto_config = str(dotenv.get_key(env_file, 'AC')).lower() == 'true'
+            valid_env_file = False
             if not auto_config:
                 log.warning("The .env file was not found - it was created from .env.example template")
                 log.critical("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
@@ -1097,32 +1098,44 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
         if modules:
             if any(m for m in modules if m in ['n8n', 'n8n-all', 'ai-all']):
                 default_secrets.extend([
-                    'N8N_ENCRYPTION_KEY=change_me_to_the_long-n8n-generated-secret-key',
-                    'N8N_RUNNERS_AUTH_TOKEN=change_me_to_a_long_super-secret-key',
-                    'N8N_USER_MANAGEMENT_JWT_SECRET=change_me_to_a_longer_even-more-secret',
-                    'POSTGRES_PASSWORD=your-super-secret-postgres-password'])
+                    'N8N_ENCRYPTION_KEY=generate using gen_n8ncrypt',
+                    'N8N_RUNNERS_AUTH_TOKEN=generate using gen_hex:32',
+                    'N8N_USER_MANAGEMENT_JWT_SECRET=generate using gen_hex:32',
+                    'POSTGRES_PASSWORD=generate using gen_hex:16'])
             if any(m for m in modules if m in ['supabase', 'ai-all']):
                 default_secrets.extend([
-                    'JWT_SECRET=your-super-secret-jwt-token-with-at-least-40-characters-long',
-                    'ANON_KEY=your-super-secret-and-super-super-long-anon-token',
-                    'SERVICE_ROLE_KEY=your-super-secret-and-super-super-long-service-role-token',
-                    'DASHBOARD_PASSWORD=your-super-secure-postgres-password',
-                    'SECRET_KEY_BASE=your-super-secret-and-long-64-character-hex-32-secret',
-                    'VAULT_ENC_KEY=your-32-character-encryption-key',
-                    'PG_META_CRYPTO_KEY=your-encryption-key-32-chars-min'])
+                    'JWT_SECRET=generate using gen_jwt:secret',
+                    'ANON_KEY=generate using gen_token:anon',
+                    'SERVICE_ROLE_KEY=generate using gen_token:service_role',
+                    'SECRET_KEY_BASE=generate using gen_token:48',
+                    'VAULT_ENC_KEY=generate using gen_hex:16',
+                    'PG_META_CRYPTO_KEY=generate using gen_token:24',
+                    'DASHBOARD_PASSWORD=generate using gen_hex:16',
+                    'LOGFLARE_PUBLIC_ACCESS_TOKEN=generate using gen_token:24',
+                    'LOGFLARE_PRIVATE_ACCESS_TOKEN=generate using gen_token:24',
+                    'S3_PROTOCOL_ACCESS_KEY_ID=generate using gen_hex:16',
+                    'S3_PROTOCOL_ACCESS_KEY_SECRET=generate using gen_hex:16'])
             if any(m for m in modules if m in ['flowise', 'ai-all']):
                 default_secrets.extend([
-                    'FLOWISE_PASSWORD=your-super-secret-postgres-password'])
+                    'FLOWISE_PASSWORD=generate using gen_hex:16'])
             if any(p for p in modules if p in ['neo4j', 'ai-all']):
                 default_secrets.extend([
-                    'NEO4J_AUTH=neo4j/your-super-secret-password-2'])
+                    'NEO4J_PASSWORD=generate using gen_hex:16'])
             if any(m for m in modules if m in ['langfuse', 'ai-all']):
                 default_secrets.extend([
-                    'CLICKHOUSE_PASSWORD=your-super-secret-password-3',
-                    'MINIO_ROOT_PASSWORD=your-super-secret-password-4',
-                    'LANGFUSE_SALT=your-super-secret-key-1',
-                    'NEXTAUTH_SECRET=your-super-secret-key-2',
-                    'ENCRYPTION_KEY=your-super-secret-key-3'])
+                    'CLICKHOUSE_PASSWORD=generate using gen_hex:16',
+                    'MINIO_ROOT_PASSWORD=generate using gen_hex:16',
+                    'LANGFUSE_SALT=generate using gen_hex:16',
+                    'NEXTAUTH_SECRET=generate using gen_hex:16',
+                    'ENCRYPTION_KEY=generate using gen_hex:16'])
+            if any(m for m in modules if m in ['caddy', 'ngnix']):
+                default_secrets.extend([
+                    'PROXY_AUTH_PASSWORD=generate using gen_bcrypt'])
+            if any(m for m in modules if m in ['authelia']):
+                default_secrets.extend([
+                    'AUTHELIA_SESSION_SECRET=generate using gen_hex:32',
+                    'AUTHELIA_STORAGE_ENCRYPTION_KEY=generate using gen_hex:32',
+                    'AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=generate using gen_hex:32'])
         unset_secrets = []
         for secret in default_secrets:
             if secret in env_content:
@@ -1609,7 +1622,6 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     response = None
     public = False
 
-    #TODO: Set generic timezone - Country/City
     # AC - bool
     ac_env_list = [f'AC="{str(ac).lower()}"']
     # AC_SUDO_USER - str
@@ -2076,28 +2088,47 @@ def main():
     if not env_vars:
         sys.exit(1)
 
-    # Access auto-configuration
+    # Setup Supabase repository if using Supabase
+    if any(p for p in args.profile if p == 'supabase'):
+        if not any(p for p in args.profile if p in n8n_all_profiles):
+            log.warning("Profile argument 'supabase' requires argument in "
+                       f"{n8n_all_profiles} - removing 'supabase'...")
+            args.profile.remove('supabase')
+    supabase = \
+        any(p for p in args.profile if p in ['supabase', 'ai-all'])
+    if supabase:
+        args.profile.remove('supabase') if 'supabase' in args.profile else None
+        clone_supabase_repo()
+        convert_supabase_pooler_line_endings()
+
+    # Automatic configuration
     ac_env_vars = []
     if ac_auto_config:
         ac_env_vars = setup_ai_suite_ac_auto_config(env_vars)
         ac_auto_config = True if ac_env_vars else False
-    for element in ac_env_vars:
-        if element.startswith('AC_PROXY='):
-            array = element.split('=')
-            if array[1]:
-                args.profile.append(array[1]) if array[1] not in args.profile else None
-            for proxy in proxy_profiles:
-                if any(p for p in args.profile if p == proxy):
-                    if proxy != array[1]:
-                        args.profile.remove(proxy)
-            break
-
-    if ac_auto_config: # TEMP: Relocate auto-configure block from below during Dev
-        log.debug("TEMP: Relocated auto-configure block...")
-    supabase=True
-    # TEMP: block end
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
+        # Add docker-compose proxy profiles
+        proxy_set = False
+        authelia_set = False
+        for element in ac_env_vars:
+            if element.startswith('AC_PROXY='):
+                array = element.split('=')
+                if array[1]:
+                    args.profile.append(array[1]) if array[1] not in args.profile else None
+                    proxy_set = True
+                for proxy in proxy_profiles:
+                    if any(p for p in args.profile if p == proxy):
+                        if proxy != array[1]:
+                            args.profile.remove(proxy)
+            if element.startswith('AC_WITH_AUTHELIA='):
+                array = element.split('=')
+                if array[1] and str(array[1]).rstrip("\r\n") == "true":
+                    args.profile.append("authelia") if "authelia" not in args.profile else None
+                    authelia_set = True
+            if proxy_set and authelia_set:
+                break
+        # Selected subdomains from docker container names
         ac_subdomains = []
         default = any(p for p in args.profile if p == 'ai-all')
         if not default:
@@ -2106,12 +2137,14 @@ def main():
                     if profile.endswith('-all'):
                         profile.replace('-all', '')
                     ac_subdomains.append(profile)
+        if ac_subdomains:
+            ac_env_vars.append(f'AC_SUBDOMAINS="{" ".join(ac_subdomains)}"')
+        # Miscalleanous environment variables
         ac_env_vars.append(f'AC_LLAMA={str(False).lower()}')
         ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
         ac_env_vars.append(f'AC_SEARXNG={str(False).lower()}')
-        if ac_subdomains:
-            ac_env_vars.append(f'AC_SUBDOMAINS="{" ".join(ac_subdomains)}"')
         ac_env_vars.append(f'APP_NAME={name}')
+        # Debug configuration
         if log_level == logging.DEBUG:
             ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
             with open("access/.ac.env", "w", newline="\n") as f:
@@ -2124,7 +2157,11 @@ def main():
                     val = f'{val}\n' if is_bool else f'"{val}"\n'
                     f.write(f'{key}={val}')
         run_ai_suite_ac_auto_config(ac_env_vars)
-    if ac_auto_config: # TEMP: End here if working on auto-config and no breakpoints set...
+        env_vars = get_dotenv_vars(auto_config=ac_auto_config, profile=args.profile)
+        if not env_vars:
+            sys.exit(1)
+    # TEMP: End here if working on auto-config and no breakpoints set...
+    if ac_auto_config:
         log.debug("TEMP: Finished!")
         sys.exit(0)
     # TEMP: block end
@@ -2224,6 +2261,7 @@ def main():
             for profile_arg in conflicting_profile_arguments:
                 log.warning(f"Removing '{profile_arg}'...")
                 args.profile.remove(profile_arg)
+
     # Assemble .env updates, set respective keys in .env file and reload .env vars
     oai_base_url_var = "${LLAMACPP_HOST}" if llama_cpp else "${OLLAMA_HOST}"
     mod_env_vars.update({'OPENAI_API_BASE_URL': oai_base_url_var})
@@ -2307,38 +2345,12 @@ def main():
         else:
             args.profile = ['open-webui']
 
-    # Setup Supabase
-    if any(p for p in args.profile if p == 'supabase'):
-        if not any(p for p in args.profile if p in n8n_all_profiles):
-            log.warning("Profile argument 'supabase' requires argument in "
-                       f"{n8n_all_profiles} - removing 'supabase'...")
-            args.profile.remove('supabase')
-    supabase = \
-        any(p for p in args.profile if p in ['supabase', 'ai-all'])
-    if supabase:
-        args.profile.remove('supabase') if 'supabase' in args.profile else None
-        clone_supabase_repo()
-        convert_supabase_pooler_line_endings()
-
-    """ TEMP: Moved to '# Access auto-configuration' above during Dev
-    if ac_auto_config:
-        log.info("Configure proxy, identity and access management...")
-        ac_subdomains = []
-        for profile in server_profiles + llama_host_profiles:
-            if any(p for p in args.profile if p == profile):
-                ac_subdomains.append(profile)
-        if ac_subdomains:
-            ac_env_vars.append(f'AC_SUBDOMAINS={" ".join(ac_subdomains)}')
-        if log_level == logging.DEBUG:
-            ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
-        ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')
-        run_ai_suite_ac_auto_config(ac_env_vars)
-    """
-
+    # Configure n8n Postgres database
     if any(p for p in args.profile if p in n8n_all_profiles):
         env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"
         configure_n8n_database_settings(supabase)
 
+    # Set Supabase supabase/docker/.env from .env
     if supabase:
         prepare_supabase_env(env_vars)
     elif 'langfuse' in args.profile:

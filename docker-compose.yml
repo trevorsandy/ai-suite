@@ -373,7 +373,7 @@ services:
     restart: always
 
   caddy:
-    profiles: [caddy, ai-all]
+    profiles: ["caddy"]
     image: docker.io/library/caddy:2-alpine
     container_name: caddy
     restart: unless-stopped
@@ -410,7 +410,6 @@ services:
       options:
         max-size: "1m"
         max-file: "1"
-
     depends_on:
       kong:
         condition: service_healthy
@@ -419,13 +418,12 @@ services:
 
   nginx:
     profiles: ["nginx"]
-    image: jonasal/nginx-certbot:6.0.1-nginx1.29.5    
+    image: jonasal/nginx-certbot:6.0.1-nginx1.29.5
     container_name: nginx
     restart: unless-stopped
     ports:
       - 80:80/tcp
       - 443:443/tcp
-                                                  
     expose:
       - 81/tcp
       - 443/tcp
@@ -447,7 +445,7 @@ services:
         && /scripts/start_nginx_certbot.sh
 
   authelia:
-    profiles: ["caddy", "nginx", "ai-all"]
+    profiles: ["authelia"]
     container_name: authelia
     image: authelia/authelia:4.38
     volumes:
