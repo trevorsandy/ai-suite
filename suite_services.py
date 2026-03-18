@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 17, 2026
+Last Update March 18, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -525,18 +525,19 @@ def clone_supabase_repo():
     if not os.path.exists("supabase"):
         log.info("Cloning the Supabase repository...")
         run_command([
-            "git", "clone", "--filter=blob:none", "--no-checkout",
+            "git", "-c", "core.autocrlf=input",
+            "clone", "--filter=blob:none", "--no-checkout",
             "https://github.com/supabase/supabase.git"
         ])
         os.chdir("supabase")
         run_command(["git", "sparse-checkout", "init", "--cone"])
         run_command(["git", "sparse-checkout", "set", "docker"])
-        run_command(["git", "checkout", "master"])
+        run_command(["git", "-c", "core.autocrlf=input", "checkout", "master"])
         os.chdir("..")
     else:
         log.info("Supabase repository already exists, updating...")
         os.chdir("supabase")
-        run_command(["git", "pull"])
+        run_command(["git", "-c", "core.autocrlf=input", "pull"])
         os.chdir("..")
 
 def clone_open_webui_tools_filesystem_repo():
@@ -635,7 +636,7 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
     docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")
     log.info(f"Writing {docker_compose_path}...")
     try:
-        with open(docker_compose_path, 'w') as f:
+        with open(docker_compose_path, 'w', newline='\n') as f:
             f.write(textwrap.dedent("""\
                 services:
                   open-webui-filesystem:
@@ -703,7 +704,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     if not operation:
         operation = "stop"
 
-    with open('.operation', 'w') as f:
+    with open('.operation', 'w', newline='\n') as f:
         f.write(operation + ':' + llama.lower())
 
     supabase = False
@@ -911,7 +912,7 @@ def check_and_fix_docker_compose_for_searxng():
         # Temporarily comment out the cap_drop line on first run
         if is_first_run:
             log.info("First run detected for SearXNG. Temporarily commenting 'cap_drop:' directive...")
-            with open(docker_compose_path, 'r+') as f:
+            with open(docker_compose_path, 'r+', newline='\n') as f:
                 lines = f.readlines()
                 f.seek(0)
                 f.truncate()
@@ -945,12 +946,13 @@ def check_and_fix_docker_compose_for_searxng():
                 cap_drop = "    cap_drop:\n      - ALL\n"
                 modified_content = content.replace(cap_drop_comment, cap_drop)
                 # Write the modified content back
-                with open(docker_compose_path, 'w') as f:
+                with open(docker_compose_path, 'w', newline='\n') as f:
                     f.write(modified_content)
     except Exception as e:
         log.error(f"Exception: Check/modify docker-compose.yml for SearXNG: {e}")
 
 # Treat Selfhosted Supavisor Pooler Keeps Restarting.
+# No longer needed as I am treating line edgings on git pull above
 # See: https://github.com/supabase/supabase/issues/30210
 def convert_supabase_pooler_line_endings():
     """Convert Windows line endings to Linux/Unix/MacOS line endings."""
@@ -1033,7 +1035,7 @@ def docker_compose_include(supabase, filesystem, verbose):
         elif not include and compose_include in content:
             content = content.replace(compose_include + "\n", "")
 
-        with open(compose_file, 'w') as f:
+        with open(compose_file, 'w', newline='\n') as f:
             f.write(content)
     except Exception as e:
         log.error(f"Exception: Set 'include:' in {compose_file}: {e}")
@@ -1064,7 +1066,7 @@ def check_prerequisites():
             ["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         log.critical("Docker is not running. Start Docker Desktop.")
-        return False
+        #return False
     return True
 
 def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None):
@@ -1104,9 +1106,15 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
                     'POSTGRES_PASSWORD=generate using gen_hex:16'])
             if any(m for m in modules if m in ['supabase', 'ai-all']):
                 default_secrets.extend([
-                    'JWT_SECRET=generate using gen_jwt:secret',
-                    'ANON_KEY=generate using gen_token:anon',
-                    'SERVICE_ROLE_KEY=generate using gen_token:service_role',
+                    'JWT_SECRET=generate using gen_key:secret',
+                    'ANON_KEY=generate using gen_key:anon_sym',
+                    'SERVICE_ROLE_KEY=generate using gen_key:service_role_sym',
+                    'ANON_KEY_ASYMMETRIC=generate using gen_key:anon_asym',
+                    'SERVICE_ROLE_ASYMMETRIC=generate using gen_key:service_role_asym',
+                    'SUPABASE_PUBLISHABLE_KEY=generate using gen_key:client',
+                    'SUPABASE_SECRET_KEY=generate using gen_key:server',
+                    'JWT_KEYS=generate using gen_key:keys',
+                    'JWT_JWKS=generate using gen_key:jwks',
                     'SECRET_KEY_BASE=generate using gen_token:48',
                     'VAULT_ENC_KEY=generate using gen_hex:16',
                     'PG_META_CRYPTO_KEY=generate using gen_token:24',
@@ -1180,7 +1188,7 @@ def write_dotenv_file(env_file, env_vars):
         log.error("The env_vars dictionary to be written is empty!")
         return
     log.info(f"Writing .env file to {env_file}...")
-    with open(env_file, 'w') as f:
+    with open(env_file, 'w', newline='\n') as f:
         now = " ".join(['on:', datetime.datetime.now().ctime()])
         f.seek(0)
         f.truncate()
@@ -1201,7 +1209,7 @@ def set_dotenv_var(env_file, env, var, header):
         env_file = os.path.join(".env")
     if not var:
         try:
-            with open(env_file, 'r+') as f:
+            with open(env_file, 'r+', newline='\n') as f:
                 lines = f.readlines()
                 f.seek(0)
                 f.truncate()
@@ -1243,7 +1251,7 @@ def configure_n8n_database_settings(supabase):
             new_vol = "langfuse_postgres_data:" if supabase else "postgres_data:"
             log.info(f"Set Postgres volume: to '{new_vol}' from '{old_vol}' in {compose_file}...")
             modified_content = re.sub(old_vol_regex, new_vol, content)
-            with open(compose_file, 'w') as f:
+            with open(compose_file, 'w', newline='\n') as f:
                 f.write(modified_content)
 
         postgres_profiles = 'postgres:\n    profiles: ["n8n", "langfuse", "n8n-all",'
@@ -1255,10 +1263,10 @@ def configure_n8n_database_settings(supabase):
             insert = "'langfuse'" if supabase else "'n8n' and 'langfuse'"
             log.info(f"Set Postgres profiles: to include {insert} in {compose_file}...")
             modified_content = re.sub(old_profiles_regex, new_profiles, content)
-            with open(compose_file, 'w') as f:
+            with open(compose_file, 'w', newline='\n') as f:
                 f.write(modified_content)
 
-        with open(compose_file, 'r+') as f:
+        with open(compose_file, 'r+', newline='\n') as f:
             lines = f.readlines()
             f.seek(0)
             f.truncate()
@@ -2147,7 +2155,7 @@ def main():
         # Debug configuration
         if log_level == logging.DEBUG:
             ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
-            with open("access/.ac.env", "w", newline="\n") as f:
+            with open('access/.ac.env', 'w', newline='\n') as f:
                 for var in ac_env_vars:
                     pair = var.split('=')
                     key = str(pair[0]).strip()
@@ -2161,9 +2169,9 @@ def main():
         if not env_vars:
             sys.exit(1)
     # TEMP: End here if working on auto-config and no breakpoints set...
-    if ac_auto_config:
-        log.debug("TEMP: Finished!")
-        sys.exit(0)
+    # if ac_auto_config:
+        # log.debug("TEMP: Finished!")
+        # sys.exit(0)
     # TEMP: block end
 
     # Process llama (Ollama/LLaMA.cpp) status checks
@@ -2440,9 +2448,9 @@ def main():
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, build)
-    display_service_endpoints(args.profile, supabase, env_vars)
+    #display_service_endpoints(args.profile, supabase, env_vars)
 
-    with open('.operation', 'w') as f:
+    with open('.operation', 'w', newline='\n') as f:
         f.write('start' + ':' + llama.lower())
 
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
+.ac.env
 .env
 .env.test
-.ac.env
+.n8n.*
+.operation
 *.log*
 *.ps1
 *.bak.*
-.n8n.*
 access/authelia/*
 !access/authelia/configuration.yml
 access/authelia/db/*

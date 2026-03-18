@@ -18,7 +18,7 @@ volumes:                      # volume mount path:
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
   environment:
-    - NODE_ENV=${NODE_ENV}
+    - NODE_ENV=${N8N_NODE_ENV}
     - N8N_DIAGNOSTICS_ENABLED=${N8N_DIAGNOSTICS_ENABLED}
     - N8N_VERSION_NOTIFICATIONS_ENABLED=${N8N_VERSION_NOTIFICATIONS_ENABLED}
     - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
@@ -30,7 +30,7 @@ x-n8n: &service-n8n
 
     - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=${N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE}
 
-    - DB_TYPE=${DB_TYPE}
+    - DB_TYPE=${N8N_DB_TYPE}
 
     # Postgres
 
@@ -39,10 +39,10 @@ x-n8n: &service-n8n
     - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
     - DB_POSTGRESDB_USER=${POSTGRES_USER}
     - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-    - EXECUTIONS_MODE=${EXECUTIONS_MODE}
 
     # Queue / Redis
 
+    - EXECUTIONS_MODE=${EXECUTIONS_MODE}
     - QUEUE_BULL_REDIS_HOST=${QUEUE_BULL_REDIS_HOST}
     - QUEUE_BULL_REDIS_PORT=${QUEUE_BULL_REDIS_PORT}
     - QUEUE_HEALTH_CHECK_ACTIVE=${QUEUE_HEALTH_CHECK_ACTIVE}
@@ -72,7 +72,7 @@ x-n8n: &service-n8n
 
     # Remove "ExecuteCommand" and "LocalFileTrigger" nodes from exclude list
 
-    - NODES_EXCLUDE=${NODES_EXCLUDE}
+    - NODES_EXCLUDE=${N8N_NODES_EXCLUDE}
 
     # HTTPS via reverse proxy
     #- N8N_HOST=${N8N_HOSTNAME:-${N8N_HOST}}
@@ -359,6 +359,7 @@ services:
     profiles: ["neo4j", "ai-all"]
     image: neo4j:latest
     container_name: neo4j
+    restart: always
     volumes:
       - ./neo4j/logs:/logs
       - ./neo4j/plugins:/plugins
@@ -370,10 +371,33 @@ services:
       - 7687/tcp
     environment:
       - NEO4J_AUTH=${NEO4J_AUTH:-neo4j/password}
-    restart: always
+
+  authelia:
+    profiles: [authelia]
+    container_name: authelia
+    image: authelia/authelia:4.38
+    volumes:
+      - ./access/authelia:/config
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - 9091
+    restart: unless-stopped
+    healthcheck:
+      disable: false
+    environment:
+      AUTHELIA_STORAGE_POSTGRES_ADDRESS: tcp://db:5432
+      AUTHELIA_STORAGE_POSTGRES_USERNAME: postgres
+      AUTHELIA_STORAGE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHELIA_STORAGE_POSTGRES_DATABASE: ${POSTGRES_DB}
+      AUTHELIA_STORAGE_POSTGRES_SCHEMA: authelia
+      AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:?error}
+      AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:?error}
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}
 
   caddy:
-    profiles: ["caddy"]
+    profiles: [caddy]
     image: docker.io/library/caddy:2-alpine
     container_name: caddy
     restart: unless-stopped
@@ -386,8 +410,8 @@ services:
       - 443/udp
       - 80/tcp
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy/addons:/etc/caddy/addons:ro
+      - ./access/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./access/caddy/addons:/etc/caddy/addons:ro
       - caddy_data:/data:rw
       - caddy_config_data:/config:rw
     environment:
@@ -443,30 +467,6 @@ services:
       - |
         envsubst '$${NGINX_SERVER_NAME}' < /etc/nginx/user_conf.d/nginx.template > /etc/nginx/user_conf.d/nginx.conf \
         && /scripts/start_nginx_certbot.sh
-
-  authelia:
-    profiles: ["authelia"]
-    container_name: authelia
-    image: authelia/authelia:4.38
-    volumes:
-      - ./access/authelia:/config
-    depends_on:
-      db:
-        condition: service_healthy
-    expose:
-      - 9091
-    restart: unless-stopped
-    healthcheck:
-      disable: false
-    environment:
-      AUTHELIA_STORAGE_POSTGRES_ADDRESS: tcp://db:5432
-      AUTHELIA_STORAGE_POSTGRES_USERNAME: postgres
-      AUTHELIA_STORAGE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      AUTHELIA_STORAGE_POSTGRES_DATABASE: ${POSTGRES_DB}
-      AUTHELIA_STORAGE_POSTGRES_SCHEMA: authelia
-      AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:?error}
-      AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:?error}
-      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}
 
   langfuse-worker:
     profiles: ["langfuse", "ai-all"]

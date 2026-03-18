@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 17 2026
+# Last Update March, 19 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -235,8 +235,8 @@ finish_elapsed_time() {
     set +x
     local ELAPSED
     ELAPSED="$((SECONDS / 3600))hrs $(((SECONDS / 60) % 60))min $((SECONDS % 60))sec"
-    printf '%s' "${INFO} ${CYAN}Elapsed time:${END} ${GREEN}$ELAPSED${END}"
-    printf '%s' "${INFO} ${GREEN}-------------------------------------------${END}"
+    printf '%s\n' "${INFO} ${CYAN}Elapsed time:${END} ${GREEN}$ELAPSED${END}"
+    printf '%s\n' "${INFO} ${GREEN}-------------------------------------------${END}"
 }
 
 # shellcheck disable=SC2329
@@ -244,6 +244,8 @@ finish () {
     local vars=(AC_SUDO_PASSWORD AC_PASSWORD password confirm_password)
     local var
     for var in "${vars[@]}"; do [ -v "$var" ] && unset "$var" ; done
+
+    rm -rf "$gen_tmpdir" 2>/dev/null
 
     local header="${END}✅ ${HEADER}"
     local status="Completed"
@@ -393,7 +395,7 @@ user_confirm='Default'
 config_mode="Interactive"
 up_ver="v1.1.0"
 up_bin='./access/url-parser'
-yq_ver="v4.45.4"
+yq_ver="v4.45.4" # v4.52.4
 yq_bin='./access/yq'
 
 PLATFORM='unknown'
@@ -610,7 +612,7 @@ hosts_write_uac() {
 
 available() { command -v "$1" >/dev/null; }
 
-packages=(curl wget jq openssl git)
+packages=(curl wget jq openssl node git)
 
 if available apt-get; then
     packages+=("apt-get:apache2-utils")
@@ -1221,6 +1223,7 @@ fi
 
 log_info "${HEADER}Configure Secret Generators"
 #-------------------------------------------
+declare -A SECRETS
 # In caddy basic_auth, hashed password is loaded in memory
 # In nginx basic_auth, websites slows down a lot if bcrypt rounds number is
 # high as the hashed password file is checked again and again on every request.
@@ -1234,39 +1237,180 @@ bcrypt_password=$(htpasswd -bnBC "$bcrypt_rounds" "" "$password" | cut -d : -f 2
 # shellcheck disable=SC2329
 gen_bcrypt() { printf '%s' "${bcrypt_password}"; }
 
+# shellcheck disable=SC2329
 gen_hex() { openssl rand -hex "${1:-32}"; }
+
+gen_base64() { openssl rand -base64 "${1:-32}"; }
 
 base64_url_encode() { openssl enc -base64 -A | tr '+/' '-_' | tr -d '='; }
 
-header='{"typ":"JWT","alg":"HS256"}'
-header_base64=$(printf %s "$header" | base64_url_encode)
-# iat and exp for both tokens has to be same thats why initializing here
-iat=$(date +%s)
-exp=$(("$iat" + 5 * 3600 * 24 * 365)) # 5 years expiry
-jwt_secret=$(gen_hex 20)
+SECRETS[jwt_secret]="$(gen_base64 30)"
 
-# shellcheck disable=SC2329
-gen_jwt() { [[ $1 == "secret" ]] && printf '%s' "${jwt_secret}"; }
+# iat and exp for anon and svc_role tokens has to be same thats why initializing here
+iat=$(date +%s)
+#log_info "${BODY}Anonomous User and Sevice Role token issued on: $iat"
+
+exp=$(("$iat" + 5 * 3600 * 24 * 365)) # 5 years expiry
+#log_info "${BODY}Anonomous User and Sevice Role token expire on: $exp"
+
+
+header='{"typ":"JWT","alg":"HS256"}'
+# normalizes JSON formatting so that the token matches https://www.jwt.io/ results
+#anon_payload="{\"role\":\"anon\",\"iss\":\"supabase\",\"iat\":$iat,\"exp\":$exp}"
+#svc_role_payload="{\"role\":\"service_role\",\"iss\":\"supabase\",\"iat\":$iat,\"exp\":$exp}"
+gen_tmpdir=""
+
+gen_new_supabase_auth_keys () {
+    # shellcheck disable=SC1091
+    [[ -s "$HOME/.nvm/nvm.sh" ]] && . "$HOME/.nvm/nvm.sh"
+
+    log_debug "Node.js version: $(node -v)"
+    log_debug "Node.js process.execPath: $(node -p 'process.execPath')"
+
+    gen_tmpdir=$(mktemp -d)
+
+    # Generate EC P-256 private key
+    openssl ecparam -name prime256v1 -genkey -noout -out "$gen_tmpdir/ec_private.pem" 2>/dev/null
+
+    # Node.js does the crypto-heavy work:
+    #   - PEM -> JWK conversion
+    #   - JWKS construction (with symmetric key included)
+    #   - ES256 JWT signing
+    #   - Opaque API key generation with checksum
+    node -e '
+const crypto = require("crypto");
+const fs = require("fs");
+
+const pem = fs.readFileSync(process.argv[1]);
+const jwtSecret = process.argv[2];
+
+// EC key -> JWK
+const privateKey = crypto.createPrivateKey(pem);
+const jwkPrivate = privateKey.export({ format: "jwk" });
+
+const kid = crypto.randomUUID();
+
+// Symmetric key as JWK (base64url-encoded)
+const octKey = {
+    kty: "oct",
+    k: Buffer.from(jwtSecret).toString("base64url"),
+    alg: "HS256"
+};
+
+// JWKS with private key (for Auth to sign tokens)
+const jwksKeypair = { keys: [
+    { kty: "EC", kid, use: "sig", key_ops: ["sign", "verify"], alg: "ES256", ext: true,
+      crv: jwkPrivate.crv, x: jwkPrivate.x, y: jwkPrivate.y, d: jwkPrivate.d },
+    octKey
+]};
+
+// JWKS with public key only (for PostgREST, Realtime, Storage to verify)
+const jwksPublic = { keys: [
+    { kty: "EC", kid, use: "sig", key_ops: ["verify"], alg: "ES256", ext: true,
+      crv: jwkPrivate.crv, x: jwkPrivate.x, y: jwkPrivate.y },
+    octKey
+]};
+
+// Sign ES256 JWT
+function signES256(payload) {
+    const header = { alg: "ES256", typ: "JWT", kid };
+    const b64Header = Buffer.from(JSON.stringify(header)).toString("base64url");
+    const b64Payload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const data = b64Header + "." + b64Payload;
+    const sig = crypto.sign("SHA256", Buffer.from(data), {
+        key: privateKey,
+        dsaEncoding: "ieee-p1363"
+    }).toString("base64url");
+    return data + "." + sig;
+}
+
+const iat = Math.floor(Date.now() / 1000);
+const exp = iat + 5 * 365 * 24 * 3600; // 5 years
+
+const anonJwt = signES256({ role: "anon", iss: "supabase", iat, exp });
+const serviceJwt = signES256({ role: "service_role", iss: "supabase", iat, exp });
+
+// Generate opaque API keys with checksum
+const PROJECT_REF = "supabase-self-hosted";
+
+function generateOpaqueKey(prefix) {
+    const random = crypto.randomBytes(17).toString("base64url").slice(0, 22);
+    const intermediate = prefix + random;
+    const checksum = crypto.createHash("sha256")
+        .update(PROJECT_REF + "|" + intermediate)
+        .digest("base64url")
+        .slice(0, 8);
+    return intermediate + "_" + checksum;
+}
+
+const publishableKey = generateOpaqueKey("sb_publishable_");
+const secretKey = generateOpaqueKey("sb_secret_");
+
+// Output as KEY=value lines for shell to parse
+console.log("SUPABASE_PUBLISHABLE_KEY=" + publishableKey);
+console.log("SUPABASE_SECRET_KEY=" + secretKey);
+console.log("ANON_KEY_ASYMMETRIC=" + anonJwt);
+console.log("SERVICE_ROLE_KEY_ASYMMETRIC=" + serviceJwt);
+console.log("JWT_KEYS=" + JSON.stringify(jwksKeypair.keys));
+console.log("JWT_JWKS=" + JSON.stringify(jwksPublic));
+' "${gen_tmpdir}/ec_private.pem" "${SECRETS[jwt_secret]}" > "${gen_tmpdir}/output"
+
+    [[ -f "${gen_tmpdir}/output" ]] || { log_error "${gen_tmpdir}/output not found"; return 1; }
+    log_info "${BODY}Generate EC P-256 asymmetric key pair and opaque API keys"
+    while IFS='=' read -r key val; do
+        [[ -z "$key" ]] && continue
+        val="${val%$'\r'}"
+        case "$key" in
+            SUPABASE_PUBLISHABLE_KEY) SECRETS[op_client]="$val" ;;
+            SUPABASE_SECRET_KEY) SECRETS[op_server]="$val" ;;
+            ANON_KEY_ASYMMETRIC) SECRETS[anon_asym]="$val" ;;
+            SERVICE_ROLE_KEY_ASYMMETRIC) SECRETS[service_role_asym]="$val" ;;
+            JWT_KEYS) SECRETS[jwt_keys]="$val" ;;
+            JWT_JWKS) SECRETS[jwt_jwks]="$val" ;;
+        esac
+    done < "${gen_tmpdir}/output"
+}
 
 # shellcheck disable=SC2329
 gen_token() {
     [[ "$1" =~ ^[0-9]+$ ]] && {
-        local len="$1"
-        (( len < 1 || len > 512 )) && return 1
-        local bytes=$(( len * 2 ))
-        openssl rand -base64 "$bytes" | tr -d '=+/' | cut -c1-"$len"
+        (( $1 < 1 || $1 > 512 )) && return 1
+        gen_base64 "$1"
         return 0
     }
 
-    local payload payload_base64
-    payload=$(jq -nc ".iat=($iat | tonumber) | .exp=($exp | tonumber) | .iss=\"supabase\" | .role=\"$1\"")
+    log_info "${BODY}Generate legacy symmetric JWT API $1 key"
+
+    local payload header_base64 payload_base64
+    payload=$(jq -nc ".role=\"$1\" | .iss=\"supabase\" | .iat=($iat | tonumber) | .exp=($exp | tonumber)")
+    header_base64=$(printf %s "$header" | base64_url_encode)
     payload_base64=$(printf %s "$payload" | base64_url_encode)
 
     local signed_content="${header_base64}.${payload_base64}"
     local signature
-    signature=$(printf %s "$signed_content" | openssl dgst -binary -sha256 -hmac "$jwt_secret" | base64_url_encode)
+    signature=$(printf %s "$signed_content" | openssl dgst -binary -sha256 -hmac "${SECRETS[jwt_secret]}" | base64_url_encode)
 
-    printf '%s' "${signed_content}.${signature}"
+    SECRETS["${1}_sym"]="${signed_content}.${signature}"
+}
+
+gen_new_supabase_auth_keys
+gen_token "anon"
+gen_token "service_role"
+
+# shellcheck disable=SC2329
+gen_key() {
+    case "$1" in
+    secret) printf '%s' "${SECRETS[jwt_secret]}" ;;
+    keys) printf '%s' "${SECRETS[jwt_keys]}" ;;
+    jwks) printf '%s' "${SECRETS[jwt_jwks]}" ;;
+    client) printf '%s' "${SECRETS[op_client]}" ;;
+    server) printf '%s' "${SECRETS[op_server]}" ;;
+    anon_asym) printf '%s' "${SECRETS[anon_asym]}" ;;
+    service_role_asym) printf '%s' "${SECRETS[service_role_asym]}" ;;
+    anon_sym) printf '%s' "${SECRETS[anon_sym]}" ;;
+    service_role_sym) printf '%s' "${SECRETS[service_role_sym]}" ;;
+    *) log_error "Invalid key: $1"; return 1 ;;
+    esac
 }
 
 # shellcheck disable=SC2329
@@ -1352,7 +1496,7 @@ generate_dot_env_file() {
         [gen_bcrypt]=gen_bcrypt
         [gen_token]=gen_token
         [gen_hex]=gen_hex
-        [gen_jwt]=gen_jwt
+        [gen_key]=gen_key
     )
 
     # shellcheck disable=SC2153
@@ -1764,7 +1908,7 @@ else
 
     nginx_local_volume="./access/nginx"
     # path in local fs where nginx template file is stored
-    nginx_local_template_file="$nginx_local_volume/nginx.template"
+    nginx_local_template_file="$nginx_local_volume/addons/nginx.template"
 
     # path inside container where template file will be mounted
     nginx_container_template_file="/etc/nginx/user_conf.d/nginx.template"
@@ -1892,7 +2036,7 @@ if [[ "$with_authelia" == true ]]; then
        }'
 
     authelia_docker_supabase_service_yaml='.services.db.environment.AUTHELIA_SCHEMA = strenv(authelia_schema) |
-       .services.db.volumes += "./access/authelia/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
+       .services.db.volumes += "../../access/authelia/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
 
     if [[ "$WITH_REDIS" == true ]]; then
         log_info "${BODY}Authelia Redis configuration in $compose_path"
