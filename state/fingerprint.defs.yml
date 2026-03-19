@@ -1,0 +1,76 @@
+# Each container maps to:
+#  - patterns: list of regex patterns for env keys to be fingerprinted
+#  - mounts: list of host bind mount paths
+# Full Container List:
+#  - authelia
+#  - caddy
+#  - clickhouse
+#  - flowise
+#  - langfuse-web
+#  - langfuse-worker
+#  - llamacpp
+#  - mcp-gateway
+#  - minio
+#  - n8n
+#  - n8n-runner
+#  - n8n-worker
+#  - n8n-worker-runner
+#  - neo4j
+#  - nginx
+#  - ollama
+#  - open-webui
+#  - open-webui-filesystem
+#  - open-webui-mcpo
+#  - open-webui-pipelines
+#  - opencode
+#  - postgres
+#  - qdrant
+#  - realtime-dev.supabase-realtime
+#  - redis
+#  - searxng
+#  - supabase-analytics
+#  - supabase-auth
+#  - supabase-db
+#  - supabase-edge-functions
+#  - supabase-imgproxy
+#  - supabase-kong
+#  - supabase-meta
+#  - supabase-pooler
+#  - supabase-rest
+#  - supabase-storage
+#  - supabase-studio
+#  - supabase-vector
+CONTAINERS:
+  kong:
+    patterns:
+      - '^ANON_KEY'
+      - '^SERVICE_ROLE_KEY'
+      - '^SUPABASE_PUBLISHABLE_KEY'
+      - '^SUPABASE_SECRET_KEY'
+      - '^SERVICE_ROLE_ASYMMETRIC'
+      - '^ANON_KEY_ASYMMETRIC'
+      - '^JWT_SECRET'
+    mounts:
+      - ./supabase/docker/volumes/db/data
+  supabase-db:
+    patterns:
+      - '^POSTGRES_PASSWORD'
+      - '^POSTGRES_HOST'
+      - '^POSTGRES_DB'
+      - '^JWT_SECRET'
+    mounts:
+      - ./supabase/docker/volumes/db/data
+  clickhouse:
+    patterns:
+      - '^CLICKHOUSE_PASSWORD'
+    mounts:
+      - ./langfuse/clickhouse/logs
+  n8n:
+    patterns:
+      - '^N8N_ENCRYPTION_KEY'
+      - '^N8N_RUNNERS_AUTH_TOKEN'
+      - '^N8N_USER_MANAGEMENT_JWT_SECRET'
+      - '^POSTGRES_PASSWORD'
+      - '^POSTGRES_HOST'
+    mounts:
+      - ./n8n/data

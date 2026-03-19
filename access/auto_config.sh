@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 19 2026
+# Last Update March, 17 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -1248,24 +1248,20 @@ SECRETS[jwt_secret]="$(gen_base64 30)"
 
 # iat and exp for anon and svc_role tokens has to be same thats why initializing here
 iat=$(date +%s)
-#log_info "${BODY}Anonomous User and Sevice Role token issued on: $iat"
+# log_info "${BODY}Anonomous User and Sevice Role token issued on: $iat"
 
 exp=$(("$iat" + 5 * 3600 * 24 * 365)) # 5 years expiry
-#log_info "${BODY}Anonomous User and Sevice Role token expire on: $exp"
-
+# log_info "${BODY}Anonomous User and Sevice Role token expire on: $exp"
 
 header='{"typ":"JWT","alg":"HS256"}'
-# normalizes JSON formatting so that the token matches https://www.jwt.io/ results
-#anon_payload="{\"role\":\"anon\",\"iss\":\"supabase\",\"iat\":$iat,\"exp\":$exp}"
-#svc_role_payload="{\"role\":\"service_role\",\"iss\":\"supabase\",\"iat\":$iat,\"exp\":$exp}"
-gen_tmpdir=""
 
+gen_tmpdir=""
 gen_new_supabase_auth_keys () {
     # shellcheck disable=SC1091
     [[ -s "$HOME/.nvm/nvm.sh" ]] && . "$HOME/.nvm/nvm.sh"
 
-    log_debug "Node.js version: $(node -v)"
-    log_debug "Node.js process.execPath: $(node -p 'process.execPath')"
+    log_info "${BODY}Node.js version: $(node -v)"
+    # log_debug "Node.js process.execPath: $(node -p 'process.execPath')"
 
     gen_tmpdir=$(mktemp -d)
 
@@ -1378,18 +1374,14 @@ gen_token() {
         gen_base64 "$1"
         return 0
     }
-
     log_info "${BODY}Generate legacy symmetric JWT API $1 key"
-
     local payload header_base64 payload_base64
     payload=$(jq -nc ".role=\"$1\" | .iss=\"supabase\" | .iat=($iat | tonumber) | .exp=($exp | tonumber)")
     header_base64=$(printf %s "$header" | base64_url_encode)
     payload_base64=$(printf %s "$payload" | base64_url_encode)
-
     local signed_content="${header_base64}.${payload_base64}"
     local signature
     signature=$(printf %s "$signed_content" | openssl dgst -binary -sha256 -hmac "${SECRETS[jwt_secret]}" | base64_url_encode)
-
     SECRETS["${1}_sym"]="${signed_content}.${signature}"
 }
 
@@ -1445,7 +1437,7 @@ rename() {
         cp "$dst" "$mv_backup" || { log_error "Backup failed for $dst"; return 1; }
     fi
     [[ -f $src ]] || { log_error "File $src" not found; return 1; }
-    mv "$src" "$dst" || { log_error "Rename failed for $dst"; return 1; }
+    mv -f "$src" "$dst" || { log_error "Rename failed for $dst"; return 1; }
 }
 
 restore() {
@@ -1454,7 +1446,7 @@ restore() {
         [[ $mv_backup =~ $dst.bak.* ]] || \
         { log_error "File $mv_backup is not a backup of $dst"; return 1; }
         rm -f "$dst" 2>/dev/null
-        mv "$mv_backup" "$dst" || { log_error "Restore failed for $dst"; return 1; }
+        mv -f "$mv_backup" "$dst" || { log_error "Restore failed for $dst"; return 1; }
         log_info "${BODY}  File $dst restored"
         mv_backup=''
     }
@@ -1471,7 +1463,7 @@ normalize_lines() {
         [ -f "$f" ] || continue
         tmp="${f}.tmp.$$"
         awk -v e="$ending" '{ sub(/\r$/, ""); printf "%s%s", $0, e }' "$f" > "$tmp" &&
-        mv "$tmp" "$f"
+        mv -f "$tmp" "$f"
     done
 }
 
@@ -2709,7 +2701,7 @@ else
     ms=0.2
     max_attempts=5
     for attempt in $(seq 1 $max_attempts); do
-        mv "$hosts_tmp" "$HOSTS_PATH" || sleep $ms
+        mv -f "$hosts_tmp" "$HOSTS_PATH" || sleep $ms
         chown root:root "$HOSTS_PATH"
         lines_actual=$(wc -l < "$HOSTS_PATH")
         if [[ "$lines_written" -eq "$lines_actual" ]]; then
@@ -2718,7 +2710,7 @@ else
         elif [[ $attempt -eq $max_attempts ]]; then
             log "Error: Atomic write failed after $max_attempts attempts."
             [[ -f "$backup_file" ]] && {
-                mv "$backup_file" "$HOSTS_PATH" || sleep $ms
+                mv -f "$backup_file" "$HOSTS_PATH" || sleep $ms
                 chown root:root "$HOSTS_PATH"
                 log "$DATE_TIME: Hosts restored from backup."
             }

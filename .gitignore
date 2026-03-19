@@ -33,4 +33,5 @@ open-webui/tools/
 searxng/
 supabase/
 shared-backup/
+state/fingerprints
 volumes/

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 18, 2026
+Last Update March 19, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -60,6 +60,7 @@ import dotenv
 import getpass
 import gzip
 import logging
+import hashlib
 import pathlib
 import platform
 import re
@@ -67,6 +68,7 @@ import shutil
 import subprocess
 import textwrap
 import time
+import yaml
 
 # Info attributes
 INFO = {
@@ -704,7 +706,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     if not operation:
         operation = "stop"
 
-    with open('.operation', 'w', newline='\n') as f:
+    with open('./state/.operation', 'w', newline='\n') as f:
         f.write(operation + ':' + llama.lower())
 
     supabase = False
@@ -1069,6 +1071,60 @@ def check_prerequisites():
         #return False
     return True
 
+def compute_fingerprint(env_vars, container_info):
+    """Compute SHA256 fingerprint for a container given its patterns"""
+    matches = []
+    for pattern in container_info.get('patterns', []):
+        regex = re.compile(pattern)
+        matches.extend(f"{k}={v}" for k, v in env_vars.items() if regex.match(k))
+    if not matches:
+        return None
+    matches.sort()
+    data = "\n".join(matches).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+def clean_bind_mounts(changed_fp, fp_defs):
+    """clean bind mounts if fingerprints changed"""
+    for container in changed_fp:
+        mounts = fp_defs.get(container, {}).get('mounts', [])
+        for mount_path in mounts:
+            if os.path.exists(mount_path):
+                log.info(f"Cleaning bind mount: {mount_path} for container {container}")
+                shutil.rmtree(mount_path)
+                os.makedirs(mount_path, exist_ok=True)
+
+def process_dotenv_fingerprint(env_vars):
+    """Compute fingerprints for containers, compare to previous run,
+       clean bind mounts if fingerprints changed, and persist updated fingerprints.
+    """
+    fp_defs_file = './state/fingerprint.defs.yml'
+    if not os.path.exists(fp_defs_file):
+        log.error(f"The fingerprint definitions file {fp_defs_file} was not found!")
+        return
+    with open(fp_defs_file, 'r') as f:
+        fp_defs = yaml.safe_load(f)
+    current_fp = {
+        c: compute_fingerprint(env_vars, info)
+        for c, info in fp_defs["CONTAINERS"].items()
+    }
+    prev_fp = {}
+    fp_file = './state/fingerprints'
+    if os.path.exists(fp_file):
+        with open(fp_file, 'r') as f:
+            for line in f:
+                if '=' in line:
+                    k, v = line.strip().split('=', 1)
+                    prev_fp[k] = v
+    if prev_fp:
+        changed_fp = [c for c, h in current_fp.items() if prev_fp.get(c) != h]
+        if changed_fp:
+            log.info(f"Detected fingerprint changes for: {', '.join(changed_fp)}")
+            clean_bind_mounts(changed_fp, fp_defs)
+    os.makedirs(os.path.dirname(fp_file), exist_ok=True)
+    with open(fp_file, 'w') as f:
+        for c, h in current_fp.items():
+            f.write(f"{c}={h}\n")
+
 def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None):
     """Load environment variables from .env file"""
     if env_file is None:
@@ -1158,7 +1214,8 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
     env_vars = dotenv.dotenv_values(env_file)
     if not valid_env_file:
         os.remove(env_file) if os.path.exists(env_file) else None
-    path = env_vars.get('PROJECTS_PATH', os.path.join('~', 'projects'))
+    path = env_vars.get('PROJECTS_PATH')
+    path = os.path.join('~', 'projects') if not path else path
     env_vars['PROJECTS_PATH'] = normalize_path(path)
 
     return env_vars
@@ -1460,10 +1517,10 @@ def display_service_endpoints(profile, supabase, env_vars):
         'n8n-all'          : ['n8n', 'n8n-runner', 'n8n-worker', 'n8n-worker-runner',
                               'mcp-gateway', 'open-webui', 'mcp-gateway', 'open-webui-mcpo',
                               'open-webui-filesystem', 'qdrant', 'postgres', 'redis'],
-        'opencode'         : ['opencode', 'mpc-gateway'],
+        'opencode'         : ['opencode', 'mcp-gateway'],
         'open-webui'       : ['open-webui', 'mcp-gateway', 'open-webui-mcpo',
                               'open-webui-filesystem'],
-        'open-webui-mcpo'  : ['mpc-gateway', 'open-webui-mcpo'],
+        'open-webui-mcpo'  : ['mcp-gateway', 'open-webui-mcpo'],
         'open-webui-pipe'  : ['open-webui-pipelines'],
         'open-webui-all'   : ['open-webui', 'mcp-gateway',
                               'open-webui-mcpo', 'open-webui-filesystem', 'open-webui-pipelines'],
@@ -1876,8 +1933,8 @@ def main():
     status = None
     llama_cpp = False
     env_file = os.path.join(".env")
-    if os.path.exists('.operation'):
-        with open('.operation', 'r') as f:
+    if os.path.exists('./state/.operation'):
+        with open('./state/.operation', 'r') as f:
             op_array = f.readline().split(':')
         status = op_array[0].strip() if op_array else None
         if len(op_array) > 1:
@@ -2106,6 +2163,7 @@ def main():
         any(p for p in args.profile if p in ['supabase', 'ai-all'])
     if supabase:
         args.profile.remove('supabase') if 'supabase' in args.profile else None
+        mod_env_vars.update({'POSTGRES_HOST': 'db'})
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
 
@@ -2315,7 +2373,7 @@ def main():
         build = args.operation in ['update', 'install']
         if build:
             install = args.operation == 'install'
-            if args.operation == 'update++':
+            if args.operation == 'update':
                 user_confirm = input(textwrap.dedent(f"""\
                     Performing an {name} update can impact its integrity.
                     Consider backing up your data to enable rollback.
@@ -2333,6 +2391,8 @@ def main():
                 args.profile.extend([llama_arg])
             else:
                 log.info(f"""{insert} container images for {args.profile}...""")
+            if install:
+                process_dotenv_fingerprint(env_vars)
             docker_compose_include(True, True, False)
             destroy_ai_suite(args.profile, install)
         operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
@@ -2344,7 +2404,7 @@ def main():
     else:
         log.notice(f"Updating '{name}' with profile arguments: {args.profile}...") # type:ignore[reportAttributeAccessIssue]
 
-    os.remove('.operation') if os.path.exists('.operation') else None
+    os.remove('./state/.operation') if os.path.exists('./state/.operation') else None
 
     # Manually set default profile argument
     if default_profile:
@@ -2355,7 +2415,6 @@ def main():
 
     # Configure n8n Postgres database
     if any(p for p in args.profile if p in n8n_all_profiles):
-        env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"
         configure_n8n_database_settings(supabase)
 
     # Set Supabase supabase/docker/.env from .env
@@ -2450,7 +2509,7 @@ def main():
     start_ai_suite(args.profile, args.environment, build)
     #display_service_endpoints(args.profile, supabase, env_vars)
 
-    with open('.operation', 'w', newline='\n') as f:
+    with open('./state/.operation', 'w', newline='\n') as f:
         f.write('start' + ':' + llama.lower())
 
 if __name__ == "__main__":
