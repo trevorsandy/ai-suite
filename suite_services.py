@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update January 21, 2026
+Last Update March 20, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1182,11 +1182,11 @@ def configure_n8n_database_settings(supabase):
 
 def container_is_running(container):
     """:return: True if container name found in output check, else False."""
-    cmd = " ".join(['docker', 'ps', '-a', '--format', '"{{.Names}}"', '--filter',
+    cmd = " ".join(['docker', 'ps', '--format', '"{{.Names}}"', '--filter',
                    f'name=^/{container}$'])
     try:
         bytes = subprocess.check_output(cmd, shell=True)
-        running = bytes.find(container.encode()) != 1
+        running = bytes.find(container.encode()) != -1
         if log.root.level == logging.DEBUG:
             color = LSHF.WHITE if running else LSHF.RED
             style = LSHF.style(logging.INFO, color)
