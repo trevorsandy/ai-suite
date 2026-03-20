@@ -1218,7 +1218,7 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
                     'LANGFUSE_SALT=generate using gen_hex:16',
                     'NEXTAUTH_SECRET=generate using gen_hex:16',
                     'ENCRYPTION_KEY=generate using gen_hex:16'])
-            if any(m for m in modules if m in ['caddy', 'ngnix']):
+            if any(m for m in modules if m in ['caddy', 'nginx']):
                 default_secrets.extend([
                     'PROXY_AUTH_PASSWORD=generate using gen_bcrypt'])
             if any(m for m in modules if m in ['authelia']):
@@ -1803,7 +1803,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
             log.warning(f"Invalid proxy specified: {response}. Using {default}.")
             response = None
     default = response if response else default
-    ac_env_list.append(f'AC_PROXY="{default.lower()}"')
+    ac_env_list.append(f'AC_PROXY={default.lower()}')
     # AC_WITH_AUTHELIA - bool
     default = env_vars.get('AC_WITH_AUTHELIA', 'False')
     default = True if str(default).lower() == 'true' else False
@@ -2022,7 +2022,7 @@ def main():
                 supabase                                    Supabase database
                 searxng langfuse neo4j                      management, analytics and monitoring utilities
                 caddy                                       Caddy proxy
-                ngnix                                       Ngnix proxy
+                nginx                                       Nginx proxy
                 open-webui-all                              Open WebUI complete bundle
                 n8n-all                                     n8n, Open WebUI and selected utilities bundle
                 ai-all                                      full {name} bundle

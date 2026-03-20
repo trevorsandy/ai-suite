@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 17 2026
+# Last Update March, 20 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -1610,7 +1610,7 @@ generate_dot_env_file() {
                         "${GENERATORS[$gen]}"
                     fi
                 )
-				val="${val//$'\n'/}"   # remove newlines
+                val="${val//$'\n'/}"   # remove newlines
                 log_info "${BODY}  $(elide "$var")${MAGENTA}=${WHITE}$(elide "$val") ${CYAN}$gen${arg:+:$arg}"
                 val="${val//$/$$}"     # escape bcrypt chars in docker-compose
                 ((++generated_count))
@@ -1911,7 +1911,7 @@ else
 
     proxy_service_yaml="${proxy_service_yaml} |
                         .services.nginx.image=\"jonasal/nginx-certbot:6.0.1-nginx1.29.5\" |
-                        .services.ngnix.expose=[\"81/tcp\",\"443/tcp\",\"443/udp\",\"80/tcp\"] |
+                        .services.nginx.expose=[\"81/tcp\",\"443/tcp\",\"443/udp\",\"80/tcp\"] |
                         .services.nginx.environment.NGINX_SERVER_NAME = \"\${NGINX_SERVER_NAME:?error}\" |
                         .services.nginx.environment.CERTBOT_EMAIL = \"\${AC_EMAIL:?error}\" |
                         .services.nginx.environment.TZ = \"\${GENERIC_TIMEZONE:-England/Greenwich}\" |
@@ -2115,10 +2115,14 @@ if [[ "$proxy" == "caddy" ]]; then
     mkdir -p "$caddy_local_volume"
     # https://stackoverflow.com/a/3953712/18954618
     echo "
+    import /etc/caddy/addons/cors.conf
+
     {
         # Global options - works for both environments
         email {\$LETSENCRYPT_EMAIL}
+    }
 
+    (authelia) {
         $([[ "$CI" == true || "$AC_LOCAL" == true ]] && echo "tls internal")
 
         $([[ "$with_authelia" == true ]] && echo "@authelia path /authenticate /authenticate/*
@@ -2138,6 +2142,7 @@ if [[ "$proxy" == "caddy" ]]; then
 
     # N8N
     {\$N8N_HOSTNAME} {
+        import authelia
         # For domains, Caddy will automatically use Let's Encrypt
         # For localhost/port addresses, HTTPS won't be enabled
         reverse_proxy n8n:5678
@@ -2145,21 +2150,25 @@ if [[ "$proxy" == "caddy" ]]; then
 
     # Open WebUI
     {\$WEBUI_HOSTNAME} {
+        import authelia
         reverse_proxy open-webui:8080
     }
 
     # Flowise
     {\$FLOWISE_HOSTNAME} {
+        import authelia
         reverse_proxy flowise:3001
     }
 
     # Langfuse
     {\$LANGFUSE_HOSTNAME} {
+        import authelia
         reverse_proxy langfuse-web:3000
     }
 
     # Supabase
     {\$SUPABASE_HOSTNAME} {
+        import authelia
         @supa_api path /rest/v1/* /auth/v1/* /realtime/v1/* /functions/v1/* /mcp /api/mcp
 
         handle @supa_api {
@@ -2188,6 +2197,7 @@ if [[ "$proxy" == "caddy" ]]; then
 
     # Neo4j
     {\$NEO4J_HOSTNAME} {
+        import authelia
         reverse_proxy neo4j:7474
     }
 
@@ -2195,6 +2205,7 @@ if [[ "$proxy" == "caddy" ]]; then
     $([[ -n "$AC_SEARXNG" ]] && echo "\
 {\$SEARXNG_HOSTNAME} {" || echo "\
 {DISABLED_SEARXNG} {")
+        import authelia
         encode zstd gzip
 
         @api {
@@ -2256,14 +2267,14 @@ if [[ "$proxy" == "caddy" ]]; then
       [[ "$AC_LLAMACPP" == false ]] && echo "\
     # Ollama API
     {\$OLLAMA_HOSTNAME} {
+        import authelia
         reverse_proxy ollama:11434
     }" || echo "\
     # LLaMA.cpp API
     {\$LLAMACPP_HOSTNAME} {
+        import authelia
         reverse_proxy llamacpp:8040
     }"; fi)
-
-    import $caddy_addons_path/cors.conf
 " >"$caddyfile_local"
 # WRITE LOCAL nginx.template
 else
