@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 19, 2026
+Last Update March 20, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -622,11 +622,19 @@ def clone_open_webui_functions_repos():
     os.chdir("../../../../")
 
 def prepare_supabase_env(env_vars):
-    """Write env_vars to .env in supabase/docker."""
+    """Write env_vars to .env in supabase/docker. and copy Athelia db schema"""
     env_file = os.path.join("supabase", "docker", ".env")
     built_env_vars = env_vars
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
     write_dotenv_file(env_file, built_env_vars)
+
+    athelia_sh_path = os.path.join("access", "authelia", "db", "schema-authelia.sh")
+    supabase_db_dir = os.path.join("supabase", "docker", "volumes", "db")
+    if not os.path.exists(athelia_sh_path):
+        log.error(f"File {athelia_sh_path} not found.")
+        return
+    convert_line_endings(athelia_sh_path)
+    shutil.copy(athelia_sh_path, supabase_db_dir)
 
 def prepare_open_webui_tools_filesystem_env(env_vars):
     """Write env_vars to .env and compose.yaml to open-webui/tools/servers/filesystem."""
@@ -694,6 +702,8 @@ def destroy_ai_suite(profile, install):
         cmd.extend(["--volumes"])
     run_command(cmd)
     if install:
+        supabase_data = os.path.join("supabase", "docker", "volumes", "db", "data")
+        clean_dir_path(supabase_data, restore=False)
         cmd = ["docker", "volume", "prune", "--force"]
         run_command(cmd)
     log.info("="*60, extra=LSHF.style(logging.INFO, LSHF.BLUE))
@@ -953,17 +963,9 @@ def check_and_fix_docker_compose_for_searxng():
     except Exception as e:
         log.error(f"Exception: Check/modify docker-compose.yml for SearXNG: {e}")
 
-# Treat Selfhosted Supavisor Pooler Keeps Restarting.
-# No longer needed as I am treating line edgings on git pull above
-# See: https://github.com/supabase/supabase/issues/30210
-def convert_supabase_pooler_line_endings():
+def convert_line_endings(file_path):
     """Convert Windows line endings to Linux/Unix/MacOS line endings."""
-    if system == "Windows":
-        file_path = "supabase/docker/volumes/pooler/pooler.exs"
-        if not os.path.exists(file_path):
-            log.error(f"Pooler file not found at {file_path}")
-            return
-        log.info("Converting supavisor pooler line endings...")
+    try:
         CR_LF = b'\r\n'
         LF = b'\n'
         with open(file_path, 'rb') as f:
@@ -971,6 +973,22 @@ def convert_supabase_pooler_line_endings():
         modified_content = content.replace(CR_LF, LF)
         with open(file_path, 'wb') as f:
             f.write(modified_content)
+    except FileNotFoundError:
+        log.error(f"Exception: File '{file_path}' not found.")
+
+# Treat Selfhosted Supavisor Pooler Keeps Restarting.
+# No longer needed as I am treating line edgings on git pull above
+# See: https://github.com/supabase/supabase/issues/30210
+def convert_supabase_pooler_line_endings():
+    """Convert Pooler.exs to Linux/Unix/MacOS line endings."""
+    if system == "Windows":
+        file_path = "supabase/docker/volumes/pooler/pooler.exs"
+        if not os.path.exists(file_path):
+            log.error(f"Pooler file not found at {file_path}")
+            return
+        log.info("Converting supavisor pooler line endings...")
+        convert_line_endings(file_path)
+
 
 def docker_compose_include(supabase, filesystem, verbose):
     """Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml"""
@@ -1082,6 +1100,15 @@ def compute_fingerprint(env_vars, container_info):
     matches.sort()
     data = "\n".join(matches).encode("utf-8")
     return hashlib.sha256(data).hexdigest()
+  
+def clean_dir_path(dir_path, restore=True, quiet=False):
+    """delete and recreate directory path"""
+    if os.path.exists(dir_path):
+        if not quiet:
+            log.info(f"Cleaning directory: {dir_path}...")
+        shutil.rmtree(dir_path)
+        if restore:
+            os.makedirs(dir_path, exist_ok=True)
 
 def clean_bind_mounts(changed_fp, fp_defs):
     """clean bind mounts if fingerprints changed"""
@@ -1090,8 +1117,7 @@ def clean_bind_mounts(changed_fp, fp_defs):
         for mount_path in mounts:
             if os.path.exists(mount_path):
                 log.info(f"Cleaning bind mount: {mount_path} for container {container}")
-                shutil.rmtree(mount_path)
-                os.makedirs(mount_path, exist_ok=True)
+                clean_dir_path(mount_path, quiet=True)
 
 def process_dotenv_fingerprint(env_vars):
     """Compute fingerprints for containers, compare to previous run,

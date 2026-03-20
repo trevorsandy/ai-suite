@@ -339,7 +339,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -h ${POSTGRES_HOST} -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      test: ['CMD-SHELL', 'pg_isready -h postgres -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 3s
       timeout: 3s
       retries: 10
@@ -550,6 +550,16 @@ services:
       LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
 
+  clickhouse-logs-access:
+    profiles: ["langfuse", "ai-all"]
+    image: alpine:3.19
+    container_name: clickhouse-logs-access
+    command: >
+      sh -c "chown -R 101:101 /var/log/clickhouse-server"
+    volumes:
+      - ./langfuse/clickhouse/logs:/var/log/clickhouse-server
+    restart: "no"
+
   clickhouse:
     profiles: ["langfuse", "ai-all"]
     image: clickhouse/clickhouse-server
@@ -567,6 +577,9 @@ services:
     volumes:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - ./langfuse/clickhouse/logs:/var/log/clickhouse-server
+    depends_on:
+      clickhouse-logs-access:
+        condition: service_completed_successfully
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s

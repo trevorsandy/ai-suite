@@ -2028,7 +2028,7 @@ if [[ "$with_authelia" == true ]]; then
        }'
 
     authelia_docker_supabase_service_yaml='.services.db.environment.AUTHELIA_SCHEMA = strenv(authelia_schema) |
-       .services.db.volumes += "../../access/authelia/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
+       .services.db.volumes += "./volumes/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
 
     if [[ "$WITH_REDIS" == true ]]; then
         log_info "${BODY}Authelia Redis configuration in $compose_path"
