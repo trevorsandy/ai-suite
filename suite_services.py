@@ -1100,7 +1100,7 @@ def compute_fingerprint(env_vars, container_info):
     matches.sort()
     data = "\n".join(matches).encode("utf-8")
     return hashlib.sha256(data).hexdigest()
-  
+
 def clean_dir_path(dir_path, restore=True, quiet=False):
     """delete and recreate directory path"""
     if os.path.exists(dir_path):
@@ -1481,165 +1481,150 @@ def wait_with_progress(seconds: int, level=logging.INFO, color=None, width=60):
         time.sleep(0.05) # smooth updates (~20 FPS)
     print() # move to next line when done
 
-def display_service_endpoints(profile, supabase, env_vars):
+def display_service_endpoints(profile, supabase=False, env_vars={}):
     """Display AI-Suite installation or operationstatus"""
+    if not profile:
+        log.error("Profile required to display service endpoints")
+        return
+
     url = 'http://localhost'
-    # This dictionary holds a list of module end point (Module name, End point) touples
+
+    # This dictionary holds a list of touples (container, Module Name, Endpoint)
+    # grouped by module - aka profile argument
     ai_suite_modules = {
-        'n8n'              : [('n8n',                   url + ':5678'),
-                              ('MCP Gateway',           url + ':8060/'),
-                              ('QDrant',                url + ':6333/dashboard'),
-                              ('Postgres',              url + ':5432/'),
-                              ('Supabase',              url + ':8000'),
-                              ('Logflare',              url + ':4000/dashboard'),
-                              ('Redis',                 url + ':6379/')],
-        'n8n-all'          : [('n8n',                   url + ':5678'),
-                              ('Open webUI',            url + ':8080/'),
-                              ('Open webUI Filesystem', url + ':8091/docs'),
-                              ('MCP Gateway',           url + ':8060/'),
-                              ('Open webUI MCPO',       url + ':8090/'),
-                              ('QDrant',                url + ':6333/dashboard'),
-                              ('Postgres',              url + ':5432/'),
-                              ('Supabase',              url + ':8000'),
-                              ('Logflare',              url + ':4000/dashboard'),
-                              ('Redis',                 url + ':6379/')],
-        'opencode'         : [('Opencode',              './opencode/run_opencode_docker.py'),
-                              ('MCP Gateway',           url + ':8060/')],
-        'open-webui'       : [('Open webUI',            url + ':8080/'),
-                              ('MCP Gateway',           url + ':8060/'),
-                              ('Open webUI MCPO',       url + ':8090/'),
-                              ('Open webUI Filesystem', url + ':8091/docs')],
-        'open-webui-mcpo'  : [('MCP Gateway',           url + ':8060/'),
-                              ('Open webUI MCPO',       url + ':8090/')],
-        'open-webui-all'   : [('Open webUI',            url + ':8080/'),
-                              ('MCP Gateway',           url + ':8060/'),
-                              ('Open webUI MCPO',       url + ':8090/'),
-                              ('Open webUI Filesystem', url + ':8091/docs')],
-        'flowise'          : [('Flowise',               url + ':3001/')],
-        'supabase'         : [('Supabase',              url + ':8000'),
-                              ('Logflare',              url + ':4000/dashboard')],
-        'langfuse'         : [('Langfuse Web',          url + ':3000/'),
-                              ('Langfuse Worker',       url + ':3030/'),
-                              ('ClickHouse',            url + ':8123/'),
-                              ('Postgres',              url + ':5432/'),
-                              ('Redis',                 url + ':6379/'),
-                              ('MinIO',                 url + ':9001/')],
-        'searxng'          : [('SearXNG',               url + ':8081/')],
-        'neo4j'            : [('Neo4j',                 url + ':7473/')],
-        'caddy'            : [('Caddy',                 url + ':443/')],
-        'ollama'           : [('Ollama',                url + ':11434/')],
-        'cpu'              : [('Ollama',                url + ':11434/')],
-        'gpu-nvidia'       : [('Ollama',                url + ':11434/')],
-        'gpu-amd'          : [('Ollama',                url + ':11434/')],
-        'llama.cpp'        : [('LLaMA.cpp' ,            url + ':8040')],
-        'cpp-cpu'          : [('LLaMA.cpp' ,            url + ':8040')],
-        'cpp-gpu-nvidia'   : [('LLaMA.cpp' ,            url + ':8040')],
-        'cpp-gpu-amd'      : [('LLaMA.cpp' ,            url + ':8040')]
-    }
-    # This dictionary holds a list of container names enabled for said module
-    ai_suite_containers = {
-        'n8n'              : ['n8n', 'n8n-runner', 'n8n-worker', 'n8n-worker-runner',
-                              'mcp-gateway', 'qdrant', 'postgres', 'redis'],
-        'n8n-all'          : ['n8n', 'n8n-runner', 'n8n-worker', 'n8n-worker-runner',
-                              'mcp-gateway', 'open-webui', 'mcp-gateway', 'open-webui-mcpo',
-                              'open-webui-filesystem', 'qdrant', 'postgres', 'redis'],
-        'opencode'         : ['opencode', 'mcp-gateway'],
-        'open-webui'       : ['open-webui', 'mcp-gateway', 'open-webui-mcpo',
-                              'open-webui-filesystem'],
-        'open-webui-mcpo'  : ['mcp-gateway', 'open-webui-mcpo'],
-        'open-webui-pipe'  : ['open-webui-pipelines'],
-        'open-webui-all'   : ['open-webui', 'mcp-gateway',
-                              'open-webui-mcpo', 'open-webui-filesystem', 'open-webui-pipelines'],
-        'flowise'          : ['flowise'],
-        'supabase'         : ['supabase-studio', 'supabase-kong', 'supabase-auth',
-                              'supabase-rest', 'realtime-dev.supabase-realtime',
-                              'supabase-storage', 'supabase-imgproxy', 'supabase-meta',
-                              'supabase-edge-functions', 'supabase-analytics', 'supabase-db',
-                              'supabase-vector', 'supabase-pooler'],
-        'langfuse'         : ['langfuse-worker', 'langfuse-web', 'clickhouse',
-                              'postgres', 'minio', 'redis'],
-        'searxng'          : ['searxng'],
-        'neo4j'            : ['neo4j'],
-        'caddy'            : ['caddy'],
-        'cpu'              : ['ollama'],
-        'gpu-nvidia'       : ['ollama'],
-        'gpu-amd'          : ['ollama'],
-        'cpp-cpu'          : ['llamacpp'],
-        'cpp-gpu-nvidia'   : ['llamacpp'],
-        'cpp-gpu-amd'      : ['llamacpp']
+        'n8n': [
+            ('n8n',                 'n8n',            url + ':5678'),
+            ('mcp-gateway',         'MCP Gateway',    url + ':8060/'),
+            ('qdrant',              'QDrant',         url + ':6333/dashboard'),
+            ('postgres',            'Postgres',       url + ':5432/'),
+            ('supabase-kong',       'Supabase',       url + ':8000'),
+            ('supabase-analytics',  'Logflare',       url + ':4000/dashboard'),
+            ('redis',               'Redis',          url + ':6379/')
+        ],
+        'n8n-all': [
+            ('n8n',                 'n8n',                    url + ':5678'),
+            ('open-webui',          'Open WebUI',             url + ':8080/'),
+            ('open-webui-filesystem','Open WebUI Filesystem', url + ':8091/docs'),
+            ('mcp-gateway',         'MCP Gateway',            url + ':8060/'),
+            ('open-webui-mcpo',     'Open WebUI MCPO',        url + ':8090/'),
+            ('qdrant',              'QDrant',                 url + ':6333/dashboard'),
+            ('postgres',            'Postgres',               url + ':5432/'),
+            ('supabase-kong',       'Supabase',               url + ':8000'),
+            ('supabase-analytics',  'Logflare',               url + ':4000/dashboard'),
+            ('redis',               'Redis',                  url + ':6379/')
+        ],
+        'opencode': [
+            ('opencode',            'Opencode',        './opencode/run_opencode_docker.py'),
+            ('mcp-gateway',         'MCP Gateway',     url + ':8060/')
+        ],
+        'open-webui': [
+            ('open-webui',          'Open WebUI',             url + ':8080/'),
+            ('mcp-gateway',         'MCP Gateway',            url + ':8060/'),
+            ('open-webui-mcpo',     'Open WebUI MCPO',        url + ':8090/'),
+            ('open-webui-filesystem','Open WebUI Filesystem', url + ':8091/docs')
+        ],
+        'open-webui-mcpo': [
+            ('mcp-gateway',         'MCP Gateway',     url + ':8060/'),
+            ('open-webui-mcpo',     'Open WebUI MCPO', url + ':8090/')
+        ],
+        'flowise': [
+            ('flowise',             'Flowise',         url + ':3001/')
+        ],
+        'supabase': [
+            ('supabase-kong',       'Supabase',        url + ':8000'),
+            ('supabase-analytics',  'Logflare',        url + ':4000/dashboard')
+        ],
+        'langfuse': [
+            ('langfuse-web',        'Langfuse Web',    url + ':3000/'),
+            ('langfuse-worker',     'Langfuse Worker', url + ':3030/'),
+            ('clickhouse',          'ClickHouse',      url + ':8123/'),
+            ('postgres',            'Postgres',        url + ':5432/'),
+            ('redis',               'Redis',           url + ':6379/'),
+            ('minio',               'MinIO',           url + ':9001/')
+        ],
+        'searxng': [
+            ('searxng',             'SearXNG',         url + ':8081/')
+        ],
+        'neo4j': [
+            ('neo4j',               'Neo4j',           url + ':7473/')
+        ],
+        'caddy': [
+            ('caddy',               'Caddy',           url + ':443/'),
+            ('authelia',             'Authelia',         url + ':9091/')
+        ],
+        'nginx': [
+            ('nginx',               'Nginx',           url + ':443/'),
+            ('authelia',             'Authelia',         url + ':9091/')
+        ],
+        'cpu': [
+            ('ollama',              'Ollama',          url + ':11434/')
+        ],
+        'gpu-nvidia': [
+            ('ollama',              'Ollama',          url + ':11434/')
+        ],
+        'gpu-amd': [
+            ('ollama',              'Ollama',          url + ':11434/')
+        ],
+        'cpp-cpu': [
+            ('llamacpp',            'LLaMA.cpp',       url + ':8040')
+        ],
+        'cpp-gpu-nvidia': [
+            ('llamacpp',            'LLaMA.cpp',       url + ':8040')
+        ],
+        'cpp-gpu-amd': [
+            ('llamacpp',            'LLaMA.cpp',       url + ':8040')
+        ]
     }
 
     module_list = []
     container_list = []
-    if profile:
-        m_name = 0
-        module_names = []
-        if 'ai-all' in profile:
-            for profile_arg, modules in ai_suite_modules.items():
-                if llama_cpp:
-                    if profile_arg in ['ollama', 'cpu', 'gpu-nvidia', 'gpu-amd']:
-                        continue
-                elif profile_arg in ['llama.cpp', 'cpp-cpu', 'cpp-gpu-nvidia', 'cpp-gpu-amd']:
-                    continue
-                for module in modules:
-                    module_name = module[m_name]
-                    if module_name in module_names:
-                        continue
-                    if profile_arg in ['n8n', 'n8n-all']:
-                        if supabase:
-                            if module_name == 'Postgres':
-                                continue
-                        elif module_name in ['Supabase', 'Logflare']:
-                            continue
-                    module_names.append(module_name)
-                    module_list.append(module)
-            for profile_arg, containers in ai_suite_containers.items():
-                if llama_cpp:
-                    if profile_arg in ['cpu', 'gpu-nvidia', 'gpu-amd']:
-                        continue
-                elif profile_arg in ['cpp-cpu', 'cpp-gpu-nvidia', 'cpp-gpu-amd']:
-                    continue
-                for container in containers:
-                    if not container or container in container_list:
-                        continue
-                    if supabase:
-                        if profile_arg in ['n8n', 'n8n-all'] and container == 'postgres':
-                                continue
-                    elif container.startswith('supabase-') or container.startswith('realtime-dev.'):
-                        continue
-                    container_list.append(container)
-        else:
-            for profile_arg in profile:
-                modules = ai_suite_modules.get(profile_arg)
-                if modules:
-                    for module in modules:
-                        module_name = module[m_name]
-                        if module_name in module_names:
-                            continue
-                        if profile_arg in ['n8n', 'n8n-all']:
-                            if supabase:
-                                if module_name == 'Postgres':
-                                    continue
-                            elif module_name in ['Supabase', 'Logflare']:
-                                continue
-                        module_names.append(module_name)
-                        module_list.append(module)
-                containers = ai_suite_containers.get(profile_arg)
-                if containers:
-                    for container in containers:
-                        if not container or container in container_list:
-                            continue
-                        if supabase:
-                            if profile_arg in ['n8n', 'n8n-all'] and container == 'postgres':
-                                    continue
-                        elif container.startswith('supabase-') or container.startswith('realtime-dev.'):
-                            continue
-                        container_list.append(container)
+    module_names = set()
+    proxy_in_profile = any(p in profile for p in ('caddy', 'nginx'))
 
-    failed_container_list = []
-    for container in container_list:
-        if not docker_container_is_running(container):
-            failed_container_list.append(container)
+    def skip_module(module, module_name):
+        if llama_cpp and module in ('cpu', 'gpu-nvidia', 'gpu-amd'):
+            return True
+        if not llama_cpp and module in ('cpp-cpu', 'cpp-gpu-nvidia', 'cpp-gpu-amd'):
+            return True
+        if module in ('n8n', 'n8n-all'):
+            if supabase and module_name == 'Postgres':
+                return True
+            if not supabase and module_name in ('Supabase', 'Logflare'):
+                return True
+        if module in ('caddy', 'nginx') and module not in profile:
+            return True
+        if module_name == 'Authelia' and not proxy_in_profile:
+            return True
+        return False
+
+    def skip_container(container):
+        if not container or container in container_list:
+            return True
+        if container.startswith('supabase-') or container.startswith('realtime-dev.'):
+            return True
+        if llama_on_host and container in ('ollama', 'llamacpp'):
+            return True
+        return False
+
+    modules = ai_suite_modules.keys() if 'ai-all' in profile else profile
+
+    for module in modules:
+        module_items = ai_suite_modules.get(module, [])
+        for container, module_name, endpoint in module_items:
+            if module_name in module_names:
+                continue
+            if skip_module(module, module_name):
+                continue
+            module_names.add(module_name)
+            module_list.append((container, module_name, endpoint))
+            if skip_container(container):
+                continue
+            container_list.append(container)
+
+    failed_container_list = [
+        container for container in container_list
+        if not docker_container_is_running(container)
+    ]
 
     started_ok = len(failed_container_list) == 0
     header = ("{} IS RUNNING").format(name.upper()) if started_ok else \
@@ -1647,15 +1632,13 @@ def display_service_endpoints(profile, supabase, env_vars):
     emoji = '✅' if started_ok else '⚠️'
     color = LSHF.GREEN if started_ok else LSHF.YELLOW
     header_style = {
-        'prefix': ("{0} {1}{2}").format(
+        'prefix': ("{0}  {1}{2}").format(
             emoji, LSHF.prefix(color, bold=True, underline=started_ok), header),
         'suffix': LSHF.suffix()}
     header_style.update({'purge_msg': 'True'})
     info_style = LSHF.style(logging.INFO, color)
     line_style = LSHF.style(logging.INFO, LSHF.BLUE)
     fail_style = LSHF.style(logging.INFO, LSHF.RED)
-    module_prefix = LSHF.prefix(color)
-    apoint_prefix = LSHF.prefix(LSHF.BLUE)
 
     context_size = env_vars.get('LLAMA_ARG_CTX_SIZE') if llama_cpp else \
                    env_vars.get('OLLAMA_CONTEXT_LENGTH')
@@ -1673,8 +1656,14 @@ def display_service_endpoints(profile, supabase, env_vars):
     log.info(f"Projects Path: {projects_path}", extra=info_style)
     log.info("")
     log.info("Access Points:", extra=info_style)
-    for module_name, access_point in module_list:
+    for container, module_name, access_point in module_list:
         emoji = '🚀' if module_name.lower() == 'opencode' else '🔗'
+        module_prefix = LSHF.prefix(LSHF.GREEN)
+        apoint_prefix = LSHF.prefix(LSHF.BLUE)
+        if container in failed_container_list:
+            emoji = '❌'
+            module_prefix = LSHF.prefix(LSHF.YELLOW, italic=True)
+            apoint_prefix = LSHF.prefix(LSHF.RED, italic=True)
         endpoint_prefix = ("{}• {:23s}{}{} {}{}").format(
             module_prefix, module_name + ":", LSHF.suffix(), emoji,
             apoint_prefix, access_point)
@@ -1684,7 +1673,10 @@ def display_service_endpoints(profile, supabase, env_vars):
         log.info(raw_msg, extra=endpoint_style)
     if not started_ok:
         log.info("")
-        log.info("These containers are not running:", extra=info_style)
+        msg = "This Docker container is not running:"
+        if len(failed_container_list) > 1:
+            msg = "These Docker containers are not running:"
+        log.info(msg, extra=info_style)
         for container in failed_container_list:
             log.info("❌ {}".format(container), extra=fail_style)
     log.info("="*60, extra=line_style)
@@ -2533,7 +2525,7 @@ def main():
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, build)
-    #display_service_endpoints(args.profile, supabase, env_vars)
+    display_service_endpoints(args.profile, supabase, env_vars)
 
     with open('./state/.operation', 'w', newline='\n') as f:
         f.write('start' + ':' + llama.lower())

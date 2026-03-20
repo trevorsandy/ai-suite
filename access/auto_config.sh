@@ -1610,9 +1610,10 @@ generate_dot_env_file() {
                         "${GENERATORS[$gen]}"
                     fi
                 )
-                val="${val//$'\n'/}"
-                ((++generated_count))
+				val="${val//$'\n'/}"   # remove newlines
                 log_info "${BODY}  $(elide "$var")${MAGENTA}=${WHITE}$(elide "$val") ${CYAN}$gen${arg:+:$arg}"
+                val="${val//$/$$}"     # escape bcrypt chars in docker-compose
+                ((++generated_count))
             elif [[ -n "$val" ]]; then
                 ((++inherited_count))
                 log_info "${BODY}  $(elide "$var")${MAGENTA}=${WHITE}$(elide "$val")"
