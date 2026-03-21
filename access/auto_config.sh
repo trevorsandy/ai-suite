@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 20 2026
+# Last Update March, 21 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -854,8 +854,8 @@ if [ ! -x "$yq_bin" ]; then
 fi
 
 bin_status () { if test -x "$1"; then echo "${GREEN}  ✔"; else echo "${RED}  ✘"; fi }
-log_info "$(bin_status "$up_bin")${END} ${WHITE}url_parser $up_ver"
-log_info "$(bin_status "$yq_bin") ${WHITE}yq $yq_ver"
+log_info "$(bin_status "$up_bin")${END} ${WHITE}url_parser $up_ver - Singh Inder"
+log_info "$(bin_status "$yq_bin") ${WHITE}yq $yq_ver - Mike Farah"
 
 format_prompt() { echo -e "${PROMPT} ${GREEN}$1${END}"; }
 
@@ -1784,7 +1784,7 @@ update_yaml_file() {
     cp "$yaml_file" "$tmp"
 
     sed -i '/^\r\{0,1\}$/s// #BLANK_LINE/' "$tmp"
-    "$yq_bin" -i "$1" "$tmp"
+    "$yq_bin" eval -i "$1" "$tmp"
     sed -i "s/ *#BLANK_LINE//g" "$tmp"
 
     local staged_count
@@ -1887,9 +1887,6 @@ if [[ "$proxy" == "caddy" ]]; then
     #-------------------------------------------
     caddy_local_volume="./access/caddy"
     caddyfile_local="$caddy_local_volume/Caddyfile"
-
-    # mounted local ./caddy/addons to this path inside container
-    caddy_addons_path="/etc/caddy/addons"
 
 # DEFINE nginx.template and Nginx Docker service insert
 else
@@ -2009,14 +2006,12 @@ if [[ "$with_authelia" == true ]]; then
     #-------------------------------------------
 
     # shellcheck disable=SC2016
-    authelia_docker_service_yaml='.services.authelia.container_name = "authelia" |
-       .services.authelia.profiles=["authelia"] |
+    authelia_docker_service_yaml='.services.authelia.profiles=["authelia"] |
+       .services.authelia.container_name = "authelia" |
        .services.authelia.image = "authelia/authelia:4.38" |
-       .services.authelia.volumes = ["./access/authelia:/config"] |
-       .services.authelia.depends_on.db.condition = "service_healthy" |
-       .services.authelia.expose = [9091] |
        .services.authelia.restart = "unless-stopped" |
-       .services.authelia.healthcheck.disable = false |
+       .services.authelia.expose = [9091] |
+       .services.authelia.volumes = ["./access/authelia:/config"] |
        .services.authelia.environment = {
          "AUTHELIA_STORAGE_POSTGRES_ADDRESS": "tcp://db:5432",
          "AUTHELIA_STORAGE_POSTGRES_USERNAME": "postgres",
@@ -2026,10 +2021,14 @@ if [[ "$with_authelia" == true ]]; then
          "AUTHELIA_SESSION_SECRET": "${AUTHELIA_SESSION_SECRET:?error}",
          "AUTHELIA_STORAGE_ENCRYPTION_KEY": "${AUTHELIA_STORAGE_ENCRYPTION_KEY:?error}",
          "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET": "${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}"
-       }'
+       } |
+       .services.authelia.depends_on.db.condition = "service_healthy" |
+       .services.authelia.healthcheck.disable = false'
 
+    authelia_volume="./volumes/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"
+    # shellcheck disable=SC2016
     authelia_docker_supabase_service_yaml='.services.db.environment.AUTHELIA_SCHEMA = strenv(authelia_schema) |
-       .services.db.volumes += "./volumes/db/schema-authelia.sh:/docker-entrypoint-initdb.d/schema-authelia.sh"'
+        .services.db.volumes |= ((. // []) as $v | $v + (["'"$authelia_volume"'"] - $v))'
 
     if [[ "$WITH_REDIS" == true ]]; then
         log_info "${BODY}Authelia Redis configuration in $compose_path"
@@ -2091,10 +2090,10 @@ write_dot_env_vars "${dot_env_vars[@]}"
 # |    | ++ | `MinIO`                 | minio:9001/                       | localhost:9001/          |
 # |    | ++ | `QDrant`                | qdrant:6333/dashboard/            | localhost:6333/dashboard/|
 # | ++ | ++ | `Subabase`              | supabase-kong:8000                | localhost:8000           |
-# |    | ++ | `Postgres`              | postgres:5432                     | localhost:5432/          |
+# |    | ++ | `Logflare`              | supabase-analytics:4000/dashboard/| localhost:4000/dashboard/|
+# |    | ++ | `PostgreSQL`            | postgres:5432                     | localhost:5432/          |
 # | ++ |    | `Langfuse Web`          | langfuse-web:3000/                | localhost:3000/          |
 # |    | ++ | `Langfuse Worker`       | langfuse-worker:3030/             | localhost:3030/          |
-# |    | ++ | `Logflare`              | supabase-analytics:4000/dashboard/| localhost:4000/dashboard/|
 # |    | ++ | `ClickHouse`            | clickhouse:8123/                  | localhost:8123/          |
 # | ++ |    | `SearXNG`               | searxng:8081/                     | localhost:8081/          |
 # | ++ | ++ | `Neo4j`                 | neo4j:7473/                       | localhost:7473/          |
@@ -2115,166 +2114,163 @@ if [[ "$proxy" == "caddy" ]]; then
     mkdir -p "$caddy_local_volume"
     # https://stackoverflow.com/a/3953712/18954618
     echo "
-    import /etc/caddy/addons/cors.conf
+import /etc/caddy/addons/cors.conf {
+    # Global options - works for both environments
+    email {\$LETSENCRYPT_EMAIL}
+}
 
-    {
-        # Global options - works for both environments
-        email {\$LETSENCRYPT_EMAIL}
-    }
+(configuration) {
+    $([[ "$CI" == true || "$AC_LOCAL" == true ]] && echo "tls internal")
 
-    (authelia) {
-        $([[ "$CI" == true || "$AC_LOCAL" == true ]] && echo "tls internal")
+    $([[ "$with_authelia" == true ]] && echo "@authelia path /authenticate /authenticate/*
+    handle @authelia {
+        reverse_proxy authelia:9091
+    }")
 
-        $([[ "$with_authelia" == true ]] && echo "@authelia path /authenticate /authenticate/*
-        handle @authelia {
-            reverse_proxy authelia:9091
+    handle {
+        $([[ "$with_authelia" == false ]] && echo "basic_auth {
+            {\$PROXY_AUTH_USERNAME} {\$PROXY_AUTH_PASSWORD}
+        }" || echo "forward_auth authelia:9091 {
+            uri /api/authz/forward-auth
+            copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
         }")
+    }
+}
 
-        handle {
-            $([[ "$with_authelia" == false ]] && echo "basic_auth {
-                {\$PROXY_AUTH_USERNAME} {\$PROXY_AUTH_PASSWORD}
-            }" || echo "forward_auth authelia:9091 {
-                uri /api/authz/forward-auth
-                copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
-            }")
+# N8N
+{\$N8N_HOSTNAME} {
+    import configuration
+    # For domains, Caddy will automatically use Let's Encrypt
+    # For localhost/port addresses, HTTPS won't be enabled
+    reverse_proxy n8n:5678
+}
+
+# Open WebUI
+{\$WEBUI_HOSTNAME} {
+    import configuration
+    reverse_proxy open-webui:8080
+}
+
+# Flowise
+{\$FLOWISE_HOSTNAME} {
+    import configuration
+    reverse_proxy flowise:3001
+}
+
+# Langfuse
+{\$LANGFUSE_HOSTNAME} {
+    import configuration
+    reverse_proxy langfuse-web:3000
+}
+
+# Supabase
+{\$SUPABASE_HOSTNAME} {
+    import configuration
+    @supa_api path /rest/v1/* /auth/v1/* /realtime/v1/* /functions/v1/* /mcp /api/mcp
+
+    handle @supa_api {
+        reverse_proxy supabase-kong:8000
+    }
+
+    handle_path /storage/v1/* {
+        import cors *
+        reverse_proxy storage:5000 {
+            header_up X-Forwarded-Prefix /{http.request.orig_uri.path.0}/{http.request.orig_uri.path.1}
         }
     }
 
-    # N8N
-    {\$N8N_HOSTNAME} {
-        import authelia
-        # For domains, Caddy will automatically use Let's Encrypt
-        # For localhost/port addresses, HTTPS won't be enabled
-        reverse_proxy n8n:5678
+    handle_path /goapi/* {
+        reverse_proxy kong:8000
     }
 
-    # Open WebUI
-    {\$WEBUI_HOSTNAME} {
-        import authelia
-        reverse_proxy open-webui:8080
+    handle_path /logflare/* {
+        reverse_proxy analytics:4000
     }
 
-    # Flowise
-    {\$FLOWISE_HOSTNAME} {
-        import authelia
-        reverse_proxy flowise:3001
+    handle {
+        reverse_proxy studio:3000
     }
+}
 
-    # Langfuse
-    {\$LANGFUSE_HOSTNAME} {
-        import authelia
-        reverse_proxy langfuse-web:3000
-    }
+# Neo4j
+{\$NEO4J_HOSTNAME} {
+    import configuration
+    reverse_proxy neo4j:7474
+}
 
-    # Supabase
-    {\$SUPABASE_HOSTNAME} {
-        import authelia
-        @supa_api path /rest/v1/* /auth/v1/* /realtime/v1/* /functions/v1/* /mcp /api/mcp
-
-        handle @supa_api {
-            reverse_proxy supabase-kong:8000
-        }
-
-        handle_path /storage/v1/* {
-            import cors *
-            reverse_proxy storage:5000 {
-                header_up X-Forwarded-Prefix /{http.request.orig_uri.path.0}/{http.request.orig_uri.path.1}
-            }
-        }
-
-        handle_path /goapi/* {
-            reverse_proxy kong:8000
-        }
-
-        handle_path /logflare/* {
-            reverse_proxy analytics:4000
-        }
-
-        handle {
-            reverse_proxy studio:3000
-        }
-    }
-
-    # Neo4j
-    {\$NEO4J_HOSTNAME} {
-        import authelia
-        reverse_proxy neo4j:7474
-    }
-
-    # SearXNG
-    $([[ -n "$AC_SEARXNG" ]] && echo "\
+# SearXNG
+$([[ $AC_SEARXNG == true ]] && echo "\
 {\$SEARXNG_HOSTNAME} {" || echo "\
 {DISABLED_SEARXNG} {")
-        import authelia
-        encode zstd gzip
+    import configuration
+    encode zstd gzip
 
-        @api {
-            path /config
-            path /healthz
-            path /stats/errors
-            path /stats/checker
-        }
-        @search {
-            path /search
-        }
-        @imageproxy {
-            path /image_proxy
-        }
-        @static {
-            path /static/*
-        }
-
-        header {
-            # CSP (https://content-security-policy.com)
-            Content-Security-Policy \"upgrade-insecure-requests; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self' https://github.com/searxng/searxng/issues/new; font-src 'self'; frame-ancestors 'self'; base-uri 'self'; connect-src 'self' https://overpass-api.de; img-src * data:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.dailymotion.com https://www.deezer.com https://www.mixcloud.com https://w.soundcloud.com https://embed.spotify.com;\"
-            # Disable some browser features
-            Permissions-Policy \"accelerometer=(),camera=(),geolocation=(),gyroscope=(),magnetometer=(),microphone=(),payment=(),usb=()\"
-            # Set referrer policy
-            Referrer-Policy \"no-referrer\"
-            # Force clients to use HTTPS
-            Strict-Transport-Security \"max-age=31536000\"
-            # Prevent MIME type sniffing from the declared Content-Type
-            X-Content-Type-Options \"nosniff\"
-            # X-Robots-Tag (comment to allow site indexing)
-            X-Robots-Tag \"noindex, noarchive, nofollow\"
-            # Remove \"Server\" header
-            -Server
-        }
-
-        header @api {
-            Access-Control-Allow-Methods \"GET, OPTIONS\"
-            Access-Control-Allow-Origin \"*\"
-        }
-
-        route {
-            # Cache policy
-            header Cache-Control \"max-age=0, no-store\"
-            header @search Cache-Control \"max-age=5, private\"
-            header @imageproxy Cache-Control \"max-age=604800, public\"
-            header @static Cache-Control \"max-age=31536000, public, immutable\"
-        }
-
-        # SearXNG (uWSGI)
-        reverse_proxy searxng:8080 {
-            header_up X-Forwarded-Port {http.request.port}
-            header_up X-Real-IP {http.request.remote.host}
-            # https://github.com/searx/searx-docker/issues/24
-            header_up Connection \"close\"
-        }
+    @api {
+        path /config
+        path /healthz
+        path /stats/errors
+        path /stats/checker
+    }
+    @search {
+        path /search
+    }
+    @imageproxy {
+        path /image_proxy
+    }
+    @static {
+        path /static/*
     }
 
-    $(if [[ -n "$AC_LLAMA" ]]; then \
-      [[ "$AC_LLAMACPP" == false ]] && echo "\
-    # Ollama API
-    {\$OLLAMA_HOSTNAME} {
-        import authelia
-        reverse_proxy ollama:11434
-    }" || echo "\
-    # LLaMA.cpp API
-    {\$LLAMACPP_HOSTNAME} {
-        import authelia
-        reverse_proxy llamacpp:8040
-    }"; fi)
+    header {
+        # CSP (https://content-security-policy.com)
+        Content-Security-Policy \"upgrade-insecure-requests; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self' https://github.com/searxng/searxng/issues/new; font-src 'self'; frame-ancestors 'self'; base-uri 'self'; connect-src 'self' https://overpass-api.de; img-src * data:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.dailymotion.com https://www.deezer.com https://www.mixcloud.com https://w.soundcloud.com https://embed.spotify.com;\"
+        # Disable some browser features
+        Permissions-Policy \"accelerometer=(),camera=(),geolocation=(),gyroscope=(),magnetometer=(),microphone=(),payment=(),usb=()\"
+        # Set referrer policy
+        Referrer-Policy \"no-referrer\"
+        # Force clients to use HTTPS
+        Strict-Transport-Security \"max-age=31536000\"
+        # Prevent MIME type sniffing from the declared Content-Type
+        X-Content-Type-Options \"nosniff\"
+        # X-Robots-Tag (comment to allow site indexing)
+        X-Robots-Tag \"noindex, noarchive, nofollow\"
+        # Remove \"Server\" header
+        -Server
+    }
+
+    header @api {
+        Access-Control-Allow-Methods \"GET, OPTIONS\"
+        Access-Control-Allow-Origin \"*\"
+    }
+
+    route {
+        # Cache policy
+        header Cache-Control \"max-age=0, no-store\"
+        header @search Cache-Control \"max-age=5, private\"
+        header @imageproxy Cache-Control \"max-age=604800, public\"
+        header @static Cache-Control \"max-age=31536000, public, immutable\"
+    }
+
+    # SearXNG (uWSGI)
+    reverse_proxy searxng:8080 {
+        header_up X-Forwarded-Port {http.request.port}
+        header_up X-Real-IP {http.request.remote.host}
+        # https://github.com/searx/searx-docker/issues/24
+        header_up Connection \"close\"
+    }
+}
+
+$(if [[ $AC_LLAMA == true ]]; then \
+  [[ $AC_LLAMACPP == false ]] && echo "\
+# Ollama API
+{\$OLLAMA_HOSTNAME} {
+    reverse_proxy ollama:11434
+}" || echo "\
+# LLaMA.cpp API
+{\$LLAMACPP_HOSTNAME} {
+    import configuration
+    reverse_proxy llamacpp:8040
+}"; fi)
 " >"$caddyfile_local"
 # WRITE LOCAL nginx.template
 else
@@ -2326,14 +2322,14 @@ upstream langfuse_upstream {
     keepalive 2;
 }
 
-$([[ -n "$AC_SEARXNG" ]] && echo "\
+$([[ $AC_SEARXNG == true ]] && echo "\
 upstream searxng_upstream {
     server searxng:8081;
     keepalive 2;
 }")
 
-$(if [[ -n "$AC_LLAMA" ]]; then \
-  [[ "$AC_LLAMACPP" == false ]] && echo "\
+$(if [[ $AC_LLAMA == true ]]; then \
+  [[ $AC_LLAMACPP == false ]] && echo "\
 upstream ollama_upstream {
     server ollama:11434;
     keepalive 2;
@@ -2384,14 +2380,14 @@ server {
         proxy_pass http://langfuse_upstream
     }
 
-    $([[ -n "$AC_SEARXNG" ]] && echo "\
+    $([[ $AC_SEARXNG == true ]] && echo "\
     # SearXNG
     location /searxng {
         proxy_pass http://searxng_upstream
     }")
 
-    $(if [[ -n "$AC_LLAMA" ]]; then \
-      [[ "$AC_LLAMACPP" == false ]] && echo "\
+    $(if [[ $AC_LLAMA == true ]]; then \
+      [[ $AC_LLAMACPP == false ]] && echo "\
     # Ollama
     location / {
         proxy_pass http://ollama_upstream

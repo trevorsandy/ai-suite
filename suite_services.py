@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 20, 2026
+Last Update March 21, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -688,22 +688,23 @@ def prepare_opencode_config(env_vars):
         log.error(f"Exception: Configuration - {llama} model: {e}")
 
 def destroy_ai_suite(profile, install):
-    """Stop and remove AI-Suite containers and volumes (using its compose file)
+    """Stop and remove AI-Suite containers and volumes (using compose file)
        for the specified profile arguments.
     """
+    if not profile:
+        log.error("Profile required to destroy containers")
+        return
     insert = "and volumes for" if install else "for"
-    log.info(f"Destroying {name} containers {insert} profile arguments: {profile}...")
+    insert = f"Destroying {name} containers {insert}"
+    log.info(f"{insert} profile arguments: {profile}...", extra=log_bright)
     cmd = ["docker", "compose", "-p", "ai-suite"]
-    if profile:
-        for argument in profile:
-            cmd.extend(["--profile", argument])
+    for argument in profile:
+        cmd.extend(["--profile", argument])
     cmd.extend(["-f", "docker-compose.yml", "down"])
     if install:
         cmd.extend(["--volumes"])
     run_command(cmd)
     if install:
-        supabase_data = os.path.join("supabase", "docker", "volumes", "db", "data")
-        clean_dir_path(supabase_data, restore=False)
         cmd = ["docker", "volume", "prune", "--force"]
         run_command(cmd)
     log.info("="*60, extra=LSHF.style(logging.INFO, LSHF.BLUE))
@@ -713,6 +714,9 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     """Start, stop, pause or pull the AI-Suite containers (using its compose file)
        for the specified profile arguments and environment argument.
     """
+    if not profile:
+        log.error("Profile required to perform operations")
+        return
     if not operation:
         operation = "stop"
 
@@ -721,12 +725,12 @@ def operate_ai_suite(operation, profile, environment, env_vars):
 
     supabase = False
     open_webui = False
-    if profile and operation != 'pull':
+    # WebUI built - nothing to pull, Supabase pulled with suite via include.
+    if operation != 'pull':
         supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
         open_webui = any(p for p in profile if p in open_webui_all_profiles)
 
     if operation == 'start' and environment:
-        env_vars['POSTGRES_HOST'] = "db" if supabase else "postgres"
         load_dotenv_vars(env_vars)
         if supabase:
             start_supabase(environment, False)
@@ -1431,7 +1435,8 @@ def docker_volume_data(operation):
         ('llamacpp_data',             '/root/.cache',             'llamacpp'),
         ('caddy_data',                '/data',                    'caddy'),
         ('caddy_config_data',         '/config',                  'caddy'),
-        ('db-config',                 '/etc/postgresql-custom',   'supabase-db')
+        ('db-config',                 '/etc/postgresql-custom',   'supabase-db'),
+        ('deno-cache',                '/root/.cache/deno',        'supabase-edge-functions')
     ]
     restore_data = operation == 'restore-data'
     backup_dir = os.path.join(os.getcwd(), "backup")
@@ -1481,13 +1486,32 @@ def wait_with_progress(seconds: int, level=logging.INFO, color=None, width=60):
         time.sleep(0.05) # smooth updates (~20 FPS)
     print() # move to next line when done
 
-def display_service_endpoints(profile, supabase=False, env_vars={}):
+def docker_container_is_running(container):
+    """:Return True if container name found in output check, else False."""
+    cmd = " ".join(['docker', 'inspect', '-f', '{{.State.Running}}', container])
+    try:
+        check = subprocess.check_output(cmd).decode().strip()
+        running = check == "true"
+        if log.root.level == logging.DEBUG:
+            color = LSHF.WHITE if running else LSHF.RED
+            style = LSHF.style(logging.INFO, color)
+            insert = ('is', 'running.') if running else ('not', 'running!')
+            raw_msg = " ".join([container, insert[0], insert[1]])
+            log.debug("Container {}".format(raw_msg), extra=style)
+        return running
+    except subprocess.CalledProcessError:
+        return False
+
+def display_service_endpoints(profile, supabase, env_vars={}):
     """Display AI-Suite installation or operationstatus"""
     if not profile:
         log.error("Profile required to display service endpoints")
         return
 
-    url = 'http://localhost'
+    host = env_vars.get('AC_DOMAIN', 'localhost')
+    private = str(env_vars.get('AC_LOCAL')).lower()
+    protocol = 'http' if private else 'https'
+    url = f'{protocol}://{host}'
 
     # This dictionary holds a list of touples (container, Module Name, Endpoint)
     # grouped by module - aka profile argument
@@ -1496,10 +1520,13 @@ def display_service_endpoints(profile, supabase=False, env_vars={}):
             ('n8n',                 'n8n',            url + ':5678'),
             ('mcp-gateway',         'MCP Gateway',    url + ':8060/'),
             ('qdrant',              'QDrant',         url + ':6333/dashboard'),
-            ('postgres',            'Postgres',       url + ':5432/'),
+            ('postgres',            'PostgreSQL',     url + ':5432/'),
             ('supabase-kong',       'Supabase',       url + ':8000'),
             ('supabase-analytics',  'Logflare',       url + ':4000/dashboard'),
-            ('redis',               'Redis',          url + ':6379/')
+            ('redis',               'Redis',          url + ':6379/'),
+            ('n8n-runner',          'n8n Runner',           ''),
+            ('n8n-worker',          'n8n Worker',           ''),
+            ('n8n-worker-runner',   'n8n Worker Runner',    '')
         ],
         'n8n-all': [
             ('n8n',                 'n8n',                    url + ':5678'),
@@ -1508,14 +1535,17 @@ def display_service_endpoints(profile, supabase=False, env_vars={}):
             ('mcp-gateway',         'MCP Gateway',            url + ':8060/'),
             ('open-webui-mcpo',     'Open WebUI MCPO',        url + ':8090/'),
             ('qdrant',              'QDrant',                 url + ':6333/dashboard'),
-            ('postgres',            'Postgres',               url + ':5432/'),
+            ('postgres',            'PostgreSQL',             url + ':5432/'),
             ('supabase-kong',       'Supabase',               url + ':8000'),
             ('supabase-analytics',  'Logflare',               url + ':4000/dashboard'),
-            ('redis',               'Redis',                  url + ':6379/')
+            ('redis',               'Redis',                  url + ':6379/'),
+            ('n8n-runner',          'n8n Runner',           ''),
+            ('n8n-worker',          'n8n Worker',           ''),
+            ('n8n-worker-runner',   'n8n Worker Runner',    '')
         ],
         'opencode': [
-            ('opencode',            'Opencode',        './opencode/run_opencode_docker.py'),
-            ('mcp-gateway',         'MCP Gateway',     url + ':8060/')
+            ('opencode',            'Opencode', './opencode/run_opencode_docker.py'),
+            ('mcp-gateway',         'MCP Gateway',            url + ':8060/')
         ],
         'open-webui': [
             ('open-webui',          'Open WebUI',             url + ':8080/'),
@@ -1532,13 +1562,24 @@ def display_service_endpoints(profile, supabase=False, env_vars={}):
         ],
         'supabase': [
             ('supabase-kong',       'Supabase',        url + ':8000'),
-            ('supabase-analytics',  'Logflare',        url + ':4000/dashboard')
+            ('supabase-analytics',  'Logflare',        url + ':4000/dashboard'),
+            ('supabase-pooler',     'Supavisor',       url + ':6543'),
+            ('supabase-studio',     'Studio',              ''),
+            ('supabase-auth',       'Auth',                ''),
+            ('supabase-rest',       'PostgREST',           ''),
+            ('realtime-dev.supabase-realtime', 'Realtime', ''),
+            ('supabase-storage',    'Storage',             ''),
+            ('supabase-imgproxy',   'imgproxy',            ''),
+            ('supabase-meta',       'postgres-meta',       ''),
+            ('supabase-db',         'PostgreSQL',          ''),
+            ('supabase-edge-functions', 'Edge Runtime',    ''),
+            ('supabase-vector',     'Vector',              '')
         ],
         'langfuse': [
             ('langfuse-web',        'Langfuse Web',    url + ':3000/'),
             ('langfuse-worker',     'Langfuse Worker', url + ':3030/'),
             ('clickhouse',          'ClickHouse',      url + ':8123/'),
-            ('postgres',            'Postgres',        url + ':5432/'),
+            ('postgres',            'PostgreSQL',      url + ':5432/'),
             ('redis',               'Redis',           url + ':6379/'),
             ('minio',               'MinIO',           url + ':9001/')
         ],
@@ -1580,6 +1621,8 @@ def display_service_endpoints(profile, supabase=False, env_vars={}):
     container_list = []
     module_names = set()
     proxy_in_profile = any(p in profile for p in ('caddy', 'nginx'))
+    if supabase is None:
+        supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
 
     def skip_module(module, module_name):
         if llama_cpp and module in ('cpu', 'gpu-nvidia', 'gpu-amd'):
@@ -1600,7 +1643,7 @@ def display_service_endpoints(profile, supabase=False, env_vars={}):
     def skip_container(container):
         if not container or container in container_list:
             return True
-        if container.startswith('supabase-') or container.startswith('realtime-dev.'):
+        if not supabase and 'supabase-' in container:
             return True
         if llama_on_host and container in ('ollama', 'llamacpp'):
             return True
@@ -1657,6 +1700,8 @@ def display_service_endpoints(profile, supabase=False, env_vars={}):
     log.info("")
     log.info("Access Points:", extra=info_style)
     for container, module_name, access_point in module_list:
+        if not access_point:
+            continue
         emoji = '🚀' if module_name.lower() == 'opencode' else '🔗'
         module_prefix = LSHF.prefix(LSHF.GREEN)
         apoint_prefix = LSHF.prefix(LSHF.BLUE)
@@ -1677,8 +1722,9 @@ def display_service_endpoints(profile, supabase=False, env_vars={}):
         if len(failed_container_list) > 1:
             msg = "These Docker containers are not running:"
         log.info(msg, extra=info_style)
-        for container in failed_container_list:
-            log.info("❌ {}".format(container), extra=fail_style)
+        for container, module_name, access_point in module_list:
+            if container in failed_container_list:
+                log.info(("❌ {:30s} {}").format(container, module_name), extra=fail_style)
     log.info("="*60, extra=line_style)
 
 def setup_ai_suite_ac_auto_config(env_vars:dict):

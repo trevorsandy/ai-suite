@@ -376,16 +376,11 @@ services:
     profiles: [authelia]
     container_name: authelia
     image: authelia/authelia:4.38
-    volumes:
-      - ./access/authelia:/config
-    depends_on:
-      db:
-        condition: service_healthy
+    restart: unless-stopped
     expose:
       - 9091
-    restart: unless-stopped
-    healthcheck:
-      disable: false
+    volumes:
+      - ./access/authelia:/config
     environment:
       AUTHELIA_STORAGE_POSTGRES_ADDRESS: tcp://db:5432
       AUTHELIA_STORAGE_POSTGRES_USERNAME: postgres
@@ -395,6 +390,11 @@ services:
       AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:?error}
       AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:?error}
       AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?error}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: false
 
   caddy:
     profiles: [caddy]
@@ -554,8 +554,7 @@ services:
     profiles: ["langfuse", "ai-all"]
     image: alpine:3.19
     container_name: clickhouse-logs-access
-    command: >
-      sh -c "chown -R 101:101 /var/log/clickhouse-server"
+    command: sh -c "chown -R 101:101 /var/log/clickhouse-server"
     volumes:
       - ./langfuse/clickhouse/logs:/var/log/clickhouse-server
     restart: "no"
