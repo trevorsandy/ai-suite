@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 21, 2026
+Last Update March 23, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1703,16 +1703,9 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
             log.error(f"Exception: WSL whoami: {e.stderr}")
     default = env_vars.get('AC_SUDO_USER', sudo_user)
     if prompt:
-        response = input(f"Enter a {non_root} sudo user (current user: {default}): ")
+        response = input(f"Enter a {non_root} sudo user (current user: {default}): ").strip()
     default = response if response else default
     ac_env_list.append(f'AC_SUDO_USER="{default}"')
-    # AC_SUDO_PASSWORD - str
-    if prompt:
-        password = getpass.getpass(f"Enter hidden sudo password for package install: ")
-    if not password:
-        log.notice(f"A sudo password prompt will trigger on package install.") # type:ignore[reportAttributeAccessIssue]
-    ac_env_list.append(f'AC_SUDO_PASSWORD="{password}"')
-    password = None
     # AC_USERNAME - str
     default = env_vars.get('AC_USERNAME', 'AISuiteProxyUser')
     change_default = True if not default.isalnum() else False
@@ -1881,6 +1874,14 @@ def run_ai_suite_ac_auto_config(ac_env_vars):
     if not os.path.exists(ac_script):
         log.error(f"Auto-configure script not found at {ac_script}")
         return
+    # AC_SUDO_PASSWORD - stdin
+    sudo_password = None
+    if not is_root_user():
+        sudo_password = getpass.getpass("Optionally enter sudo password for elevated tasks: ")
+        if sudo_password:
+            ac_env_vars.append('AC_USE_SUDO=1')
+        else:
+            log.notice(f"The sudo password prompt will trigger on first elevated task.") # type:ignore[reportAttributeAccessIssue]
     if system == 'Windows':
         ac_script = ac_script.replace("\\", "/")
     ac_script = "".join(["./", ac_script])
@@ -1901,13 +1902,20 @@ def run_ai_suite_ac_auto_config(ac_env_vars):
     log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd_msg)))
     cmd = cmd + [" ".join(["env"] + ac_env_vars + [ac_script])]
     try:
-        completed = subprocess.run(cmd, cwd=None, text=True, check=True)
+        completed = subprocess.run(
+            cmd,
+            input=(sudo_password) if sudo_password else None,
+            text=True,
+            check=True
+        )
+        sudo_password = None
         if completed.returncode != 0:
             log.error(f"Command: auto-configure: {completed.stderr}")
         else:
             info_style = LSHF.style(logging.INFO, LSHF.GREEN)
             log.info(f"See details in run log: {ac_log_file}", extra=info_style)
     except Exception as e:
+        sudo_password = None
         if e:
             e_list = str(e).split(',')
             if len(e_list) == len(cmd):
@@ -2223,6 +2231,8 @@ def main():
                     val = val.replace('"', '')
                     val = f'{val}\n' if is_bool else f'"{val}"\n'
                     f.write(f'{key}={val}')
+                if not is_root_user():
+                    f.write('AC_USE_SUDO=1')
         run_ai_suite_ac_auto_config(ac_env_vars)
         env_vars = get_dotenv_vars(auto_config=ac_auto_config, profile=args.profile)
         if not env_vars:

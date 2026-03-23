@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 21 2026
+# Last Update March, 23 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -22,6 +22,10 @@ VERSION="0.3.0"
 # shellcheck disable=SC1091
 [[ -z ${AC+x} && -f access/.ac.env ]] && {
 set -a && source access/.ac.env && set +a ; }
+
+if [[ -n ${AC_USE_SUDO+x} ]]; then
+    read -rs -t 0.1 AC_SUDO_PASSWORD || true
+fi
 
 # https://stackoverflow.com/a/28085062/18954618
 : "${CI:=false}"
@@ -477,7 +481,6 @@ if [ "$AC" == true ]; then
     done < <(compgen -A variable)
 else
     : "${AC:=false}"
-    : "${AC_SUDO_PASSWORD:=}"
     : "${AC_SUDO_USER:="$SUDO_USER"}"
     : "${AC_DOMAIN:=}"
     : "${AC_LOCAL:=false}"
@@ -671,9 +674,8 @@ package_is_installed() {
 }
 
 sudo_prompt() {
-    # https://superuser.com/questions/553932
-    if [ -n "${AC_SUDO_PASSWORD}" ]; then
-        (sudo -S -v <<<"${AC_SUDO_PASSWORD}" > /dev/null 2>&1)
+    if [ -n "$AC_SUDO_PASSWORD" ]; then
+        (printf '%s\n' "$AC_SUDO_PASSWORD" | sudo -S -v >/dev/null 2>&1)
     fi
 }
 
@@ -703,7 +705,7 @@ run_pkg_cmd() {
     local pld=0
     local user_privilege
     unix_privilege user_privilege
-    if [[ "$user_privilege" == "is_unix_root" ]]; then
+    if [[ "$user_privilege" == "is_unix__root" ]]; then
         log_info "${BODY}Running as${END} ${WHITE}Root"
     else
         local user="user with no privilege"
