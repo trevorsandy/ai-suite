@@ -1664,163 +1664,25 @@ def display_service_endpoints(profile, supabase, env_vars={}):
                 log.info(("❌ {:30s} {}").format(container, module_name), extra=fail_style)
     log.info("="*60, extra=line_style)
 
-def setup_ai_suite_ac_auto_config(env_vars:dict):
-    """Setup env_vars for self-hosted AI-Suite with Caddy/Nginx proxy and Authelia
-       2FA identity and access management.
-    """
-    if not env_vars:
-        log.error("The auto-configure env_vars dictionary is empty!")
-        return []
-    ac = env_vars.get('AC', 'False')
-    if ac and ac.lower() != 'true':
-        log.notice("Auto-configure is disabled. Set AC=True in .env to enable.") # type:ignore[reportAttributeAccessIssue]
-        return []
+def is_root_user():
+    """Return True if the numeric user ID of the current shell is root."""
+    try:
+        result = subprocess.run(
+            ["bash", "-c", "id -u"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        uid = int(result.stdout.strip())
+        return uid == 0
+    except (subprocess.CalledProcessError, ValueError):
+        return False
 
-    log.info(f"Auto-configuring {name} proxy and access...", extra=log_bright)
+def display_ac_env_vars(ac_env_vars):
+    """Display auto-configure environment variable settings"""
+    if not ac_env_vars:
+        return
 
-    password = "" # Set "password" to fully automate when debugging etc...
-    prompt = True # Set False to bypass prompts when debugging etc...
-    if prompt:
-        response = input(f"Use default auto-configure .env settings? y/n: (n)")
-    else:
-        response = 'y'
-    prompt = False if response.lower() == 'y' else prompt
-    response = None
-    public = False
-
-    # AC - bool
-    ac_env_list = [f'AC="{str(ac).lower()}"']
-    # AC_SUDO_USER - str
-    sudo_user = getpass.getuser()
-    non_root = "non-root"
-    if system == "Windows":
-        non_root = " ".join(["WSL", non_root])
-        cmd = ["wsl", "-e", "bash", "-c", "whoami"]
-        try:
-            completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            sudo_user = completed.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            log.error(f"Exception: WSL whoami: {e.stderr}")
-    default = env_vars.get('AC_SUDO_USER', sudo_user)
-    if prompt:
-        response = input(f"Enter a {non_root} sudo user (current user: {default}): ").strip()
-    default = response if response else default
-    ac_env_list.append(f'AC_SUDO_USER="{default}"')
-    # AC_USERNAME - str
-    default = env_vars.get('AC_USERNAME', 'AISuiteProxyUser')
-    change_default = True if not default.isalnum() else False
-    if prompt or change_default:
-        response = None
-        while not response:
-            response = input(f"Enter proxy user name (required: {default}): ")
-            if not response:
-                response = "AISuiteProxyUser"
-                log.notice(f"The proxy user name was auto-generated as {response} and saved to .env.") # type:ignore[reportAttributeAccessIssue]
-            if not response.isalnum():
-                log.warning(f"Only alphanumeric characters are allowed. Response: {response}.")
-                response = None
-    default = response.strip() if response else default
-    ac_env_list.append(f'AC_USERNAME="{default}"')
-    # AC_PASSWORD - str
-    default = env_vars.get('AC_PASSWORD', '*******')
-    change_default = True if default == '*******' else False
-    if prompt or change_default:
-        password = getpass.getpass(f"Enter hidden proxy user password (required: ***): ")
-    if not password and change_default:
-        import secrets
-        password_length = 13
-        password = secrets.token_urlsafe(password_length)
-        log.notice(f"The proxy user password was auto-generated and saved to .env.") # type:ignore[reportAttributeAccessIssue]
-    else:
-        password = default
-    ac_env_list.append(f'AC_PASSWORD="{password}"')
-    # AC_LOG_PATH - str
-    default = env_vars.get('AC_LOG_PATH', './access')
-    ac_env_list.append(f'AC_LOG_PATH="{default}"')
-    # AC_LOCAL - bool
-    default = env_vars.get('AC_LOCAL', 'False')
-    default = True if str(default).lower() == 'true' else False
-    if prompt:
-        response = input("Is this a local (private) installation? y/n ({}): "
-                         .format('y' if default else 'n'))
-    default = True if response and response.lower() == 'y' else default
-    ac_env_list.append(f'AC_LOCAL={str(default).lower()}')
-    public = not default
-    # AC_DOMAIN - str
-    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.pc')
-    if prompt:
-        response = input(f"Enter a domain ({default}): ")
-    default = response.strip() if response else default
-    ac_env_list.append(f'AC_DOMAIN="{default}"')
-    # AC_CONFIRM - bool
-    default = env_vars.get('AC_CONFIRM', 'False')
-    default = True if str(default).lower() == 'true' else False
-    if prompt:
-        response = input("Send confirmation email on user registration? y/n ({}): "
-                         .format('y' if default else 'n'))
-    default = True if response and response.lower() == 'y' else default
-    ac_env_list.append(f'AC_CONFIRM={str(default).lower()}')
-    # AC_WITH_EXIM - bool
-    if default:
-        default = env_vars.get('AC_WITH_EXIM', 'False')
-        default = True if str(default).lower() == 'true' else False
-        #if prompt:
-        #.   response = input("Add Exim SMTP server? y/n ({}): "
-        #                     .format('y' if default else 'n'))
-        default = True if response and response.lower() == 'y' else default
-        #ac_env_list.append(f'AC_WITH_EXIM={str(default).lower()}')
-    # AC_PROXY - str
-    default = env_vars.get('AC_PROXY', 'Caddy')
-    if prompt:
-        response = input(f"Enter proxy (Caddy or Nginx: {default}): ")
-    if response:
-        response = response.strip().lower()
-        if response not in ['caddy', 'nginx']:
-            log.warning(f"Invalid proxy specified: {response}. Using {default}.")
-            response = None
-    default = response if response else default
-    ac_env_list.append(f'AC_PROXY={default.lower()}')
-    # AC_WITH_AUTHELIA - bool
-    default = env_vars.get('AC_WITH_AUTHELIA', 'False')
-    default = True if str(default).lower() == 'true' else False
-    if prompt:
-        response = input("Include Authelia 2FA (Two Factor Authentication)? y/n ({}): "
-                         .format('y' if default else 'n'))
-    default = True if response and response.lower() == 'y' else default
-    ac_env_list.append(f'AC_WITH_AUTHELIA={str(default).lower()}')
-    if default:
-        # AC_EMAIL - str
-        default = env_vars.get('AC_EMAIL', 'ai-suite.aisuiteautheliauser@local.pc')
-        if prompt:
-            response = input(f"Enter Authelia user email (required: {default}): ")
-        default = response.strip() if response else default
-        ac_env_list.append(f'AC_EMAIL="{default}"')
-        # AC_DISPLAY_NAME - str
-        default = env_vars.get('AC_DISPLAY_NAME', f'{name} User')
-        change_default = True if not all(c.isalnum() or c.isspace() for c in default) else False
-        if prompt or change_default:
-            response = None
-            while not response:
-                response = input(f"Enter Authelia user display name (required: {default}): ")
-                if not response:
-                    response = "AI Suite Authelia User"
-                    log.notice(f"The Authelia user display name was auto-generated as {response} and saved to .env.") # type:ignore[reportAttributeAccessIssue]
-                if not all(c.isalnum() or c.isspace() for c in response):
-                    log.warning(f"Only alphanumeric characters and spaces are allowed. Response: {response}.")
-                    response = None
-        default = response.strip() if response else default
-        ac_env_list.append(f'AC_DISPLAY_NAME="{default}"')
-        # AC_WITH_REDIS - bool
-        default = env_vars.get('AC_WITH_REDIS', ('True' if public else 'False'))
-        default = True if str(default).lower() == 'true' else False
-        if prompt:
-            response = input("Use Redis with Authelia? y/n ({}{}): "
-                             .format('recommended: ' if public else '',
-                                     'y' if default else 'n'))
-        default = True if response and response.lower() == 'y' else default
-        ac_env_list.append(f'AC_WITH_REDIS={str(default).lower()}')
-
-    # Display Env settings
     header = ("{} Auto-configure Access Env Settings").format(name)
     emoji = '🚀'
     color = LSHF.GREEN
@@ -1838,7 +1700,7 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
     log.info(header, extra=header_style)
     log.info("="*60, extra=line_style)
 
-    for env_item in ac_env_list:
+    for env_item in ac_env_vars:
         env_pair = env_item.split('=')
         if env_pair[0].endswith('_PASSWORD'):
             env_pair[1] = '***'
@@ -1852,16 +1714,161 @@ def setup_ai_suite_ac_auto_config(env_vars:dict):
         log.info(raw_msg, extra=env_var_style)
     log.info("="*60, extra=line_style)
 
-    accept = True
-    if prompt:
-        response = input(f"Are these auto-configure settings ok to continue? y/n: (y)")
-    accept = True if response and response.lower() == 'y' else accept if not response else False
-    if accept:
-        return ac_env_list
-    else:
-        info_style = LSHF.style(logging.INFO, LSHF.YELLOW)
-        log.info(f"Auto-configure proxy and access settings was not accepted.", extra=info_style)
+def setup_ai_suite_ac_auto_config(prompt_store, env_vars:dict={}):
+    """Setup env_vars for self-hosted AI-Suite with Caddy/Nginx proxy and Authelia
+       2FA identity and access management.
+    """
+    if not env_vars:
+        log.error("The auto-configure env_vars dictionary is empty!")
         return []
+    ac = env_vars.get('AC', 'False')
+    if ac and ac.lower() != 'true':
+        log.notice("Auto-configure is disabled. Set AC=True in .env to enable.") # type:ignore[reportAttributeAccessIssue]
+        return []
+
+    log.info(f"Auto-configuring {name} proxy and access...", extra=log_bright)
+
+    prompt = prompt_store['p']
+    if prompt:
+        response = input(f"Use default auto-configure .env settings? y/n: (n)").strip()
+    else:
+        response = 'y'
+    prompt = False if response.lower() == 'y' else prompt
+    prompt_store['p'] = prompt
+    response = None
+    public = False
+
+    # AC - bool
+    ac_env_vars = [f'AC="{str(ac).lower()}"']
+    # AC_SUDO_USER - str
+    sudo_user = getpass.getuser()
+    non_root = "non-root"
+    if system == "Windows":
+        non_root = " ".join(["WSL", non_root])
+        cmd = ["wsl", "-e", "bash", "-c", "whoami"]
+        try:
+            completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            sudo_user = completed.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            log.error(f"Exception: WSL whoami: {e.stderr}")
+    default = env_vars.get('AC_SUDO_USER', sudo_user)
+    if prompt:
+        response = input(f"Enter a {non_root} sudo user (current user: {default}): ").strip()
+    default = response if response else default
+    ac_env_vars.append(f'AC_SUDO_USER="{default}"')
+    # AC_USERNAME - str
+    default = env_vars.get('AC_USERNAME', 'AISuiteProxyUser')
+    change_default = True if not default.isalnum() else False
+    if prompt or change_default:
+        response = None
+        while not response:
+            response = input(f"Enter proxy user name (required: {default}): ").strip()
+            if not response:
+                response = "AISuiteProxyUser"
+                log.notice(f"The proxy user name was auto-generated as {response} and saved to .env.") # type:ignore[reportAttributeAccessIssue]
+            if not response.isalnum():
+                log.warning(f"Only alphanumeric characters are allowed. Response: {response}.")
+                response = None
+    default = response.strip() if response else default
+    ac_env_vars.append(f'AC_USERNAME="{default}"')
+    # AC_PASSWORD - str
+    password = env_vars.get('AC_PASSWORD', '*******')
+    change_default = True if password == '*******' else False
+    if prompt or change_default:
+        password = getpass.getpass(f"Enter hidden proxy user password (required: ***): ")
+    if not password and change_default:
+        import secrets
+        password_length = 13
+        password = secrets.token_urlsafe(password_length)
+        log.notice(f"The proxy user password was auto-generated and saved to .env.") # type:ignore[reportAttributeAccessIssue]
+    ac_env_vars.append(f'AC_PASSWORD="{password}"')
+    # AC_LOG_PATH - str
+    default = env_vars.get('AC_LOG_PATH', './access')
+    ac_env_vars.append(f'AC_LOG_PATH="{default}"')
+    # AC_LOCAL - bool
+    default = env_vars.get('AC_LOCAL', 'False')
+    default = True if str(default).lower() == 'true' else False
+    if prompt:
+        response = input("Is this a local (private) installation? y/n ({}): "
+                         .format('y' if default else 'n')).strip()
+    default = True if response and response.lower() == 'y' else default
+    ac_env_vars.append(f'AC_LOCAL={str(default).lower()}')
+    public = not default
+    # AC_DOMAIN - str
+    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.pc')
+    if prompt:
+        response = input(f"Enter a domain ({default}): ").strip()
+    default = response if response else default
+    ac_env_vars.append(f'AC_DOMAIN="{default}"')
+    # AC_CONFIRM - bool
+    default = env_vars.get('AC_CONFIRM', 'False')
+    default = True if str(default).lower() == 'true' else False
+    if prompt:
+        response = input("Send confirmation email on user registration? y/n ({}): "
+                         .format('y' if default else 'n')).strip()
+    default = True if response and response.lower() == 'y' else default
+    ac_env_vars.append(f'AC_CONFIRM={str(default).lower()}')
+    # AC_WITH_EXIM - bool
+    if default:
+        default = env_vars.get('AC_WITH_EXIM', 'False')
+        default = True if str(default).lower() == 'true' else False
+        #if prompt:
+        #.   response = input("Add Exim SMTP server? y/n ({}): "
+        #                     .format('y' if default else 'n')).strip()
+        default = True if response and response.lower() == 'y' else default
+        #ac_env_vars.append(f'AC_WITH_EXIM={str(default).lower()}')
+    # AC_PROXY - str
+    default = env_vars.get('AC_PROXY', 'Caddy')
+    if prompt:
+        response = input(f"Enter proxy (Caddy or Nginx: {default}): ").strip()
+    if response:
+        response = response.strip().lower()
+        if response not in ['caddy', 'nginx']:
+            log.warning(f"Invalid proxy specified: {response}. Using {default}.")
+            response = None
+    default = response if response else default
+    ac_env_vars.append(f'AC_PROXY={default.lower()}')
+    # AC_WITH_AUTHELIA - bool
+    default = env_vars.get('AC_WITH_AUTHELIA', 'False')
+    default = True if str(default).lower() == 'true' else False
+    if prompt:
+        response = input("Include Authelia 2FA (Two Factor Authentication)? y/n ({}): "
+                         .format('y' if default else 'n')).strip()
+    default = True if response and response.lower() == 'y' else default
+    ac_env_vars.append(f'AC_WITH_AUTHELIA={str(default).lower()}')
+    if default:
+        # AC_EMAIL - str
+        default = env_vars.get('AC_EMAIL', 'ai-suite.aisuiteautheliauser@local.pc')
+        if prompt:
+            response = input(f"Enter Authelia user email (required: {default}): ").strip()
+        default = response if response else default
+        ac_env_vars.append(f'AC_EMAIL="{default}"')
+        # AC_DISPLAY_NAME - str
+        default = env_vars.get('AC_DISPLAY_NAME', f'{name} User')
+        change_default = True if not all(c.isalnum() or c.isspace() for c in default) else False
+        if prompt or change_default:
+            response = None
+            while not response:
+                response = input(f"Enter Authelia user display name (required: {default}): ").strip()
+                if not response:
+                    response = "AI Suite Authelia User"
+                    log.notice(f"The Authelia user display name was auto-generated as {response} and saved to .env.") # type:ignore[reportAttributeAccessIssue]
+                if not all(c.isalnum() or c.isspace() for c in response):
+                    log.warning(f"Only alphanumeric characters and spaces are allowed. Response: {response}.")
+                    response = None
+        default = response.strip() if response else default
+        ac_env_vars.append(f'AC_DISPLAY_NAME="{default}"')
+        # AC_WITH_REDIS - bool
+        default = env_vars.get('AC_WITH_REDIS', ('True' if public else 'False'))
+        default = True if str(default).lower() == 'true' else False
+        if prompt:
+            response = input("Use Redis with Authelia? y/n ({}{}): "
+                             .format('recommended: ' if public else '',
+                                     'y' if default else 'n')).strip()
+        default = True if response and response.lower() == 'y' else default
+        ac_env_vars.append(f'AC_WITH_REDIS={str(default).lower()}')
+
+    return ac_env_vars
 
 def run_ai_suite_ac_auto_config(ac_env_vars):
     """Configure self-hosted AI-Suite with Caddy/Nginx proxy and Authelia 2FA
@@ -1870,7 +1877,7 @@ def run_ai_suite_ac_auto_config(ac_env_vars):
     if not ac_env_vars:
         log.error(f"The auto-configure env_var list is empty!")
         return
-    ac_script = os.path.normpath(os.path.join("access", "auto_config.sh"))
+    ac_script = os.path.normpath(os.path.join("access", "foo.sh"))
     if not os.path.exists(ac_script):
         log.error(f"Auto-configure script not found at {ac_script}")
         return
@@ -1949,6 +1956,7 @@ def main():
         if len(op_array) > 1:
             llama_cpp = op_array[1].strip() == 'llama.cpp'
     elif os.path.exists(env_file):
+        os.makedirs('./state', exist_ok=True)
         lpv = dotenv.get_key(env_file, 'LLAMA_PATH')
         if lpv:
             llama_cpp = True if os.path.basename(lpv).lower().startswith('llama-server') else False
@@ -2179,7 +2187,49 @@ def main():
     # Automatic configuration
     ac_env_vars = []
     if ac_auto_config:
-        ac_env_vars = setup_ai_suite_ac_auto_config(env_vars)
+        prompt_store = {'p':True} # Set False to bypass prompts when debugging etc...
+        accepted = True
+        rejected = False
+        response = None
+        replay = False
+        attempt = 1
+        max_attempts = 3
+        ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, env_vars)
+        if ac_env_vars:
+            display_ac_env_vars(ac_env_vars)
+        if prompt_store['p']:
+            msg = f"Are these auto-configure settings ok to continue? y/n: (y)"
+            response = input(msg).strip().lower() or "y"
+        accepted = True if response and response == 'y' else accepted if not response else False
+        if not accepted:
+            info_style = LSHF.style(logging.INFO, LSHF.YELLOW)
+            while attempt < max_attempts:
+                msg = f"Would you like to replay the selection? y/n: (n)"
+                if prompt_store['p']:
+                    replay = input(msg).strip() or "n"
+                if replay == 'y':
+                    accepted = True
+                    response = None
+                    ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, env_vars)
+                    if ac_env_vars:
+                        display_ac_env_vars(ac_env_vars)
+                    if prompt_store['p']:
+                        msg = f"Are these auto-configure settings ok to continue? y/n: (y)"
+                        response = input(msg).strip().lower() or "y"
+                    accepted = True if response and response == 'y' else accepted if not response else False
+                    if accepted == 'y':
+                        break
+                else:
+                    rejected = True
+                    break
+                attempt += 1
+                if attempt == max_attempts:
+                    log.info("Maximum selection attempts reached! ", extra=info_style)
+                    rejected = True
+            if rejected:
+                msg = f"Auto-configure proxy and access settings was not accepted."
+                log.info(msg, extra=info_style)
+                ac_env_vars = []
         ac_auto_config = True if ac_env_vars else False
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
@@ -2222,6 +2272,7 @@ def main():
         # Debug configuration
         if log_level == logging.DEBUG:
             ac_env_vars.append(f'DEBUG_ON={str(True).lower()}')
+            os.makedirs('./access', exist_ok=True)
             with open('access/.ac.env', 'w', newline='\n') as f:
                 for var in ac_env_vars:
                     pair = var.split('=')
