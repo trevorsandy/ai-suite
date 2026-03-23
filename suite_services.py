@@ -68,7 +68,6 @@ import shutil
 import subprocess
 import textwrap
 import time
-import yaml
 
 # Info attributes
 INFO = {
@@ -1092,68 +1091,6 @@ def check_prerequisites():
         log.critical("Docker is not running. Start Docker Desktop.")
         #return False
     return True
-
-def compute_fingerprint(env_vars, container_info):
-    """Compute SHA256 fingerprint for a container given its patterns"""
-    matches = []
-    for pattern in container_info.get('patterns', []):
-        regex = re.compile(pattern)
-        matches.extend(f"{k}={v}" for k, v in env_vars.items() if regex.match(k))
-    if not matches:
-        return None
-    matches.sort()
-    data = "\n".join(matches).encode("utf-8")
-    return hashlib.sha256(data).hexdigest()
-
-def clean_dir_path(dir_path, restore=True, quiet=False):
-    """delete and recreate directory path"""
-    if os.path.exists(dir_path):
-        if not quiet:
-            log.info(f"Cleaning directory: {dir_path}...")
-        shutil.rmtree(dir_path)
-        if restore:
-            os.makedirs(dir_path, exist_ok=True)
-
-def clean_bind_mounts(changed_fp, fp_defs):
-    """clean bind mounts if fingerprints changed"""
-    for container in changed_fp:
-        mounts = fp_defs.get(container, {}).get('mounts', [])
-        for mount_path in mounts:
-            if os.path.exists(mount_path):
-                log.info(f"Cleaning bind mount: {mount_path} for container {container}")
-                clean_dir_path(mount_path, quiet=True)
-
-def process_dotenv_fingerprint(env_vars):
-    """Compute fingerprints for containers, compare to previous run,
-       clean bind mounts if fingerprints changed, and persist updated fingerprints.
-    """
-    fp_defs_file = './state/fingerprint.defs.yml'
-    if not os.path.exists(fp_defs_file):
-        log.error(f"The fingerprint definitions file {fp_defs_file} was not found!")
-        return
-    with open(fp_defs_file, 'r') as f:
-        fp_defs = yaml.safe_load(f)
-    current_fp = {
-        c: compute_fingerprint(env_vars, info)
-        for c, info in fp_defs["CONTAINERS"].items()
-    }
-    prev_fp = {}
-    fp_file = './state/fingerprints'
-    if os.path.exists(fp_file):
-        with open(fp_file, 'r') as f:
-            for line in f:
-                if '=' in line:
-                    k, v = line.strip().split('=', 1)
-                    prev_fp[k] = v
-    if prev_fp:
-        changed_fp = [c for c, h in current_fp.items() if prev_fp.get(c) != h]
-        if changed_fp:
-            log.info(f"Detected fingerprint changes for: {', '.join(changed_fp)}")
-            clean_bind_mounts(changed_fp, fp_defs)
-    os.makedirs(os.path.dirname(fp_file), exist_ok=True)
-    with open(fp_file, 'w') as f:
-        for c, h in current_fp.items():
-            f.write(f"{c}={h}\n")
 
 def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None):
     """Load environment variables from .env file"""
@@ -2455,8 +2392,6 @@ def main():
                 args.profile.extend([llama_arg])
             else:
                 log.info(f"""{insert} container images for {args.profile}...""")
-            if install:
-                process_dotenv_fingerprint(env_vars)
             docker_compose_include(True, True, False)
             destroy_ai_suite(args.profile, install)
         operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
