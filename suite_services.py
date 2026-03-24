@@ -2273,7 +2273,7 @@ def setup_ai_suite_ac_auto_config(prompt_store, env_vars:dict={}):
 
     return ac_env_vars
 
-def run_ai_suite_ac_auto_config(ac_env_vars):
+def run_ai_suite_ac_auto_config(sudo_password, ac_env_vars):
     """Configure self-hosted AI-Suite with Caddy/Nginx proxy and Authelia 2FA
        identity and access management.
     """
@@ -2284,14 +2284,6 @@ def run_ai_suite_ac_auto_config(ac_env_vars):
     if not os.path.exists(ac_script):
         log.error(f"Auto-configure script not found at {ac_script}")
         return
-    # AC_SUDO_PASSWORD - stdin
-    sudo_password = None
-    if not is_root_user():
-        sudo_password = getpass.getpass("Optionally enter sudo password for elevated tasks: ")
-        if sudo_password:
-            ac_env_vars.append('AC_USE_SUDO=1')
-        else:
-            log.notice(f"The sudo password prompt will trigger on first elevated task.") # type:ignore[reportAttributeAccessIssue]
     if system == 'Windows':
         ac_script = ac_script.replace("\\", "/")
     ac_script = "".join(["./", ac_script])
@@ -2563,11 +2555,18 @@ def main():
 
     # Check prerequisites
     missing_tools = check_prerequisites()
+    prompt_store = {'p':True} # Set False to bypass auto-configure prompts when debugging etc...
+    sudo_password = None
     install_tools = False
     if prompt_store['p']:
         if missing_tools:
             msg = f"Install missing tools? y/n: (n)"
             install_tools = True if input(msg).strip().lower() == "y" else False
+        # AC_SUDO_PASSWORD - stdin
+        if not is_root_user():
+            msg = "Enter sudo password for elevated tasks or skip for prompt: "
+            sudo_password = getpass.getpass(msg)
+
     # Install missing tools
     if install_tools:
         log.info("Installing required tools before continuing...")
@@ -2591,7 +2590,8 @@ def main():
         any(p for p in args.profile if p not in managemant_and_data_operations)
     env_vars = get_dotenv_vars(auto_config=ac_auto_config, profile=args.profile)
     if not env_vars:
-        sys.exit(1)
+         log.critical("No environment variables detected")
+         sys.exit(1)
 
     # Setup Supabase repository if using Supabase
     if any(p for p in args.profile if p == 'supabase'):
@@ -2610,7 +2610,6 @@ def main():
     # Automatic configuration
     ac_env_vars = []
     if ac_auto_config:
-        prompt_store = {'p':True} # Set False to bypass prompts when debugging etc...
         accepted = True
         rejected = False
         response = None
@@ -2656,6 +2655,10 @@ def main():
         ac_auto_config = True if ac_env_vars else False
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
+        if sudo_password:
+            ac_env_vars.append('AC_USE_SUDO=1')
+        else:
+            log.notice(f"The sudo password prompt will trigger on first elevated task.") # type:ignore[reportAttributeAccessIssue]
         # Add docker-compose proxy profiles
         proxy_set = False
         authelia_set = False
@@ -2705,11 +2708,12 @@ def main():
                     val = val.replace('"', '')
                     val = f'{val}\n' if is_bool else f'"{val}"\n'
                     f.write(f'{key}={val}')
-                if not is_root_user():
+                if sudo_password:
                     f.write('AC_USE_SUDO=1')
-        run_ai_suite_ac_auto_config(ac_env_vars)
+        run_ai_suite_ac_auto_config(sudo_password, ac_env_vars)
         env_vars = get_dotenv_vars(auto_config=ac_auto_config, profile=args.profile)
         if not env_vars:
+            log.critical("No environment variables detected")
             sys.exit(1)
     # TEMP: End here if working on auto-config and no breakpoints set...
     # if ac_auto_config:
