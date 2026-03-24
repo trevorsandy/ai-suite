@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 23, 2026
+Last Update March 24, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -63,10 +63,12 @@ import logging
 import hashlib
 import pathlib
 import platform
+import queue
 import re
 import shutil
 import subprocess
 import textwrap
+import threading
 import time
 
 # Info attributes
@@ -302,6 +304,440 @@ def run_command(cmd, cwd=None):
             log.error(f"Command: {completed.stderr}")
     except Exception as e:
         log.error(f"Exception: {e}.")
+
+def fail(msg):
+    """."""
+    log.error(f"{msg}")
+    raise RuntimeError(msg)
+
+def exists(cmd):
+    """."""
+    found = shutil.which(cmd) is not None
+    log.info(f"Check exists '{cmd}': {found}")
+    return found
+
+def retry(func, retries=3, base_delay=2, desc="operation"):
+    """."""
+    for attempt in range(1, retries + 1):
+        log.info(f"{desc} (attempt {attempt}/{retries})")
+        if func():
+            return True
+        delay = base_delay ** attempt
+        log.info(f"{desc} failed → retry in {delay}s")
+        time.sleep(delay)
+    return False
+
+def run_parallel(q):
+    """."""
+    def worker():
+        while not q.empty():
+            name, func = q.get()
+            log.info(f"→ {name}")
+            try:
+                if not func():
+                    fail(f"{name} failed")
+            finally:
+                q.task_done()
+
+    threads = []
+    for _ in range(min(2, q.qsize())):
+        t = threading.Thread(target=worker)
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+def unix_prefix():
+    """."""
+    cmd = ["bash", "-c"]
+    if system == "Windows":
+        cmd = ["wsl", "-e"] + cmd
+    return cmd
+
+def is_wsl2():
+    """."""
+    try:
+        result = subprocess.run(
+            ["wsl", "--status"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        output = result.stdout.lower()
+        if "default version: 2" in output or "version: 2" in output:
+            return True
+        elif "version: 1" in output:
+            raise RuntimeError("WSL1 is not supported. Use: wsl --set-version <distro> 2")
+        return False
+    except Exception:
+        return False
+
+def is_root_user():
+    """Return True if the numeric user ID of the current shell is root."""
+    try:
+        cmd = unix_prefix() + ["id -u"]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        uid = int(result.stdout.strip())
+        return uid == 0
+    except (subprocess.CalledProcessError, ValueError):
+        return False
+
+def sudo_user():
+    if system == "Windows":
+        if not is_wsl2():
+            fail("WSL2 is not available on your Windows platform")
+        cmd = ["wsl", "-e", "bash", "-c", "whoami"]
+        try:
+            result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            log.error(f"Exception: WSL non-root whoami: {e.stderr}")
+        return ""
+    else:
+        return getpass.getuser()
+
+def sudo_prompt(pwd):
+    """Pre-cache sudo credentials using password."""
+    if pwd:
+        cmd = unix_prefix() + ["sudo", "-S", "-v"]
+        subprocess.run(
+            cmd,
+            input=pwd + "\n",
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+def unix_privilege():
+    """."""
+    if is_root_user():
+        return "is_unix__root"
+    if shutil.which("sudo"):
+        result = subprocess.run(
+            ["sudo", "-n", "true"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode == 0:
+            return "has_sudo__pass_set"
+        else:
+            return "has_sudo__needs_pass"
+    if shutil.which("su"):
+        return "has_su__needs_pass"
+    return "none"
+
+def run_pkg_cmd(cmd):
+    """."""
+    raw_msg = " ".join([log_run_cmd, " ".join(cmd)])
+    log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd)))
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            shell=(system == "Windows")
+        )
+        log.info(result.stdout.strip())
+        if result.stderr:
+            log.warning(f"{result.stderr.strip()}")
+        return result.returncode == 0, result.stdout.strip()
+    except Exception as e:
+        log.error(f"Exception: Command error: {e}")
+        return False, ""
+
+def run_unix_pkg_cmd(cmd):
+    """."""
+    cmd = unix_prefix() + cmd
+    privilege = unix_privilege()
+    if privilege == "is_unix__root":
+        return run_pkg_cmd(cmd)
+    elif privilege == "has_sudo__pass_set":
+        full_cmd = ["sudo"] + unix_prefix() + cmd
+        return run_pkg_cmd(full_cmd)
+    elif privilege == "has_sudo__needs_pass":
+        full_cmd = ["sudo"] + unix_prefix() + cmd
+        return run_pkg_cmd(full_cmd)
+    elif privilege == "has_su__needs_pass":
+        return run_pkg_cmd(["su", "-c"] + unix_prefix() + cmd)
+    else:
+        fail("No privilege escalation available.")
+    return False, ""
+
+def install_package(package, pwd=None):
+    """."""
+    if not package:
+        log.error("Package required!")
+        return False
+
+    if system == "Windows":
+        if package == 'docker-compose':
+            return True
+        if package == 'docker':
+            if exists("winget"):
+                return run_pkg_cmd(["winget", "install", "-e", "--id", "Docker.DockerDesktop"])[0]
+            else:
+                return True
+
+    privilege = unix_privilege()
+    if privilege == "is_unix__root":
+        log.info("Running as Root")
+    elif privilege.startswith("has_sudo"):
+        log.info("Running as user with sudo privilege")
+        if privilege == "has_sudo__needs_pass":
+            if pwd:
+                sudo_prompt(pwd)
+    elif privilege.startswith("has_su"):
+        log.info("Running as Super User (su)")
+    else:
+        fail("No privilege escalation available")
+
+    if system == "Darwin" and exists("brew"):
+        sudo_user = None
+        if is_root_user():
+            fail(f"You cannot install {package} as root on macOS")
+        cmd = []
+        cmd.extend(["brew", "install"])
+        if package == 'docker':
+            cmd.extend(["--cask"])
+        cmd.extend([package])
+        return run_pkg_cmd(cmd)[0]
+
+    if system == "Linux" or is_wsl2():
+        if exists("apt-get"):
+            apt_pkg = "docker.io" if package == 'docker' else package
+            return run_unix_pkg_cmd(["DEBIAN_FRONTEND=noninteractive echo $DEBIAN_FRONTEND"])[0] and \
+            run_unix_pkg_cmd(["apt-get", "update"])[0] and \
+            run_unix_pkg_cmd(["apt-get", "install", "-y", apt_pkg])[0]
+        elif exists("apk"):
+            return run_unix_pkg_cmd(["apk", "update"])[0] and \
+            run_unix_pkg_cmd(["apk", "add", "--no-cache", package])[0]
+        elif exists("dnf"):
+            return run_unix_pkg_cmd(["dnf", "makecache"])[0] and \
+            run_unix_pkg_cmd(["dnf", "install", "-y", package])[0]
+        elif exists("zypper"):
+            return run_unix_pkg_cmd(["zypper", "refresh"])[0] and \
+            run_unix_pkg_cmd(["zypper", "install", package])[0]
+        elif exists("pacman"):
+            return run_unix_pkg_cmd(["pacman", "-Syu", "--noconfirm", package])[0]
+        elif exists("pkg"):
+            return run_unix_pkg_cmd(["pkg", "update"])[0] and \
+            run_unix_pkg_cmd(["pkg", "install", "-y", package])[0]
+        else:
+            fail("Install package failed! Package manager not found.")
+    return False
+
+def check_prerequisites():
+    """Check if required tools are installed and return missing tools"""
+    required_tools = ['Docker', 'Git']
+
+    missing_tools = []
+    for tool in required_tools:
+        if shutil.which(tool.lower()) is None:
+            missing_tools.append(tool)
+    if missing_tools:
+        log.critical("Missing required tools: [{}].".format(", ".join(missing_tools)))
+        return missing_tools
+
+    try:
+        start_docker()
+    except Exception as e:
+        log.critical(f"Exception: Start Docker Desktop: {e}")
+    return missing_tools
+
+def start_docker():
+    """Install Docker and ensure it is running and usable."""
+    log.info("Starting Docker bootstrap...", extra=log_bright)
+    # --- Version check ---
+    if not _docker_check_version():
+        fail("Docker version invalid or too old")
+    # --- Ensure running ---
+    if not _docker_is_running():
+        log.info("Docker not ready → ensuring daemon is running...")
+        if not _docker_start_daemon():
+            fail("Docker start failed")
+        if not _docker_wait_ready():
+            fail("Docker not ready after startup")
+    elif _docker_is_ready():
+        log.info("Docker is running ✅", extra=LSHF.style(color=LSHF.GREEN))
+    # --- Parallel tasks ---
+    q = queue.Queue()
+    ok, out = run_pkg_cmd(["docker", "compose", "version"])
+    if not ok and not exists("docker-compose"):
+        q.put((
+            "Install Docker Compose",
+            lambda: retry(lambda: install_package('docker-compose'), desc="Compose install")
+        ))
+    else:
+        log.info(out, extra=log_bright)
+    q.put(("Run hello-world test", _docker_test_container))
+    run_parallel(q)
+    log.info("✅ Docker environment is fully ready", extra=LSHF.style(bold=True, color=LSHF.GREEN))
+    return True
+
+def _docker_start_daemon():
+    """."""
+    if system == "Windows":
+        path = os.path.expandvars(r"%ProgramFiles%\Docker\Docker\Docker Desktop.exe")
+        if not os.path.exists(path):
+            fail("Docker Desktop not found")
+        # Already running → do NOT restart
+        if _docker_desktop_is_running():
+            log.info("Docker Desktop is running (or starting)", extra=log_bright)
+            return True
+        log.info("Starting Docker Desktop...", extra=log_bright)
+        try:
+            # Use Windows-native launch (most reliable)
+            os.startfile(path)
+        except Exception as e:
+            log.warning(f"os.startfile failed: {e}")
+            try:
+                subprocess.Popen(
+                    ["cmd", "/c", "start", "", path],
+                    cwd=os.path.dirname(path),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            except Exception as e2:
+                log.error(f"Fallback launch failed: {e2}")
+                return False
+        return True
+    elif system == "Darwin":
+        log.info("Starting Docker Desktop (macOS)...", extra=log_bright)
+        subprocess.Popen(["open", "-a", "Docker"])
+        return True
+    elif system == "Linux":
+        log.info("Starting Docker daemon (systemd)...", extra=log_bright)
+        return run_unix_pkg_cmd(["systemctl", "start", "docker"])[0]
+    return False
+
+def _docker_wait_ready(timeout=300):
+    """
+    Docker readiness:
+    Windows:
+      1. Wait for process
+      2. Wait for pipe
+      3. Wait for docker API
+    """
+    start = time.time()
+    log.info("Waiting for Docker to become ready...")
+    # ---------------- WINDOWS ---------------- #
+    if system == "Windows":
+        pipe = r"\\.\pipe\dockerDesktopLinuxEngine"
+        # --- Step 1: wait for process ---
+        log.info("Waiting for Docker Desktop process...")
+        while time.time() - start < timeout:
+            if _docker_desktop_is_running():
+                log.info("Docker Desktop process detected")
+                break
+            time.sleep(2)
+        else:
+            log.error("Docker Desktop process did not appear")
+            return False
+        # Give it time to avoid flash-exit race
+        time.sleep(8)
+        # --- Step 2: wait for pipe (WSL backend) ---
+        log.info("Waiting for Docker engine pipe...")
+        while time.time() - start < timeout:
+            if not _docker_desktop_is_running():
+                log.error("Docker Desktop exited during startup")
+                return False
+            if os.path.exists(pipe):
+                log.info("Docker engine pipe detected")
+                break
+            time.sleep(2)
+        else:
+            log.error("Docker pipe not created (backend failed?)")
+            return False
+        # --- Step 3: wait for API ---
+        log.info("Waiting for Docker API...")
+        delay = 2
+        while time.time() - start < timeout:
+            if not _docker_desktop_is_running():
+                log.error("Docker Desktop exited before API became ready")
+                return False
+            log.info("Requested Docker info (API Check)", extra=log_bright)
+            if  _docker_is_ready():
+                log.info("Docker is ready (API OK)", extra=log_bright)
+                return True
+            time.sleep(delay)
+            delay = min(delay + 1, 10)
+        log.error("Docker API did not respond in time")
+        return False
+    # ---------------- LINUX / MAC ---------------- #
+    else:
+        delay = 2
+        while time.time() - start < timeout:
+            log.info("Requested Docker info (API Check)", extra=log_bright)
+            if _docker_is_ready():
+                log.info("Docker ready (API OK)", extra=log_bright)
+                return True
+            time.sleep(delay)
+            delay = min(delay + 1, 10)
+        log.error("Docker did not become ready in time")
+        return False
+
+def _docker_is_ready():
+    """."""
+    ok, _ = run_pkg_cmd(["docker", "info"])
+    return ok
+
+def _docker_is_running():
+    """."""
+    ok = False
+    if system == "Windows":
+        ok = os.path.exists(r"\\.\pipe\dockerDesktopLinuxEngine")
+    else:
+        ok = os.path.exists("/var/run/docker.sock")
+    if not ok:
+        return False
+    ok, _ = run_pkg_cmd(["docker", "system", "info"])
+    return ok
+
+def _docker_desktop_is_running():
+    """Windows-only process check to avoid double-start."""
+    result = subprocess.run(
+        ["tasklist", "/FI", "IMAGENAME eq Docker Desktop.exe"],
+        capture_output=True,
+        text=True
+    )
+    return "Docker Desktop.exe" in result.stdout
+
+def _docker_test_container():
+    """."""
+    ok, out = run_pkg_cmd(["docker", "run", "--rm", "hello-world"])
+    if ok and "Hello from Docker!" in out:
+        log.info(out, extra=log_bright)
+        return True
+    return False
+
+def _docker_parse_version(version):
+    """."""
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
+    return tuple(map(int, match.groups())) if match else (0, 0, 0)
+
+def _docker_check_version():
+    """."""
+    ok, version = run_pkg_cmd(["docker", "--version"])
+    if not ok:
+        return False
+    parsed_version = _docker_parse_version(version)
+    min_docker_version = (20, 10, 0)
+    ok = parsed_version >= min_docker_version
+    log_style = log_bright if ok else LSHF.style(color=LSHF.YELLOW)
+    log.info(f"{version}", extra=(log_style))
+    return ok
 
 def launch_llama_process(args, llama_log):
     """Launch Ollama/LLaMA.cpp server on the host"""
@@ -1073,25 +1509,6 @@ def normalize_path(path):
         path = os.path.abspath(path)
     return path
 
-def check_prerequisites():
-    """Check if required tools are installed"""
-    required_tools = ['docker', 'git']
-    missing_tools = []
-    for tool in required_tools:
-        if shutil.which(tool) is None:
-            missing_tools.append(tool)
-    if missing_tools:
-        log.critical("Missing required tools: [{}].".format(", ".join(missing_tools)))
-        log.critical("Install them before continuing...")
-        return False
-    try:
-        subprocess.run(
-            ["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        log.critical("Docker is not running. Start Docker Desktop.")
-        #return False
-    return True
-
 def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None):
     """Load environment variables from .env file"""
     if env_file is None:
@@ -1664,20 +2081,6 @@ def display_service_endpoints(profile, supabase, env_vars={}):
                 log.info(("❌ {:30s} {}").format(container, module_name), extra=fail_style)
     log.info("="*60, extra=line_style)
 
-def is_root_user():
-    """Return True if the numeric user ID of the current shell is root."""
-    try:
-        result = subprocess.run(
-            ["bash", "-c", "id -u"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        uid = int(result.stdout.strip())
-        return uid == 0
-    except (subprocess.CalledProcessError, ValueError):
-        return False
-
 def display_ac_env_vars(ac_env_vars):
     """Display auto-configure environment variable settings"""
     if not ac_env_vars:
@@ -2159,7 +2562,27 @@ def main():
         log.info("Detected Linux/Unix platform...")
 
     # Check prerequisites
-    if not check_prerequisites():
+    missing_tools = check_prerequisites()
+    install_tools = False
+    if prompt_store['p']:
+        if missing_tools:
+            msg = f"Install missing tools? y/n: (n)"
+            install_tools = True if input(msg).strip().lower() == "y" else False
+    # Install missing tools
+    if install_tools:
+        log.info("Installing required tools before continuing...")
+        if 'Docker' in missing_tools:
+            if not retry(lambda: install_package('docker'), desc=f"Docker install"):
+                log.info(f"Installing Docker...")
+                fail(f"Docker installation failed")
+            else:
+                missing_tools.remove('Docker')
+        for tool in missing_tools:
+            log.info(f"Installing {tool}...")
+            if not retry(lambda: install_package(tool.lower()), desc=f"{tool} install"):
+                fail(f"{tool} installation failed")
+    elif missing_tools:
+        log.critical("Install required tools before continuing...")
         sys.exit(1)
 
     # Load working environment variables
