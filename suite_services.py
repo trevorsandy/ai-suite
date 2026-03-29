@@ -1122,6 +1122,15 @@ def prepare_opencode_config(env_vars):
     except Exception as e:
         log.error(f"Exception: Configuration - {llama} model: {e}")
 
+def clean_dir_path(dir_path, restore=True, quiet=False):
+    """delete and recreate directory path"""
+    if os.path.exists(dir_path):
+        if not quiet:
+            log.info(f"Cleaning directory: {dir_path}...")
+        shutil.rmtree(dir_path)
+        if restore:
+            os.makedirs(dir_path, exist_ok=True)
+
 def destroy_ai_suite(profile, install):
     """Stop and remove AI-Suite containers and volumes (using compose file)
        for the specified profile arguments.
@@ -1140,6 +1149,8 @@ def destroy_ai_suite(profile, install):
         cmd.extend(["--volumes"])
     run_command(cmd)
     if install:
+        supabase_data = os.path.join("supabase", "docker", "volumes", "db", "data")
+        clean_dir_path(supabase_data, restore=False)
         cmd = ["docker", "volume", "prune", "--force"]
         run_command(cmd)
     log.info("="*60, extra=LSHF.style(logging.INFO, LSHF.BLUE))
