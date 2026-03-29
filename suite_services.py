@@ -55,21 +55,26 @@ limitations under the License.
 import os
 import sys
 import argparse
+import ast
 import datetime
 import dotenv
 import getpass
 import gzip
+import json
 import logging
-import hashlib
 import pathlib
 import platform
 import queue
 import re
 import shutil
 import subprocess
+import tarfile
 import textwrap
 import threading
 import time
+import urllib.error
+import urllib.request
+import zipfile
 
 
 # ---- Info attributes ----
@@ -86,6 +91,18 @@ INFO = {
     "license"    : "Apache License 2.0",
     "copyright"  : "Copyright (c) 2025-present by Trevor SANDY"
 }
+# - Minimum Docker Version -
+MIN_DOCKER_VERSION = (20, 10, 0)
+# - Minimum Python Version -
+MIN_PY_VERSION = (3, 10, 14)
+# ---- Offline fallback ----
+_PY_FALLBACK_RELEASES = {
+    (3, 14, 3): "17.2.20260307final",
+    (3, 12, 6): "16.8.20240101final",
+    (3, 11, 9): "16.6.20231210final",
+}
+# ---- In-memory cache ----
+_PY_RELEASE_CACHE = {}
 
 # Logging
 # Source - https://stackoverflow.com/a/35804945
@@ -544,16 +561,25 @@ def install_package(package, pwd=None):
 
 def check_prerequisites():
     """Check if required tools are installed and return missing tools"""
-    required_tools = ['Docker', 'Git']
-
+    required_tools = ['Python', 'Docker', 'Git']
     missing_tools = []
     for tool in required_tools:
         if shutil.which(tool.lower()) is None:
             missing_tools.append(tool)
+        elif tool == 'Python':
+            sys_ver = sys.version_info[:3]
+            versions = (sys_ver,)
+            venv_ver = python_venv_version()
+            if venv_ver:
+                versions = (*versions, venv_ver)
+            if all(v < MIN_PY_VERSION for v in versions):
+                m = f"{MIN_PY_VERSION}"
+                c = venv_ver if venv_ver and venv_ver > sys_ver else sys_ver
+                log.warning(f"Python version {c} is less than the minimum required version {m}.")
+                missing_tools.append(tool)
     if missing_tools:
-        log.critical("Missing required tools: [{}].".format(", ".join(missing_tools)))
+        log.warning("Missing required tools: [{}].".format(", ".join(missing_tools)))
         return missing_tools
-
     try:
         docker_start()
     except Exception as e:
@@ -675,10 +701,409 @@ def http_head_exists(url, timeout=10, retries=3):
                 time.sleep(1.5 ** attempt)
     return False
 
+def python_ensure_compatible_version():
+    """
+    Compare the .venv and system-level Python versions against the minimum
+    required version. If the currently system-level and venv Python version
+    is less than the minimum required version, download Python and setup or
+    update the venv.
+    """
+    current_version = sys.version_info[:3]
+    venv_dir = os.path.join(os.getcwd(), ".venv")
+    venv_python = _python_get_venv_executable(venv_dir)
+    # Check venv Python
+    venv_version = python_venv_version(venv_python)
+    if venv_version:
+        log.info(f"Detected venv Python version: {_python_version_str(venv_version)}")
+        if venv_version >= MIN_PY_VERSION:
+            if os.path.abspath(sys.executable) == os.path.abspath(venv_python):
+                log.info("Already running from compliant venv.")
+                return
+            else:
+                log.info("Using existing compliant venv. Restarting script...", extra=log_bright)
+                _python_restart_script(venv_python)
+    # Check system Python
+    if current_version >= MIN_PY_VERSION:
+        log.info(f"System Python {_python_version_str(current_version)} is compliant.")
+        return
+    # System Python too old → prompt & install local Python
+    c = _python_version_str(current_version)
+    m = _python_version_str(MIN_PY_VERSION)
+    log.info(f"Current Python: {c}, Minimum required Python: {m}", extra=log_bright)
+    target_version = _python_prompt_for_version()
+    try:
+        _python_install_upgrade(target_version)
+    except Exception:
+        fail(f"Python installation failed for version {_python_version_str(target_version)}")
+    log.info("Environment setup complete. Restarting with venv Python.", extra=log_bright)
+    _python_restart_script(venv_python)
+
+def python_venv_version(venv_python=None):
+    """
+    Return the .benv Python version touple.
+    """
+    if not venv_python:
+        venv_dir = os.path.join(os.getcwd(), ".venv")
+        venv_python = _python_get_venv_executable(venv_dir)
+    if os.path.exists(venv_python):
+        return _python_get_version(venv_python)
+    return None
+
+def _python_prompt_for_version():
+    for attempt in range(3):
+        user_input = input(
+            f"Enter Python version to install [default {_python_version_str(MIN_PY_VERSION)}]: "
+        ).strip()
+        if not user_input:
+            return MIN_PY_VERSION
+        try:
+            return tuple(map(int, user_input.split(".")))
+        except Exception:
+            log.warning(f"Invalid version format (attempt {attempt + 1}/3).")
+    fail("Maximum attempts reached. Invalid version input.")
+
+def _python_version_str(v):
+    """Return a Python version string."""
+    return f"{v[0]}.{v[1]}.{v[2]}"
+
+def _python_get_version(python_executable):
+    """Return version from Python executable."""
+    try:
+        result = subprocess.run(
+            [python_executable, "-c", "import sys; print(tuple(sys.version_info[:3]))"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return ast.literal_eval(result.stdout.strip())
+    except Exception as e:
+        log.error(f"Failed to get Python version: {e}")
+        return None
+
+def _python_install_upgrade(version):
+    """Ensure local Python exists, create venv, install requirements, restart.
+    """
+    local_python = _python_prepare_local(version)
+    venv_dir = os.path.join(os.getcwd(), ".venv")
+    _python_create_venv(local_python, venv_dir)
+    venv_python = _python_get_venv_executable(venv_dir)
+    _python_generate_requirements(entry_file=__file__)
+    _python_install_requirements(venv_python)
+
+def _python_prepare_local(version):
+    local_dir = os.path.join(os.getcwd(), ".python")
+    if system == "Windows":
+        version_str = f"{version[0]}.{version[1]}.{version[2]}"
+        wpy_dir = f"WPy{detect_arch()}-{version_str}.0"
+        local_dir = os.path.join(os.getcwd(), ".python", wpy_dir)
+    python_exe = (
+        os.path.join(local_dir, "bin", "python") if system != "Windows"
+        else os.path.join(local_dir, "python", "python.exe")
+    )
+    if os.path.exists(python_exe) and _python_get_version(python_exe) == version:
+        log.info(f"Found existing local Python {_python_version_str(version)} at {python_exe}")
+        return python_exe
+    if system == "Windows":
+        local_dir = os.path.dirname(local_dir)
+    if os.path.exists(local_dir):
+        shutil.rmtree(local_dir)
+    os.makedirs(local_dir, exist_ok=True)
+    return _python_download_prebuilt(version, local_dir)
+
+def _python_get_release_tag(version, url_base=None, timeout=10, retries=3):
+    """
+    Resolve WinPython release tag for a given Python version tuple.
+    Resolution order:
+        1. Cache
+        2. GitHub API
+        3. Offline fallback
+    """
+    if version in _PY_RELEASE_CACHE:
+        log.debug(f"Cache hit for version {version}")
+        return _PY_RELEASE_CACHE[version]
+    version_str = f"{version[0]}.{version[1]}.{version[2]}"
+    arch = detect_arch()
+    expected_name = f"WinPython{arch}-{version_str}.0free.zip"
+    log.info(f"Resolving WinPython release for Python {version_str} ({arch})")
+    api_base = url_base or "https://api.github.com/repos/winpython/winpython"
+    # ---- 1. GitHub API ----
+    try:
+        page = 1
+        while True:
+            url = f"{api_base}/releases?per_page=100&page={page}"
+            releases = http_get_json(url, timeout=timeout, retries=retries)
+
+            if not releases:
+                break
+            log.debug(f"Scanning {len(releases)} releases (page {page})")
+            for release in releases:
+                tag = release.get("tag_name", "")
+                for asset in release.get("assets", []):
+                    if asset.get("name") == expected_name:
+                        log.info(f"Matched release tag: {tag}")
+                        _PY_RELEASE_CACHE[version] = tag
+                        return tag
+            page += 1
+    except Exception as e:
+        log.warning(f"GitHub API resolution failed: {e}")
+    # ---- 2. Offline fallback ----
+    if version in _PY_FALLBACK_RELEASES:
+        tag = _PY_FALLBACK_RELEASES[version]
+        log.warning(f"Using fallback release tag: {tag}")
+        _PY_RELEASE_CACHE[version] = tag
+        return tag
+    fail(f"Could not resolve WinPython release tag for Python {version_str}")
+
+def _python_download_prebuilt(version, target_dir):
+    """
+    Download and install Python for the given version into target_dir.
+    Windows: uses WinPython portable ZIP
+    Unix: uses python-build-standalone tar.xz
+    Returns path to python executable
+    """
+    version_str = f"{version[0]}.{version[1]}.{version[2]}"
+    arch = detect_arch()
+    if system == "Windows":
+        release_tag = _python_get_release_tag(version)
+        zip_name = f"WinPython{arch}-{version_str}.0free.zip"
+        url = f"https://github.com/winpython/winpython/releases/download/{release_tag}/{zip_name}"
+    else:
+        # Unix: python-build-standalone
+        zip_name = f"python-{version_str}-{arch}-linux-gnu-install_only.tar.xz"
+        url = f"https://github.com/indygreg/python-build-standalone/releases/download/{version_str}/{zip_name}"
+    local_archive = os.path.join(target_dir, zip_name)
+    if not os.path.exists(local_archive):
+        if http_head_exists(url):
+           log.info(f"Validated download URL: {url}")
+        else:
+           fail(f"Download URL not reachable: {url}")
+        log.info(f"Downloading Python {version_str}...")
+        http_download(url, local_archive)
+    # Extract and return python executable path
+    python_exe = _python_install_archive(local_archive, target_dir, version)
+    log.info(f"Python {version_str} ready at {python_exe}")
+    return python_exe
+
+def _python_find_executable(target_dir, version):
+    """
+    Search target directory recursively for python executable.
+    """
+    # --- Candidate names ---
+    if system == "Windows":
+        candidates = ["python.exe"]
+    else:
+        candidates = [
+            "python3",
+            f"python{version[0]}.{version[1]}",
+            "python",
+        ]
+    # --- First pass: preferred locations ---
+    preferred_dirs = [
+        target_dir,
+        os.path.join(target_dir, "python"),
+        os.path.join(target_dir, "bin"),
+        os.path.join(target_dir, "python", "bin"),
+    ]
+    for d in preferred_dirs:
+        if not os.path.isdir(d):
+            continue
+        for name in candidates:
+            path = os.path.join(d, name)
+            if os.path.isfile(path):
+                return path
+    # --- Fallback: full walk ---
+    for root, _, files in os.walk(target_dir):
+        for name in candidates:
+            if name in files:
+                return os.path.join(root, name)
+    fail(f"Could not locate Python executable in {target_dir}")
+
+def _python_install_archive(local_archive, target_dir, version):
+    """
+    Extract ZIP (Windows WinPython) or tar.xz (Unix) and return path to python executable.
+    """
+    log.info(f"Extracting {local_archive} → {target_dir} ...")
+    os.makedirs(target_dir, exist_ok=True)
+    if local_archive.endswith(".zip"):
+        with zipfile.ZipFile(local_archive, "r") as zip_ref:
+            zip_ref.extractall(target_dir)
+        # locate python.exe in extracted folder
+        return _python_find_executable(target_dir, version)
+    elif local_archive.endswith((".tar.gz", ".tar.xz", ".tgz")):
+        with tarfile.open(local_archive, "r:*") as tar_ref:
+            tar_ref.extractall(target_dir)
+        # python-build-standalone layout: python/bin/python3
+        return os.path.join(target_dir, "python", "bin", "python3")
+    else:
+        raise RuntimeError(f"Unknown archive type: {local_archive}")
+
+def _python_create_venv(local_python, venv_path):
+    """
+    Create a virtual environment using local Python.
+    Ensures pip is installed
+    """
+    if os.path.exists(venv_path):
+        log.info(f"Removing existing venv at {venv_path}")
+        shutil.rmtree(venv_path)
+    log.info(f"Creating venv at {venv_path} ...")
+    try:
+        subprocess.run([local_python, "-m", "venv", venv_path], check=True)
+        if os.path.exists(venv_path):
+            log.info(f"Venv created at {venv_path}")
+    except Exception as e:
+        log.warning(f"Venv creation failed: {e}. Falling back to current Python.")
+        return sys.executable
+    # Ensure pip
+    venv_python = _python_get_venv_executable(venv_path)
+    if os.path.exists(venv_python):
+        try:
+            subprocess.run([venv_python, "-m", "ensurepip", "--upgrade"], check=True)
+        except Exception as e:
+            log.warning(f"Failed to bootstrap pip in venv: {e}")
+        return venv_python
+    else:
+        log.warning("Venv python not found. Using current Python.")
+        return sys.executable
+
+def _python_get_venv_executable(venv_dir):
+    """Return the local Python venv executable."""
+    binary = None
+    if system == 'Windows':
+        binary = os.path.join(venv_dir, "Scripts", "python.exe")
+    else:
+        binary = os.path.join(venv_dir, "bin", "python")
+    if binary:
+        log.info(f"Venv binary: {binary}")
+    return binary
+
+def _python_generate_requirements(project_dir=".", output_file=None, entry_file=None):
+    """
+    Generate a minimal requirements.txt by scanning:
+    - Specified file:
+    -   auto_config.py contains the entire project
+    - Project imports (future use):
+    -   Ignores standard library modules
+    -   Maps imports to PyPI packages
+    -   Handles common mismatches (bs4 → beautifulsoup4, yaml → PyYAML)
+    -   Uses only standard library (no pkg_resources, no stdlib-list)
+    """
+    from importlib import util
+    from importlib.metadata import distributions
+
+    # Common import → PyPI package mapping
+    IMPORT_TO_PYPI = {
+        "bs4": "beautifulsoup4",
+        "yaml": "PyYAML",
+        "PIL": "Pillow",
+        "torch": "torch",
+        "tensorflow": "tensorflow",
+    }
+    # Modules
+    imported_modules = set()
+    def _scan_file(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                tree = ast.parse(f.read(), filename=path)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        imported_modules.add(alias.name.split(".")[0])
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    imported_modules.add(node.module.split(".")[0])
+        except (SyntaxError, UnicodeDecodeError):
+            pass
+    if entry_file:
+        _scan_file(os.path.abspath(entry_file))
+    else:
+        EXCLUDE_DIRS = {".python", ".venv", "__pycache__", ".git", "build", "dist"}
+        for root, dirs, files in os.walk(project_dir):
+            dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+            for file in files:
+                if file.endswith(".py"):
+                    _scan_file(os.path.join(root, file))
+    def _is_stdlib(module_name):
+        try:
+            spec = util.find_spec(module_name)
+            if spec is None or spec.origin is None:
+                return False
+            path = spec.origin
+            return "site-packages" not in path and "dist-packages" not in path
+        except Exception:
+            return False
+    imported_modules = {m for m in imported_modules if not _is_stdlib(m)}
+    dist_map = {}  # module_name -> (package_name, version, location)
+    for dist in distributions():
+        try:
+            name = dist.metadata["Name"]
+            version = dist.version
+            location = str(dist.locate_file(""))
+            # Try to read top-level modules from metadata
+            top_level = dist.read_text("top_level.txt")
+            if top_level:
+                for line in top_level.splitlines():
+                    module = line.strip()
+                    if module:
+                        dist_map[module] = (name, version, location)
+            else:
+                # fallback: map package name itself
+                dist_map[name.lower()] = (name, version, location)
+        except Exception:
+            continue
+    # Requirements
+    requirements = set()
+    for module in imported_modules:
+        mapped = IMPORT_TO_PYPI.get(module, module)
+        # Direct mapping via known table
+        if mapped and mapped.lower() in dist_map:
+            name, version, _ = dist_map[mapped.lower()]
+            requirements.add(f"{name}=={version}")
+            continue
+        # Try to resolve via import location
+        try:
+            spec = util.find_spec(module)
+            if spec and spec.origin:
+                for name, version, location in dist_map.values():
+                    if location and spec.origin.startswith(location):
+                        requirements.add(f"{name}=={version}")
+                        break
+                else:
+                    requirements.add(mapped)
+        except Exception:
+            requirements.add(mapped)
+    requirements = sorted(requirements)
+    insert = "packages" if len(requirements) > 1 else "package"
+    if not output_file:
+        output_file = "requirements.txt"
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(requirements))
+    if os.path.exists(output_file):
+        log.info(f"Generated requirements.txt ({len(requirements)} {insert})", extra=log_bright)
+
+def _python_install_requirements(venv_python):
+    """
+    Install additional modules from generated requirements.txt.
+    """
+    if not os.path.exists("requirements.txt"):
+        return
+    if not os.path.exists(venv_python):
+        fail(f"Venv python: {venv_python} not found!")
+    log.info("Installing dependencies in venv...")
+    subprocess.run([venv_python, "-m", "pip", "install", "--upgrade", "pip"], check=True)
+    subprocess.run([venv_python, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+
+def _python_restart_script(venv_python):
+    """
+    Restart the script after implementing or updating a local venv.
+    """
+    script_path = os.path.abspath(sys.argv[0])
+    log.info("Restarting script in venv Python...", extra=log_bright)
+    os.execv(venv_python, [venv_python, script_path] + sys.argv[1:])
+
+def docker_start():
     """Install Docker and ensure it is running and usable."""
     log.info("Starting Docker bootstrap...", extra=log_bright)
     # --- Version check ---
-    if not _docker_check_version():
+    if not _docker_valid_version():
         fail("Docker version invalid or too old")
     # --- Ensure running ---
     if not _docker_is_running():
@@ -703,6 +1128,27 @@ def http_head_exists(url, timeout=10, retries=3):
     run_parallel(q)
     log.info("✅ Docker environment is fully ready", extra=LSHF.style(bold=True, color=LSHF.GREEN))
     return True
+
+def docker_get_version():
+    ok, version = run_command(["docker", "--version"])
+    if not ok:
+        return None
+    return _docker_parse_version(version)
+
+def _docker_parse_version(version):
+    """."""
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
+    return tuple(map(int, match.groups())) if match else (0, 0, 0)
+
+def _docker_valid_version():
+    """."""
+    parsed_version = docker_get_version()
+    if parsed_version:
+        ok = parsed_version >= MIN_DOCKER_VERSION
+        log_style = log_bright if ok else LSHF.style(color=LSHF.YELLOW)
+        log.info(f"{parsed_version}", extra=(log_style))
+        return ok
+    return False
 
 def _docker_start_daemon():
     """."""
@@ -839,23 +1285,6 @@ def _docker_test_container():
         log.info(out, extra=log_bright)
         return True
     return False
-
-def _docker_parse_version(version):
-    """."""
-    match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
-    return tuple(map(int, match.groups())) if match else (0, 0, 0)
-
-def _docker_check_version():
-    """."""
-    ok, version = run_pkg_cmd(["docker", "--version"])
-    if not ok:
-        return False
-    parsed_version = _docker_parse_version(version)
-    min_docker_version = (20, 10, 0)
-    ok = parsed_version >= min_docker_version
-    log_style = log_bright if ok else LSHF.style(color=LSHF.YELLOW)
-    log.info(f"{version}", extra=(log_style))
-    return ok
 
 def launch_llama_process(args, llama_log):
     """Launch Ollama/LLaMA.cpp server on the host"""
@@ -2688,6 +3117,15 @@ def main():
             install_tools = True if input(msg).strip().lower() == "y" else False
     if install_tools:
         log.info("Installing required tools before continuing...")
+        if 'Python' in missing_tools:
+            if os.getenv("DEBUG_PY"):
+                log.warning("Debug mode detected - update Python skipped.")
+            else:
+                log.info(f"Updating Python...")
+                python_ensure_compatible_version()
+                me = os.path.basename(sys.argv[0])
+                log.info(f"Running {me} with compatible Python version.", extra=log_bright)
+                missing_tools.remove('Python')
         if 'Docker' in missing_tools:
             if not retry(lambda: install_package('docker'), desc=f"Docker install"):
                 log.info(f"Installing Docker...")
