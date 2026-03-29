@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 24, 2026
+Last Update March 28, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -71,7 +71,8 @@ import textwrap
 import threading
 import time
 
-# Info attributes
+
+# ---- Info attributes ----
 INFO = {
     "name"       : "AI-Suite",
     "version"    : (0, 5, 0),
@@ -294,16 +295,47 @@ LSH.setFormatter(LSHF)
 LSH.setLevel(logging.NOTSET)
 
 
-def run_command(cmd, cwd=None):
+def run_command(cmd):
     """Run a shell command and print it."""
     raw_msg = " ".join([log_run_cmd, " ".join(cmd)])
     log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd)))
     try:
-        completed = subprocess.run(cmd, cwd=cwd, check=True)
-        if completed.returncode != 0:
-            log.error(f"Command: {completed.stderr}")
-    except Exception as e:
-        log.error(f"Exception: {e}.")
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+            shell=(system == "Windows")
+        )
+        log.info(result.stdout.strip())
+        if result.stderr:
+            if result.returncode == 0:
+                log.warning(f"{result.stderr.strip()}")
+            else:
+                log.error(f"{result.stderr.strip()}")
+        return result.returncode == 0, result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        log.error(f"Exception: Command error: {e.stderr.strip()}")
+        return False, e.stdout.strip()
+
+def run_unix_command(cmd):
+    """."""
+    cmd = unix_prefix() + cmd
+    privilege = unix_privilege()
+    if privilege == "is_unix__root":
+        return run_command(cmd)
+    elif privilege == "has_sudo__pass_set":
+        full_cmd = ["sudo"] + unix_prefix() + cmd
+        return run_command(full_cmd)
+    elif privilege == "has_sudo__needs_pass":
+        full_cmd = ["sudo"] + unix_prefix() + cmd
+        return run_command(full_cmd)
+    elif privilege == "has_su__needs_pass":
+        return run_command(["su", "-c"] + unix_prefix() + cmd)
+    else:
+        fail("No privilege escalation available.")
+    return False, ""
 
 def fail(msg):
     """."""
@@ -356,19 +388,24 @@ def unix_prefix():
     return cmd
 
 def is_wsl2():
-    """."""
+    """Return True if default WSL version is 2."""
     try:
         result = subprocess.run(
             ["wsl", "--status"],
             capture_output=True,
-            text=True,
             check=True
         )
-        output = result.stdout.lower()
-        if "default version: 2" in output or "version: 2" in output:
-            return True
-        elif "version: 1" in output:
-            raise RuntimeError("WSL1 is not supported. Use: wsl --set-version <distro> 2")
+
+        bytes = result.stdout
+        codex = "utf-16le" if b"\x00" in bytes else "utf-8"
+        output = bytes.decode(codex)
+        for line in output.splitlines():
+            clean = line.strip().lower()
+            if clean.startswith("default version:"):
+                if clean.endswith("2"):
+                    return True
+                elif clean.endswith("1"):
+                    fail("WSL1 not supported. Use: wsl --set-version <distro> 2")
         return False
     except Exception:
         return False
@@ -411,69 +448,37 @@ def sudo_prompt(pwd):
     """Pre-cache sudo credentials using password."""
     if pwd:
         cmd = unix_prefix() + ["sudo", "-S", "-v"]
-        subprocess.run(
-            cmd,
-            input=pwd + "\n",
-            text=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                cmd,
+                input=pwd + "\n",
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            log.error(f"Exception: {e}")
 
 def unix_privilege():
     """."""
     if is_root_user():
         return "is_unix__root"
     if shutil.which("sudo"):
-        result = subprocess.run(
-            ["sudo", "-n", "true"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if result.returncode == 0:
-            return "has_sudo__pass_set"
-        else:
-            return "has_sudo__needs_pass"
-    if shutil.which("su"):
+        try:
+            result = subprocess.run(
+                ["sudo", "-n", "true"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if result.returncode == 0:
+                return "has_sudo__pass_set"
+            else:
+                return "has_sudo__needs_pass"
+        except Exception as e:
+            log.error(f"Exception: {e}")
+    elif shutil.which("su"):
         return "has_su__needs_pass"
     return "none"
-
-def run_pkg_cmd(cmd):
-    """."""
-    raw_msg = " ".join([log_run_cmd, " ".join(cmd)])
-    log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd)))
-    try:
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            shell=(system == "Windows")
-        )
-        log.info(result.stdout.strip())
-        if result.stderr:
-            log.warning(f"{result.stderr.strip()}")
-        return result.returncode == 0, result.stdout.strip()
-    except Exception as e:
-        log.error(f"Exception: Command error: {e}")
-        return False, ""
-
-def run_unix_pkg_cmd(cmd):
-    """."""
-    cmd = unix_prefix() + cmd
-    privilege = unix_privilege()
-    if privilege == "is_unix__root":
-        return run_pkg_cmd(cmd)
-    elif privilege == "has_sudo__pass_set":
-        full_cmd = ["sudo"] + unix_prefix() + cmd
-        return run_pkg_cmd(full_cmd)
-    elif privilege == "has_sudo__needs_pass":
-        full_cmd = ["sudo"] + unix_prefix() + cmd
-        return run_pkg_cmd(full_cmd)
-    elif privilege == "has_su__needs_pass":
-        return run_pkg_cmd(["su", "-c"] + unix_prefix() + cmd)
-    else:
-        fail("No privilege escalation available.")
-    return False, ""
 
 def install_package(package, pwd=None):
     """."""
@@ -486,7 +491,7 @@ def install_package(package, pwd=None):
             return True
         if package == 'docker':
             if exists("winget"):
-                return run_pkg_cmd(["winget", "install", "-e", "--id", "Docker.DockerDesktop"])[0]
+                return run_command(["winget", "install", "-e", "--id", "Docker.DockerDesktop"])[0]
             else:
                 return True
 
@@ -504,7 +509,6 @@ def install_package(package, pwd=None):
         fail("No privilege escalation available")
 
     if system == "Darwin" and exists("brew"):
-        sudo_user = None
         if is_root_user():
             fail(f"You cannot install {package} as root on macOS")
         cmd = []
@@ -512,28 +516,28 @@ def install_package(package, pwd=None):
         if package == 'docker':
             cmd.extend(["--cask"])
         cmd.extend([package])
-        return run_pkg_cmd(cmd)[0]
+        return run_command(cmd)[0]
 
     if system == "Linux" or is_wsl2():
         if exists("apt-get"):
             apt_pkg = "docker.io" if package == 'docker' else package
-            return run_unix_pkg_cmd(["DEBIAN_FRONTEND=noninteractive echo $DEBIAN_FRONTEND"])[0] and \
-            run_unix_pkg_cmd(["apt-get", "update"])[0] and \
-            run_unix_pkg_cmd(["apt-get", "install", "-y", apt_pkg])[0]
+            return run_unix_command(["DEBIAN_FRONTEND=noninteractive echo $DEBIAN_FRONTEND"])[0] and \
+            run_unix_command(["apt-get", "update"])[0] and \
+            run_unix_command(["apt-get", "install", "-y", apt_pkg])[0]
         elif exists("apk"):
-            return run_unix_pkg_cmd(["apk", "update"])[0] and \
-            run_unix_pkg_cmd(["apk", "add", "--no-cache", package])[0]
+            return run_unix_command(["apk", "update"])[0] and \
+            run_unix_command(["apk", "add", "--no-cache", package])[0]
         elif exists("dnf"):
-            return run_unix_pkg_cmd(["dnf", "makecache"])[0] and \
-            run_unix_pkg_cmd(["dnf", "install", "-y", package])[0]
+            return run_unix_command(["dnf", "makecache"])[0] and \
+            run_unix_command(["dnf", "install", "-y", package])[0]
         elif exists("zypper"):
-            return run_unix_pkg_cmd(["zypper", "refresh"])[0] and \
-            run_unix_pkg_cmd(["zypper", "install", package])[0]
+            return run_unix_command(["zypper", "refresh"])[0] and \
+            run_unix_command(["zypper", "install", package])[0]
         elif exists("pacman"):
-            return run_unix_pkg_cmd(["pacman", "-Syu", "--noconfirm", package])[0]
+            return run_unix_command(["pacman", "-Syu", "--noconfirm", package])[0]
         elif exists("pkg"):
-            return run_unix_pkg_cmd(["pkg", "update"])[0] and \
-            run_unix_pkg_cmd(["pkg", "install", "-y", package])[0]
+            return run_unix_command(["pkg", "update"])[0] and \
+            run_unix_command(["pkg", "install", "-y", package])[0]
         else:
             fail("Install package failed! Package manager not found.")
     return False
@@ -551,12 +555,126 @@ def check_prerequisites():
         return missing_tools
 
     try:
-        start_docker()
+        docker_start()
     except Exception as e:
         log.critical(f"Exception: Start Docker Desktop: {e}")
     return missing_tools
 
-def start_docker():
+def detect_arch():
+    """
+    Detect and normalize architecture for target platform.
+    Returns:
+        str: architecture string matching upstream naming
+    """
+    machine = platform.machine().lower()
+    log.debug(f"Detected machine architecture: {machine} (system={system})")
+    # ---- Normalize ----
+    norm = None
+    if machine in ("amd64", "x86_64", "x64"):
+        norm = "x86_64"
+    elif machine in ("arm64", "aarch64"):
+        norm = "arm64"
+    else:
+        fail(f"Unsupported architecture: {machine}")
+    # ---- Map ----
+    if system == "Windows":
+        if norm == "x86_64":
+            return "64"
+        elif norm == "arm64":
+            return "arm64"
+    else:
+        # python-build-standalone naming
+        if norm == "x86_64":
+            return "x86_64"
+        elif norm == "arm64":
+            return "aarch64"
+    fail(f"Unsupported architecture mapping: {norm} for system {system}")
+
+def http_download(url, destination, timeout=30, retries=3, backoff=1.5):
+    """
+    Download a file with retry, redirect handling, and fallback tools.
+    """
+    last_error = None
+    for attempt in range(retries):
+        try:
+            log.info(f"Downloading {url} -> {destination} (attempt {attempt + 1}/{retries})")
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "PythonDownloader"}
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as response, \
+                 open(destination, "wb") as out_file:
+                shutil.copyfileobj(response, out_file)
+            log.info("Download completed successfully")
+            return
+        except Exception as e:
+            last_error = e
+            log.warning(f"Download failed: {e}")
+            if attempt < retries - 1:
+                sleep_time = backoff ** attempt
+                log.debug(f"Retrying in {sleep_time:.2f}s...")
+                time.sleep(sleep_time)
+    # ---- Fallback tools (curl / wget) ----
+    log.warning("urllib download failed, attempting fallback tools...")
+    try:
+        subprocess.run(["curl", "-L", "-o", destination, url], check=True)
+        log.info("Download succeeded via curl")
+        return
+    except Exception as e:
+        log.warning(f"curl failed: {e}")
+    try:
+        subprocess.run(["wget", "-O", destination, url], check=True)
+        log.info("Download succeeded via wget")
+        return
+    except Exception as e:
+        log.warning(f"wget failed: {e}")
+    fail(f"Download failed after retries and fallbacks: {last_error}")
+
+def http_get_json(url, timeout=10, retries=3, backoff=1.5):
+    """
+    Robust HTTP GET with retry + exponential backoff.
+    """
+    last_error = None
+    for attempt in range(retries):
+        try:
+            log.debug(f"HTTP GET {url} (attempt {attempt + 1}/{retries})")
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "PythonDownloader"}
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                return json.load(response)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            last_error = e
+            log.warning(f"HTTP GET failed: {e}")
+            if attempt < retries - 1:
+                sleep_time = backoff ** attempt
+                log.debug(f"Retrying in {sleep_time:.2f}s...")
+                time.sleep(sleep_time)
+    fail(f"HTTP GET failed after {retries} attempts: {last_error}")
+
+def http_head_exists(url, timeout=10, retries=3):
+    """
+    Validate URL existence using HEAD request.
+    Returns True if reachable, False otherwise.
+    """
+    for attempt in range(retries):
+        try:
+            log.debug(f"HTTP HEAD {url} (attempt {attempt + 1}/{retries})")
+            req = urllib.request.Request(
+                url,
+                method="HEAD",
+                headers={"User-Agent": "PythonDownloader"}
+            )
+            with urllib.request.urlopen(req, timeout=timeout):
+                log.debug("HEAD request succeeded")
+                return True
+        except Exception as e:
+            log.warning(f"HEAD request failed: {e}")
+            if attempt < retries - 1:
+                time.sleep(1.5 ** attempt)
+    return False
+
     """Install Docker and ensure it is running and usable."""
     log.info("Starting Docker bootstrap...", extra=log_bright)
     # --- Version check ---
@@ -573,7 +691,7 @@ def start_docker():
         log.info("Docker is running ✅", extra=LSHF.style(color=LSHF.GREEN))
     # --- Parallel tasks ---
     q = queue.Queue()
-    ok, out = run_pkg_cmd(["docker", "compose", "version"])
+    ok, out = run_command(["docker", "compose", "version"])
     if not ok and not exists("docker-compose"):
         q.put((
             "Install Docker Compose",
@@ -619,7 +737,7 @@ def _docker_start_daemon():
         return True
     elif system == "Linux":
         log.info("Starting Docker daemon (systemd)...", extra=log_bright)
-        return run_unix_pkg_cmd(["systemctl", "start", "docker"])[0]
+        return run_unix_command(["systemctl", "start", "docker"])[0]
     return False
 
 def _docker_wait_ready(timeout=300):
@@ -690,7 +808,7 @@ def _docker_wait_ready(timeout=300):
 
 def _docker_is_ready():
     """."""
-    ok, _ = run_pkg_cmd(["docker", "info"])
+    ok, _ = run_command(["docker", "info"])
     return ok
 
 def _docker_is_running():
@@ -702,7 +820,7 @@ def _docker_is_running():
         ok = os.path.exists("/var/run/docker.sock")
     if not ok:
         return False
-    ok, _ = run_pkg_cmd(["docker", "system", "info"])
+    ok, _ = run_command(["docker", "system", "info"])
     return ok
 
 def _docker_desktop_is_running():
@@ -716,7 +834,7 @@ def _docker_desktop_is_running():
 
 def _docker_test_container():
     """."""
-    ok, out = run_pkg_cmd(["docker", "run", "--rm", "hello-world"])
+    ok, out = run_command(["docker", "run", "--rm", "hello-world"])
     if ok and "Hello from Docker!" in out:
         log.info(out, extra=log_bright)
         return True
@@ -1773,7 +1891,7 @@ def docker_object_exists(object, name):
         stdout = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
         return stdout.find(name) != 1
     except subprocess.CalledProcessError as e:
-        log.error(e.stderr)
+        log.error(f"Exception: {e.stderr}.")
         return False
 
 def docker_volume_data(operation):
@@ -1864,7 +1982,8 @@ def docker_container_is_running(container):
             raw_msg = " ".join([container, insert[0], insert[1]])
             log.debug("Container {}".format(raw_msg), extra=style)
         return running
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        log.error(f"Exception: {e.stderr}.")
         return False
 
 def display_service_endpoints(profile, supabase, env_vars={}):
@@ -2155,18 +2274,11 @@ def setup_ai_suite_ac_auto_config(prompt_store, env_vars:dict={}):
     # AC - bool
     ac_env_vars = [f'AC="{str(ac).lower()}"']
     # AC_SUDO_USER - str
-    sudo_user = getpass.getuser()
-    non_root = "non-root"
-    if system == "Windows":
-        non_root = " ".join(["WSL", non_root])
-        cmd = ["wsl", "-e", "bash", "-c", "whoami"]
-        try:
-            completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            sudo_user = completed.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            log.error(f"Exception: WSL whoami: {e.stderr}")
-    default = env_vars.get('AC_SUDO_USER', sudo_user)
+    default = env_vars.get('AC_SUDO_USER', sudo_user())
     if prompt:
+        non_root = "non-root"
+        if system == "Windows":
+            non_root = " ".join(["WSL", non_root])
         response = input(f"Enter a {non_root} sudo user (current user: {default}): ").strip()
     default = response if response else default
     ac_env_vars.append(f'AC_SUDO_USER="{default}"')
@@ -2291,7 +2403,7 @@ def run_ai_suite_ac_auto_config(sudo_password, ac_env_vars):
     if not ac_env_vars:
         log.error(f"The auto-configure env_var list is empty!")
         return
-    ac_script = os.path.normpath(os.path.join("access", "foo.sh"))
+    ac_script = os.path.normpath(os.path.join("access", "auto_config.sh"))
     if not os.path.exists(ac_script):
         log.error(f"Auto-configure script not found at {ac_script}")
         return
@@ -2566,19 +2678,14 @@ def main():
 
     # Check prerequisites
     missing_tools = check_prerequisites()
+
+    # Install missing tools
     prompt_store = {'p':True} # Set False to bypass auto-configure prompts when debugging etc...
-    sudo_password = None
     install_tools = False
     if prompt_store['p']:
         if missing_tools:
             msg = f"Install missing tools? y/n: (n)"
             install_tools = True if input(msg).strip().lower() == "y" else False
-        # AC_SUDO_PASSWORD - stdin
-        if not is_root_user():
-            msg = "Enter sudo password for elevated tasks or skip for prompt: "
-            sudo_password = getpass.getpass(msg)
-
-    # Install missing tools
     if install_tools:
         log.info("Installing required tools before continuing...")
         if 'Docker' in missing_tools:
@@ -2617,6 +2724,14 @@ def main():
         mod_env_vars.update({'POSTGRES_HOST': 'db'})
         clone_supabase_repo()
         convert_supabase_pooler_line_endings()
+
+    # Optionally set elevated password
+    sudo_password = None
+    if prompt_store['p']:
+        # AC_SUDO_PASSWORD - stdin
+        if not is_root_user():
+            msg = "Enter sudo password for elevated tasks or skip for prompt: "
+            sudo_password = getpass.getpass(msg)
 
     # Automatic configuration
     ac_env_vars = []
@@ -2725,7 +2840,6 @@ def main():
         env_vars = get_dotenv_vars(auto_config=ac_auto_config, profile=args.profile)
         if not env_vars:
             log.critical("No environment variables detected")
-            sys.exit(1)
     # TEMP: End here if working on auto-config and no breakpoints set...
     # if ac_auto_config:
         # log.debug("TEMP: Finished!")
