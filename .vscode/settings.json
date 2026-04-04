@@ -1,0 +1,9 @@
+// filename: .vscode/settings.json
+{
+    "python.envFile": "${workspaceFolder}/.env",
+    "python.terminal.useEnvFile": true ,
+    "python.terminal.activateEnvironment": true,
+    "python.terminal.activateEnvInCurrentTerminal": false,
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.defaultPackageManager": "ms-python.python:pip"
+}

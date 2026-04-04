@@ -1,0 +1,50 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "bashdb",
+            "request": "launch",
+            "name": "Bash-Debug (auto_config.sh)",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/access/auto_config.sh",
+            "args": []
+        },
+        {
+            "type": "bashdb",
+            "request": "launch",
+            "name": "Bash-Debug (select script from list of sh files)",
+            "cwd": "${workspaceFolder}",
+            "program": "${command:SelectScriptName}",
+            "args": []
+        },
+        {
+            "name": "PowerShell Launch Current File",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${file}",
+            "cwd": "${cwd}"
+        },
+        {
+            "name": "Python Debugger: Current File with Arguments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": "--profile ai-all --operation update --log debug"
+            //"args": "--profile n8n open-webui supabase opencode --operation update --log debug"
+            //"args": "${command:pickArgs}"
+        },
+        {
+            "name": "Python Debugger: (suite_services.py) with Arguments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/suite_services.py",
+            "console": "integratedTerminal",
+            "args": "--profile ai-all --operation install --log debug"
+            //"args": "--profile n8n open-webui supabase opencode --operation update --log debug"
+        }
+    ]
+}
