@@ -3257,6 +3257,8 @@ def main():
                 array = element.split('=')
                 if array[1] and str(array[1]).rstrip("\r\n") == "true":
                     args.profile.append("authelia") if "authelia" not in args.profile else None
+                    user_database = os.path.join("access", "authelia", "db", "users_database.yml")
+                    os.remove(user_database) if os.path.exists(user_database) else None
                     authelia_set = True
             if proxy_set and authelia_set:
                 break
