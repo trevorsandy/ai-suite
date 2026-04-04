@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update March 28, 2026
+Last Update April 04, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1713,6 +1713,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     if not operation:
         operation = "stop"
 
+    os.makedirs('./state', exist_ok=True)
     with open('./state/.operation', 'w', newline='\n') as f:
         f.write(operation + ':' + llama.lower())
 
@@ -2903,7 +2904,6 @@ def main():
         if len(op_array) > 1:
             llama_cpp = op_array[1].strip() == 'llama.cpp'
     elif os.path.exists(env_file):
-        os.makedirs('./state', exist_ok=True)
         lpv = dotenv.get_key(env_file, 'LLAMA_PATH')
         if lpv:
             llama_cpp = True if os.path.basename(lpv).lower().startswith('llama-server') else False
@@ -3559,6 +3559,7 @@ def main():
     start_ai_suite(args.profile, args.environment, build)
     display_service_endpoints(args.profile, supabase, env_vars)
 
+    os.makedirs('./state', exist_ok=True)
     with open('./state/.operation', 'w', newline='\n') as f:
         f.write('start' + ':' + llama.lower())
 
