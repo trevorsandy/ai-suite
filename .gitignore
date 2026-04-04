@@ -7,9 +7,8 @@
 *.ps1
 *.bak.*
 access/authelia/*
+!access/authelia/db
 !access/authelia/configuration.yml
-access/authelia/db/*
-!access/authelia/db/schema-authelia.sh
 access/caddy/*
 !access/caddy/addons
 !access/caddy/Caddyfile
