@@ -2731,7 +2731,7 @@ def setup_ai_suite_ac_auto_config(prompt_store, env_vars:dict={}):
     password = env_vars.get('AC_PASSWORD', '*******')
     change_default = True if password == '*******' else False
     if prompt or change_default:
-        password = getpass.getpass(f"Enter hidden proxy user password (required: ***): ")
+        password = getpass.getpass(f"Enter proxy user password or skip to auto-generate (required: ***): ")
     if not password and change_default:
         import secrets
         password_length = 13
