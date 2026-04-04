@@ -319,37 +319,54 @@ def run_command(cmd):
     try:
         result = subprocess.run(
             cmd,
+            check=True
+        )
+        if result.returncode != 0 and result.stderr:
+            log.error(f"{result.stderr.strip()}")
+    except Exception as e:
+        log.error(f"Exception: {e}.")
+
+def run_pkg_command(cmd):
+    """Run a package shell command and print it."""
+    raw_msg = " ".join([log_run_cmd, " ".join(cmd)])
+    log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd)))
+    try:
+        result = subprocess.run(
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             check=True,
             shell=(system == "Windows")
         )
-        log.info(result.stdout.strip())
         if result.stderr:
             if result.returncode == 0:
                 log.warning(f"{result.stderr.strip()}")
             else:
                 log.error(f"{result.stderr.strip()}")
-        return result.returncode == 0, result.stdout.strip()
+        stdout = result.stdout.strip() if result.stdout else ''
+        log.info(stdout)
+        return result.returncode == 0, stdout
     except subprocess.CalledProcessError as e:
-        log.error(f"Exception: Command error: {e.stderr.strip()}")
-        return False, e.stdout.strip()
+        if e.stderr:
+            log.error(f"Exception: Command error: {e.stderr.strip()}")
+        stdout = e.stdout.strip() if e.stdout else ''
+        return False, stdout
 
 def run_unix_command(cmd):
     """."""
     cmd = unix_prefix() + cmd
     privilege = unix_privilege()
     if privilege == "is_unix__root":
-        return run_command(cmd)
+        return run_pkg_command(cmd)
     elif privilege == "has_sudo__pass_set":
         full_cmd = ["sudo"] + unix_prefix() + cmd
-        return run_command(full_cmd)
+        return run_pkg_command(full_cmd)
     elif privilege == "has_sudo__needs_pass":
         full_cmd = ["sudo"] + unix_prefix() + cmd
-        return run_command(full_cmd)
+        return run_pkg_command(full_cmd)
     elif privilege == "has_su__needs_pass":
-        return run_command(["su", "-c"] + unix_prefix() + cmd)
+        return run_pkg_command(["su", "-c"] + unix_prefix() + cmd)
     else:
         fail("No privilege escalation available.")
     return False, ""
@@ -508,7 +525,7 @@ def install_package(package, pwd=None):
             return True
         if package == 'docker':
             if exists("winget"):
-                return run_command(["winget", "install", "-e", "--id", "Docker.DockerDesktop"])[0]
+                return run_pkg_command(["winget", "install", "-e", "--id", "Docker.DockerDesktop"])[0]
             else:
                 return True
 
@@ -533,7 +550,7 @@ def install_package(package, pwd=None):
         if package == 'docker':
             cmd.extend(["--cask"])
         cmd.extend([package])
-        return run_command(cmd)[0]
+        return run_pkg_command(cmd)[0]
 
     if system == "Linux" or is_wsl2():
         if exists("apt-get"):
@@ -1116,7 +1133,7 @@ def docker_start():
         log.info("Docker is running ✅", extra=LSHF.style(color=LSHF.GREEN))
     # --- Parallel tasks ---
     q = queue.Queue()
-    ok, out = run_command(["docker", "compose", "version"])
+    ok, out = run_pkg_command(["docker", "compose", "version"])
     if not ok and not exists("docker-compose"):
         q.put((
             "Install Docker Compose",
@@ -1130,7 +1147,7 @@ def docker_start():
     return True
 
 def docker_get_version():
-    ok, version = run_command(["docker", "--version"])
+    ok, version = run_pkg_command(["docker", "--version"])
     if not ok:
         return None
     return _docker_parse_version(version)
@@ -1254,7 +1271,7 @@ def _docker_wait_ready(timeout=300):
 
 def _docker_is_ready():
     """."""
-    ok, _ = run_command(["docker", "info"])
+    ok, _ = run_pkg_command(["docker", "info"])
     return ok
 
 def _docker_is_running():
@@ -1266,7 +1283,7 @@ def _docker_is_running():
         ok = os.path.exists("/var/run/docker.sock")
     if not ok:
         return False
-    ok, _ = run_command(["docker", "system", "info"])
+    ok, _ = run_pkg_command(["docker", "system", "info"])
     return ok
 
 def _docker_desktop_is_running():
@@ -1280,7 +1297,7 @@ def _docker_desktop_is_running():
 
 def _docker_test_container():
     """."""
-    ok, out = run_command(["docker", "run", "--rm", "hello-world"])
+    ok, out = run_pkg_command(["docker", "run", "--rm", "hello-world"])
     if ok and "Hello from Docker!" in out:
         log.info(out, extra=log_bright)
         return True
