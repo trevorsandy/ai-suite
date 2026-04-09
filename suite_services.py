@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update April 04, 2026
+Last Update April 09, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1303,8 +1303,9 @@ def _docker_test_container():
         return True
     return False
 
-def launch_llama_process(args, llama_log):
+def launch_llama_process(args, env=None, llama_log=None):
     """Launch Ollama/LLaMA.cpp server on the host"""
+    llama_log = "llama_start.log" if not llama_log else llama_log
     log_file = "".join(['>', llama_log, ' 2>&1'])
     if system == "Windows":
         win = "".join(['/c,"', llama_exe])
@@ -1315,7 +1316,13 @@ def launch_llama_process(args, llama_log):
     raw_msg = " ".join([log_run_cmd, " ".join(cmd)])
     log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd)))
     try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        completed = subprocess.run(
+            cmd,
+            capture_output=True,
+            env=env,
+            text=True,
+            check=True
+        )
         if completed.returncode != 0:
             log.error(f"Command: {llama} process: {completed.stderr}")
     except Exception as e:
@@ -1511,9 +1518,15 @@ def check_llama_process(operation=None, env_vars={}):
                     llama_server_args = env_vars.get('OLLAMA_SERVER_ARGS')
                     if llama_server_args:
                         llama_args.extend([llama_server_args])
-
+                llama_host = "localhost"
+                llama_port = env_vars.get('OLLAMA_PORT')
+                llama_host_var = llama_host if llama_cpp else f"{llama_host}:{llama_port}"
+                llama_host_env = "LLAMA_ARG_HOST" if llama_cpp else "OLLAMA_HOST"
+                log.info(f"Set '{llama_host_env}' to '{llama_host_var}' in subprocess env...")
+                env = os.environ.copy()
+                env[llama_host_env] = llama_host_var
                 args = " ".join(llama_args)
-                launch_llama_process(args, llama_log_file)
+                launch_llama_process(args, env, llama_log_file)
             else:
                 log.critical(f"The {llama_app} file was not found at {llama_exe}.")
                 log.critical(f"If {llama} is installed in a non-standard location, set the LLAMA_PATH")
