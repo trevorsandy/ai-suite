@@ -2091,7 +2091,9 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
     """Load environment variables from .env file"""
     if env_file is None:
         env_file = os.path.join(".env")
-
+    env_parent = pathlib.Path(env_file).resolve().parent
+    my_parent = pathlib.Path(__file__).resolve().parent
+    ai_suite_env = (env_parent == my_parent)
     valid_env_file = os.path.exists(env_file)
     if not valid_env_file:
         if os.path.exists(".env.example"):
@@ -2100,6 +2102,7 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
             if valid_env_file:
                 auto_config = str(dotenv.get_key(env_file, 'AC')).lower() == 'true'
             valid_env_file = False
+            ai_suite_env = True
             if not auto_config:
                 log.warning("The .env file was not found - it was created from .env.example template")
                 log.critical("⚠️ IMPORTANT: Edit .env file with secure passwords and keys - exiting...")
@@ -2107,10 +2110,10 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
         else:
             log.critical("The .env.example file was not found - exiting...")
             return {}
-    else:
+    elif ai_suite_env:
         auto_config = str(dotenv.get_key(env_file, 'AC')).lower() == 'true'
 
-    if not auto_config:
+    if ai_suite_env and not auto_config:
         with open(env_file, 'r') as f:
             env_content = f.read()
         default_secrets = []
@@ -2176,10 +2179,10 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
     env_vars = dotenv.dotenv_values(env_file)
     if not valid_env_file:
         os.remove(env_file) if os.path.exists(env_file) else None
-    path = env_vars.get('PROJECTS_PATH')
-    path = os.path.join('~', 'projects') if not path else path
-    env_vars['PROJECTS_PATH'] = normalize_path(path)
-
+    if ai_suite_env:
+        path = env_vars.get('PROJECTS_PATH')
+        path = os.path.join('~', 'projects') if not path else path
+        env_vars['PROJECTS_PATH'] = normalize_path(path)
     return env_vars
 
 def load_dotenv_vars(env_vars):
