@@ -312,13 +312,14 @@ LSH.setFormatter(LSHF)
 LSH.setLevel(logging.NOTSET)
 
 
-def run_command(cmd):
+def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
     raw_msg = " ".join([log_run_cmd, " ".join(cmd)])
     log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd)))
     try:
         result = subprocess.run(
             cmd,
+            cwd=cwd,
             check=True
         )
         if result.returncode != 0 and result.stderr:
@@ -381,6 +382,13 @@ def exists(cmd):
     found = shutil.which(cmd) is not None
     log.info(f"Check exists '{cmd}': {found}")
     return found
+
+def elide(string: str, length=30):
+    if length <= 3:
+        return "." * length
+    if len(string) <= length:
+        return string
+    return string[:length - 3] + "..."
 
 def retry(func, retries=3, base_delay=2, desc="operation"):
     """."""
