@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update March, 23 2026
+# Last Update April, 09 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -674,7 +674,7 @@ package_is_installed() {
 }
 
 sudo_prompt() {
-    if [ -n "$AC_SUDO_PASSWORD" ]; then
+    if [[ -n "${AC_SUDO_PASSWORD+x}" ]]; then
         (printf '%s\n' "$AC_SUDO_PASSWORD" | sudo -S -v >/dev/null 2>&1)
     fi
 }
@@ -1968,13 +1968,16 @@ if [[ "$with_authelia" == true ]]; then
     # adding disabled=false after updating style to double so that every value except disabled is double quoted
     log_info "${BODY}Write Authelia users_database.yml file"
     #-------------------------------------------
+    authelia_tmp=$(mktemp)
     yaml_path=".users.$username" display_name="$display_name" bcrypt_password="$bcrypt_password" email="$email" \
         "$yq_bin" -n 'eval(strenv(yaml_path)).displayname = strenv(display_name) |
                eval(strenv(yaml_path)).password = strenv(bcrypt_password) |
                eval(strenv(yaml_path)).email = strenv(email) |
                eval(strenv(yaml_path)).groups = ["admins","dev"] |
                .. style="double" |
-               eval(strenv(yaml_path)).disabled = false' >./access/authelia/users_database.yml
+               eval(strenv(yaml_path)).disabled = false' >"$authelia_tmp"
+    # Authelia sets ownership to root so use run_pkg_cmd to run with sudo
+    run_pkg_cmd mv "$authelia_tmp" ./access/authelia/users_database.yml
 
     # DEFINE AUTHELIA configuration.yml file
     log_info "${BODY}Define Authelia configuration.yml file"
