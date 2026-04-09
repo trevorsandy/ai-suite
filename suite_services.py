@@ -1627,14 +1627,6 @@ def prepare_supabase_env(env_vars):
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
     write_dotenv_file(env_file, built_env_vars)
 
-    athelia_sh_path = os.path.join("access", "authelia", "db", "schema-authelia.sh")
-    supabase_db_dir = os.path.join("supabase", "docker", "volumes", "db")
-    if not os.path.exists(athelia_sh_path):
-        log.error(f"File {athelia_sh_path} not found.")
-        return
-    convert_line_endings(athelia_sh_path)
-    shutil.copy(athelia_sh_path, supabase_db_dir)
-
 def prepare_open_webui_tools_filesystem_env(env_vars):
     """Write env_vars to .env and compose.yaml to open-webui/tools/servers/filesystem."""
     env_file = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
@@ -1990,6 +1982,16 @@ def convert_line_endings(file_path):
             f.write(modified_content)
     except FileNotFoundError:
         log.error(f"Exception: File '{file_path}' not found.")
+
+def copy_supabase_authelia_schema():
+    athelia_sh_path = os.path.join("access", "authelia", "db", "schema-authelia.sh")
+    supabase_db_dir = os.path.join("supabase", "docker", "volumes", "db")
+    if not os.path.exists(athelia_sh_path):
+        log.error(f"File {athelia_sh_path} not found.")
+        return
+    convert_line_endings(athelia_sh_path)
+    schema_path = os.path.join(supabase_db_dir, "schema-authelia.sh")
+    shutil.copy(athelia_sh_path, schema_path)
 
 # Treat Selfhosted Supavisor Pooler Keeps Restarting.
 # No longer needed as I am treating line edgings on git pull above
@@ -3178,6 +3180,7 @@ def main():
         args.profile.remove('supabase') if 'supabase' in args.profile else None
         mod_env_vars.update({'POSTGRES_HOST': 'db'})
         clone_supabase_repo()
+        copy_supabase_authelia_schema()
         convert_supabase_pooler_line_endings()
 
     # Optionally set elevated password
