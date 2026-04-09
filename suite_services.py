@@ -3183,14 +3183,6 @@ def main():
         copy_supabase_authelia_schema()
         convert_supabase_pooler_line_endings()
 
-    # Optionally set elevated password
-    sudo_password = None
-    if prompt_store['p']:
-        # AC_SUDO_PASSWORD - stdin
-        if not is_root_user():
-            msg = "Enter sudo password for elevated tasks or skip for prompt: "
-            sudo_password = getpass.getpass(msg)
-
     # Automatic configuration
     ac_env_vars = []
     if ac_auto_config:
@@ -3239,6 +3231,11 @@ def main():
         ac_auto_config = True if ac_env_vars else False
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
+        # AC_SUDO_PASSWORD - stdin
+        sudo_password = None
+        if not is_root_user():
+            msg = "Enter sudo password for elevated tasks or skip for prompt: "
+            sudo_password = getpass.getpass(msg)
         if sudo_password:
             ac_env_vars.append('AC_USE_SUDO=1')
         else:
