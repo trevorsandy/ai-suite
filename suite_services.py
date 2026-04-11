@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update April 09, 2026
+Last Update April 11, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1586,52 +1586,6 @@ def clone_openclaw_repo():
         log.info("OpenClaw repository already exists, updating...")
         os.chdir(repo_dir)
         git("pull")
-
-    retain_root = {
-        ".git", "docs", "scripts", ".codex",
-        ".env.example", ".gitattributes", ".gitignore",
-        "AGENTS.md", "CHANGELOG.md", "CLAUDE.md",
-        "CONTRIBUTING.md", "docker-compose.yml",
-        "Dockerfile", "Dockerfile.sandbox",
-        "Dockerfile.sandbox-browser",
-        "Dockerfile.sandbox-common",
-        "docker-setup.sh", "docs.acp.md",
-        "LICENSE", "README.md", "SECURITY.md", "VISION.md"
-    }
-    log.info("Cleaning up OpenClaw repository...")
-    for item in pathlib.Path.cwd().iterdir():
-        if item.name not in retain_root:
-            if item.is_file():
-                item.unlink()
-            elif item.is_dir():
-                shutil.rmtree(item, ignore_errors=True)
-    scripts_dir = pathlib.Path("scripts")
-    if scripts_dir.exists():
-        for item in scripts_dir.iterdir():
-            if item.is_file():
-                item.unlink()
-    git("add", "-A")
-    status = subprocess.run(
-        ["git", "status", "--porcelain"],
-        capture_output=True,
-        text=True
-    )
-    if not status.stdout.strip():
-        log.info("No OpenClaw repo changes to commit.")
-        os.chdir("..")
-        return
-    last_commit = subprocess.run(
-        ["git", "log", "-1", "--pretty=%B"],
-        capture_output=True,
-        text=True
-    ).stdout.strip()
-    commit_msg = "Repository cleanup"
-    if last_commit == commit_msg:
-        log.info("Amending previous cleanup commit...")
-        git("commit", "--amend", "--no-edit")
-    else:
-        log.info("Creating new cleanup commit...")
-        git("commit", "-m", commit_msg)
     os.chdir("..")
 
 def clone_open_webui_tools_filesystem_repo():
@@ -1729,8 +1683,9 @@ def prepare_openclaw_env(cwd):
     gateway_password = secrets.token_hex(16)  # 16 bytes -> 32 hex chars
     openclaw_image = "ghcr.io/openclaw/openclaw:latest"
     openapi_key = "llamacpp-local" if llama_cpp else "ollama-local"
-    config_dir = f"~/.openclaw"
-    workspace_dir = f"~/.openclaw/workspace"
+    home_dir = pathlib.Path.home()
+    config_dir = home_dir / ".openclaw"
+    workspace_dir = config_dir / "workspace"
     cwd = "./openclaw" if not cwd else cwd
     example_path = os.path.join(cwd, ".env.example")
     output_path=os.path.join(cwd, ".env")
@@ -1769,7 +1724,7 @@ def prepare_openclaw_env(cwd):
                 else:
                     modified_lines.append(line)
             elif modified_line.startswith("# OPENCLAW_HOME="):
-                modified_lines.append("OPENCLAW_HOME=~\n")
+                modified_lines.append(f"OPENCLAW_HOME={home_dir}\n")
             elif modified_line.startswith("# OPENAI_API_KEY="):
                 modified_lines.append(f"OPENAI_API_KEY={openapi_key}\n")
             else:
@@ -1846,7 +1801,7 @@ def prepare_openclaw_config(cwd, env_vars):
     if llama_cpp:
         log.info("Configuring llama.cpp provider")
         port = env_vars.get("LLAMA_ARG_PORT", "8040")
-        base_url = f"http://host.docker.internal:{port}/v1"
+        base_url = f"http://localhost:{port}/v1"
         models_env = [
             env_vars.get("LLAMACPP_MODEL_GEMMA_ID"),
             env_vars.get("LLAMACPP_MODEL_DEEPSEEK_ID"),
@@ -1898,7 +1853,7 @@ def prepare_openclaw_config(cwd, env_vars):
     else:
         log.info("Configuring Ollama provider")
         port = env_vars.get("OLLAMA_PORT", "11434")
-        base_url = f"http://host.docker.internal:{port}/v1"
+        base_url = f"http://localhost:{port}/v1"
         models_env = [
             env_vars.get("OLLAMA_DEFAULT_MODEL"),
             env_vars.get("OLLAMA_SUPPLEMENT_MODEL"),
@@ -2221,20 +2176,20 @@ def start_openclaw(
     compose_file = os.path.join(cwd, "docker-compose.yml")
     if build:
         # --- Onboarding loop ---
-        onboarding_cmd = [
-            'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
-            '--entrypoint', 'node',
-            'openclaw-gateway', 'dist/index.js', 'onboard',
-            '--mode', 'local', '--no-install-daemon'
-        ]
-        _openclaw_run_with_retries(
-            onboarding_cmd,
-            cwd,
-            "Onboarding",
-            non_interactive=non_interactive,
-            on_failure=on_failure,
-            on_max=on_max,
-        )
+        # onboarding_cmd = [
+            # 'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
+            # '--entrypoint', 'node',
+            # 'openclaw-gateway', 'dist/index.js', 'onboard',
+            # '--mode', 'local', '--no-install-daemon'
+        # ]
+        # _openclaw_run_with_retries(
+            # onboarding_cmd,
+            # cwd,
+            # "Onboarding",
+            # non_interactive=non_interactive,
+            # on_failure=on_failure,
+            # on_max=on_max,
+        # )
         # --- Configuration loop ---
         config_cmd = [
             'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
@@ -2982,7 +2937,8 @@ def docker_container_is_running(container):
     try:
         check = subprocess.check_output(cmd).decode().strip()
         running = check == "true"
-        if log.root.level == logging.DEBUG:
+        debug_log = log_level == logging.DEBUG and not container == 'openclaw-cli'
+        if debug_log:
             color = LSHF.WHITE if running else LSHF.RED
             style = LSHF.style(logging.INFO, color)
             insert = ('is', 'running.') if running else ('not', 'running!')
@@ -3167,7 +3123,8 @@ def display_service_endpoints(profile, supabase, openclaw, env_vars={}):
 
     failed_container_list = [
         container for container in container_list
-        if not docker_container_is_running(container)
+        if not docker_container_is_running(container) \
+        and not container == 'openclaw-cli'
     ]
 
     started_ok = len(failed_container_list) == 0
@@ -3659,10 +3616,10 @@ def main():
     args.profile = [] if default_profile else args.profile
 
     # Setup logging
-    global log, log_bright, log_run_cmd
+    global log, log_level, log_bright, log_run_cmd
+    log_level = logging.NOTSET
     log_bright = None
     log_run_cmd = "Running command:"
-    log_level = logging.NOTSET
     log_handlers: list[logging.Handler] = [LFH]
     if args.log != 'OFF':
         log_level = getattr(logging, args.log, log_level)
