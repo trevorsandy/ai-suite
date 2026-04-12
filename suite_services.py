@@ -2881,6 +2881,7 @@ def run_ai_suite_ac_auto_config(sudo_password, ac_env_vars):
         log.error(f"Auto-configure script not found at {ac_script}")
         return
     if system == 'Windows':
+        convert_line_endings(ac_script)
         ac_script = ac_script.replace("\\", "/")
     ac_script = "".join(["./", ac_script])
     ac_log_file = "".join([ac_script, ".log"])
@@ -2895,10 +2896,10 @@ def run_ai_suite_ac_auto_config(sudo_password, ac_env_vars):
     cmd = ["bash", "-c"]
     if system == "Windows":
         cmd = ["wsl", "-e"] + cmd
-    cmd_msg = cmd + [" ".join(["env"] + cmd_msg + [ac_script])]
+    cmd_msg = cmd + [f'env {" ".join(cmd_msg)} {ac_script}']
     raw_msg = " ".join([log_run_cmd, " ".join(cmd_msg)])
     log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd_msg)))
-    cmd = cmd + [" ".join(["env"] + ac_env_vars + [ac_script])]
+    cmd = cmd + [f'env {" ".join(ac_env_vars)} {ac_script}']
     try:
         completed = subprocess.run(
             cmd,
