@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update April 11, 2026
+Last Update April 12, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -2162,6 +2162,7 @@ def start_open_webui_tools_filesystem(environment=None, build=False):
     start_built_container(compose_file, environment, build)
 
 def start_openclaw(
+    onboard_store,
     environment=None,
     build=False,
     cwd=None,
@@ -2175,21 +2176,22 @@ def start_openclaw(
     cwd = "./openclaw" if not cwd else cwd
     compose_file = os.path.join(cwd, "docker-compose.yml")
     if build:
-        # --- Onboarding loop ---
-        # onboarding_cmd = [
-            # 'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
-            # '--entrypoint', 'node',
-            # 'openclaw-gateway', 'dist/index.js', 'onboard',
-            # '--mode', 'local', '--no-install-daemon'
-        # ]
-        # _openclaw_run_with_retries(
-            # onboarding_cmd,
-            # cwd,
-            # "Onboarding",
-            # non_interactive=non_interactive,
-            # on_failure=on_failure,
-            # on_max=on_max,
-        # )
+        if onboard_store['b']:
+            # --- Onboarding loop ---
+            onboarding_cmd = [
+                'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
+                '--entrypoint', 'node',
+                'openclaw-gateway', 'dist/index.js', 'onboard',
+                '--mode', 'local', '--no-install-daemon'
+            ]
+            _openclaw_run_with_retries(
+                onboarding_cmd,
+                cwd,
+                "Onboarding",
+                non_interactive=non_interactive,
+                on_failure=on_failure,
+                on_max=on_max,
+            )
         # --- Configuration loop ---
         config_cmd = [
             'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
@@ -3222,7 +3224,7 @@ def display_ac_env_vars(ac_env_vars):
         log.info(raw_msg, extra=env_var_style)
     log.info("="*60, extra=line_style)
 
-def setup_ai_suite_ac_auto_config(prompt_store, env_vars:dict={}):
+def setup_ai_suite_ac_auto_config(prompt_store, onboard_store, env_vars:dict={}):
     """Setup env_vars for self-hosted AI-Suite with Caddy/Nginx proxy and Authelia
        2FA identity and access management.
     """
@@ -3243,6 +3245,10 @@ def setup_ai_suite_ac_auto_config(prompt_store, env_vars:dict={}):
         response = 'y'
     prompt = False if response.lower() == 'y' else prompt
     prompt_store['p'] = prompt
+    if prompt:
+        onboard = onboard_store['b']
+        response = input(f"Perform OpenClaw onboarding? y/n: (n)").strip()
+        onboard_store['b'] = True if response.lower() == 'y' else onboard
     response = None
     public = False
 
@@ -3296,7 +3302,8 @@ def setup_ai_suite_ac_auto_config(prompt_store, env_vars:dict={}):
     ac_env_vars.append(f'AC_LOCAL={str(default).lower()}')
     public = not default
     # AC_DOMAIN - str
-    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else 'local.pc')
+    local = 'localhost' if log_level == logging.DEBUG else 'local.pc'
+    default = env_vars.get('AC_DOMAIN', 'ai-suite.fr' if public else local)
     if prompt:
         response = input(f"Enter a domain ({default}): ").strip()
     default = response if response else default
@@ -3693,8 +3700,8 @@ def main():
         any(p for p in args.profile if p not in managemant_and_data_operations)
     env_vars = get_dotenv_vars(auto_config=ac_auto_config, profile=args.profile)
     if not env_vars:
-         log.critical("No environment variables detected")
-         sys.exit(1)
+        log.critical("No environment variables detected")
+        sys.exit(1)
 
     # Set build (update, install) status
     build = args.operation in ['update', 'install']
@@ -3718,6 +3725,7 @@ def main():
     openclaw = \
         any(p for p in args.profile if p in ['openclaw', 'ai-all'])
     ocwd = None
+    onboard_store = {'b':False}
     base_dir = pathlib.Path(__file__).parent
     if openclaw:
         if build:
@@ -3738,7 +3746,7 @@ def main():
         replay = False
         attempt = 1
         max_attempts = 3
-        ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, env_vars)
+        ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, onboard_store, env_vars)
         if ac_env_vars:
             display_ac_env_vars(ac_env_vars)
         if prompt_store['p']:
@@ -3754,7 +3762,7 @@ def main():
                 if replay == 'y':
                     accepted = True
                     response = None
-                    ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, env_vars)
+                    ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, onboard_store, env_vars)
                     if ac_env_vars:
                         display_ac_env_vars(ac_env_vars)
                     if prompt_store['p']:
@@ -4078,10 +4086,10 @@ def main():
 
     # Start OpenClaw
     if openclaw:
-        start_openclaw(args.environment, build, ocwd)
+        start_openclaw(onboard_store, args.environment, build, ocwd)
         # Give OpenClaw some time to initialize
         log.info("Waiting for OpenClaw to initialize...", extra=log_bright)
-        wait_with_progress(10)
+        wait_with_progress(5)
 
     # Start Open WebUI Tools Filesystem
     if open_webui:
