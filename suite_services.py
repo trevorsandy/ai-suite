@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update April 12, 2026
+Last Update April 17, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1679,36 +1679,49 @@ def prepare_openclaw_env(cwd):
     Creates a .env file from env.example with required values set.
     """
     modified_lines: list[str] = []
-    gateway_token = secrets.token_hex(32)     # 32 bytes -> 64 hex chars
-    gateway_password = secrets.token_hex(16)  # 16 bytes -> 32 hex chars
-    openclaw_image = "ghcr.io/openclaw/openclaw:latest"
-    openapi_key = "llamacpp-local" if llama_cpp else "ollama-local"
     home_dir = pathlib.Path.home()
     config_dir = home_dir / ".openclaw"
     workspace_dir = config_dir / "workspace"
+    gateway_port = 18789
+    bridge_port = 18790
+    gateway_bind = "lan"
+    gateway_token = secrets.token_hex(32)     # 32 bytes -> 64 hex chars
+    openclaw_image = "ghcr.io/openclaw/openclaw:latest"
+    gateway_password = secrets.token_hex(16)  # 16 bytes -> 32 hex chars
+    openapi_key = "llamacpp-local" if llama_cpp else "ollama-local"
     cwd = "./openclaw" if not cwd else cwd
     example_path = os.path.join(cwd, ".env.example")
     output_path=os.path.join(cwd, ".env")
+    add_home_dir = True
+    add_config_dir = True
+    add_workspace_dir = True
+    add_gateway_port = True
+    add_bridge_port = True
+    add_gateway_bind = True
+    add_gateway_token = True
+    add_remote_image = True
+    add_extra_mounts = True
+    add_home_volume = True
+    add_sandbox = True
+    add_docker_socket = True
+    add_docker_gid = True
+    add_install_docker_cli = True
+    add_timezone = True
+    sandbox = False
+    update_env = False
     log.info(f"Writing .env file to {output_path}...")
     try:
         with open(example_path, "r", newline="\n") as f:
             lines = f.readlines()
-        add_remote_image = True
-        add_config_dir = True
-        add_workspace_dir = True
         for line in lines:
             modified_line = line.strip()
-            if modified_line.startswith("OPENCLAW_IMAGE="):
-                add_remote_image = False
+            if modified_line.startswith("# OPENCLAW_HOME="):
+                add_home_dir = False
                 key_value = modified_line.split('=', 1)
                 if len(key_value) == 2 and not key_value[1]:
-                    modified_lines.append(f"OPENCLAW_IMAGE={openclaw_image}\n")
+                    modified_lines.append(f"OPENCLAW_HOME={home_dir}\n")
                 else:
                     modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_GATEWAY_TOKEN="):
-                modified_lines.append(f"OPENCLAW_GATEWAY_TOKEN={gateway_token}\n")
-            elif modified_line.startswith("# OPENCLAW_GATEWAY_PASSWORD="):
-                modified_lines.append(f"OPENCLAW_GATEWAY_PASSWORD={gateway_password}\n")
             elif modified_line.startswith("OPENCLAW_CONFIG_DIR="):
                 add_config_dir = False
                 key_value = modified_line.split('=', 1)
@@ -1723,10 +1736,88 @@ def prepare_openclaw_env(cwd):
                     modified_lines.append(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}\n")
                 else:
                     modified_lines.append(line)
-            elif modified_line.startswith("# OPENCLAW_HOME="):
-                modified_lines.append(f"OPENCLAW_HOME={home_dir}\n")
+            elif modified_line.startswith("OPENCLAW_GATEWAY_PORT="):
+                add_gateway_port = False
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_GATEWAY_PORT={gateway_port}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_BRIDGE_PORT="):
+                add_bridge_port = False
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_BRIDGE_PORT={bridge_port}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_GATEWAY_BIND="): # Foo
+                add_gateway_bind = False
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_GATEWAY_BIND={gateway_bind}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_GATEWAY_TOKEN="):
+                add_gateway_token = False
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_GATEWAY_TOKEN={gateway_token}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_IMAGE="):
+                add_remote_image = False
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_IMAGE={openclaw_image}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("# OPENCLAW_GATEWAY_PASSWORD="):
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_GATEWAY_PASSWORD={gateway_password}\n")
+                else:
+                    modified_lines.append(line)
             elif modified_line.startswith("# OPENAI_API_KEY="):
-                modified_lines.append(f"OPENAI_API_KEY={openapi_key}\n")
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENAI_API_KEY={openapi_key}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_EXTRA_MOUNTS="):
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and key_value[1]:
+                    add_extra_mounts = False
+                modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_HOME_VOLUME="):
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and key_value[1]:
+                    add_home_volume = False
+                modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_SANDBOX="):
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and key_value[1]:
+                    add_sandbox = False
+                modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_DOCKER_SOCKET="):
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and key_value[1]:
+                    add_docker_socket = False
+                modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_DOCKER_GID=") and sandbox:
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and key_value[1]:
+                    add_docker_gid = False
+                modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_INSTALL_DOCKER_CLI=") and sandbox:
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and key_value[1]:
+                    add_install_docker_cli = False
+                modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_TZ="):
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and key_value[1]:
+                    add_timezone = False
+                modified_lines.append(line)
             else:
                 modified_lines.append(line)
         default_paths = add_config_dir or add_workspace_dir
@@ -1737,6 +1828,7 @@ def prepare_openclaw_env(cwd):
                 modified_line = line.strip()
                 section_header = modified_line.startswith("# ----------------------------")
                 default_path_insert = modified_line.startswith("# Optional path overrides ")
+                auto_configure_settings = modified_line.startswith("# OPENCLAW_HOME=")
                 if section_header and add_remote_image:
                     add_remote_image = False
                     modified_lines.append("# " + "-" * 77 + "\n")
@@ -1756,6 +1848,41 @@ def prepare_openclaw_env(cwd):
                     continue
                 elif modified_line.startswith("# OPENCLAW_CONFIG_PATH="):
                     continue
+                elif auto_configure_settings:
+                    modified_lines.append(line)
+                    modified_lines.append("\n")
+                    modified_lines.append("# Auto-configure settings\n")
+                    if add_home_dir:
+                        modified_lines.append(f"OPENCLAW_HOME={home_dir}\n")
+                    if add_gateway_port:
+                        modified_lines.append(f"OPENCLAW_GATEWAY_PORT={gateway_port}\n")
+                    if add_bridge_port:
+                        modified_lines.append(f"OPENCLAW_BRIDGE_PORT={bridge_port}\n")
+                    if add_gateway_bind:
+                        modified_lines.append(f"OPENCLAW_GATEWAY_BIND={gateway_bind}\n")
+                    if add_gateway_token:
+                        modified_lines.append(f"OPENCLAW_GATEWAY_TOKEN={gateway_token}\n")
+                    if add_extra_mounts:
+                        update_env = True
+                        modified_lines.append("OPENCLAW_EXTRA_MOUNTS=\n")
+                    if add_home_volume:
+                        update_env = True
+                        modified_lines.append("OPENCLAW_HOME_VOLUME=\n")
+                    if add_sandbox:
+                        update_env = True
+                        modified_lines.append("OPENCLAW_SANDBOX=\n")
+                    if add_docker_socket:
+                        update_env = True
+                        modified_lines.append("OPENCLAW_DOCKER_SOCKET=\n")
+                    if add_docker_gid:
+                        update_env = True
+                        modified_lines.append("OPENCLAW_DOCKER_GID=\n")
+                    if add_install_docker_cli:
+                        update_env = True
+                        modified_lines.append("OPENCLAW_INSTALL_DOCKER_CLI=\n")
+                    if add_timezone:
+                        update_env = True
+                        modified_lines.append("OPENCLAW_TZ=\n")
                 else:
                     modified_lines.append(line)
         with open(output_path, "w", newline="\n") as f:
@@ -1763,11 +1890,32 @@ def prepare_openclaw_env(cwd):
     except Exception as e:
         log.error(f"Exception: OpenClaw Setup: {e}")
         return False
+    if update_env:
+        oc_script = os.path.normpath("openclaw_ctl")
+        if not os.path.exists(oc_script):
+            log.error(f"OpenClaw setup script not found at {oc_script}")
+            return
+        cmd = ["bash", "-c"]
+        if system == 'Windows':
+            convert_line_endings(oc_script)
+            oc_script = oc_script.replace("\\", "/")
+        oc_script = "".join(["./", oc_script])
+        if system == "Windows":
+            cmd = ["wsl", "-e"] + cmd
+        cmd_args = ["--sandbox"]
+        env_cmd = cmd + [
+            f'{oc_script} --setenv {" ".join(cmd_args)}'
+        ]
+        run_command(env_cmd)
     log.info(f".env file created at {output_path}", extra=log_bright)
     debug_style = LSHF.style(logging.WARNING)
     log.debug(f"OPENCLAW_IMAGE={openclaw_image}", extra=debug_style)
+    log.debug(f"OPENCLAW_HOME={home_dir}", extra=debug_style)
     log.debug(f"OPENCLAW_CONFIG_DIR={config_dir}", extra=debug_style)
     log.debug(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}", extra=debug_style)
+    log.debug(f"OPENCLAW_GATEWAY_PORT={gateway_port}", extra=debug_style)
+    log.debug(f"OPENCLAW_BRIDGE_PORT={bridge_port}", extra=debug_style)
+    log.debug(f"OPENCLAW_GATEWAY_BIND={gateway_bind}", extra=debug_style)
     log.debug(f"OPENCLAW_GATEWAY_TOKEN={elide(gateway_token)}", extra=debug_style)
     log.debug(f"OPENCLAW_GATEWAY_PASSWORD={elide(gateway_password)}", extra=debug_style)
     log.debug(f"OPENAI_API_KEY={openapi_key}", extra=debug_style)
@@ -1905,7 +2053,7 @@ def prepare_openclaw_config(cwd, env_vars):
     if dst_path.exists():
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
         backup_path = dst_path.with_name(f"openclaw.json.bak.{timestamp}")
-        log.warning(f"Creating backup: {backup_path}")
+        log.info(f"Creating backup: {backup_path}")
         shutil.copy(dst_path, backup_path)
 
     try:
@@ -2173,16 +2321,23 @@ def start_openclaw(
     ):
     """Start the OpenClaw services (using its compose file)."""
     log.info("Starting OpenClaw services...")
-    cwd = "./openclaw" if not cwd else cwd
-    compose_file = os.path.join(cwd, "docker-compose.yml")
+    oc_script = os.path.normpath("openclaw_ctl")
+    if not os.path.exists(oc_script):
+        log.error(f"OpenClaw setup script not found at {oc_script}")
+        return
+    cmd = ["bash", "-c"]
+    if system == 'Windows':
+        convert_line_endings(oc_script)
+        oc_script = oc_script.replace("\\", "/")
+    oc_script = "".join(["./", oc_script])
+    if system == "Windows":
+        cmd = ["wsl", "-e"] + cmd
+    cmd_args = ["--sandbox"]
     if build:
         if onboard_store['b']:
-            # --- Onboarding loop ---
-            onboarding_cmd = [
-                'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
-                '--entrypoint', 'node',
-                'openclaw-gateway', 'dist/index.js', 'onboard',
-                '--mode', 'local', '--no-install-daemon'
+            # --- Onboarding + Configuration loop ---
+            onboarding_cmd = cmd + [
+                f'{oc_script} --onboarding {" ".join(cmd_args)}'
             ]
             _openclaw_run_with_retries(
                 onboarding_cmd,
@@ -2192,32 +2347,28 @@ def start_openclaw(
                 on_failure=on_failure,
                 on_max=on_max,
             )
-        # --- Configuration loop ---
-        config_cmd = [
-            'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
-            '--entrypoint', 'node',
-            'openclaw-gateway', 'dist/index.js',
-            'config', 'set', '--batch-json',
-            '[{"path":"gateway.mode","value":"local"},'
-            '{"path":"gateway.bind","value":"lan"},'
-            '{"path":"gateway.controlUi.allowedOrigins","value":["http://localhost:18789","http://127.0.0.1:18789"]}]'
-        ]
-        _openclaw_run_with_retries(
-            config_cmd,
-            cwd,
-            "Configuration",
-            non_interactive=non_interactive,
-            on_failure=on_failure,
-            on_max=on_max,
-        )
-    # --- Up ---
-    cmd = ["docker", "compose", "-p", "ai-suite", "-f", compose_file]
+        else:
+            # --- Configuration loop ---
+            config_cmd = cmd + [
+                f'{oc_script} --configuration {" ".join(cmd_args)}'
+            ]
+            _openclaw_run_with_retries(
+                config_cmd,
+                cwd,
+                "Configuration",
+                non_interactive=non_interactive,
+                on_failure=on_failure,
+                on_max=on_max,
+            )
+    # --- Gateway start ---
     if environment == "public":
-        cmd.extend(["-f", "docker-compose.override.public.yml"])
-    cmd.extend(["up", "-d"])
+        cmd_args.extend(["--environment", "public"])
     if build:
         cmd.append("--build")
-    run_command(cmd, cwd=cwd)
+    gateway_cmd = cmd + [
+        f'{oc_script} --gateway {" ".join(cmd_args)}'
+    ]
+    run_command(gateway_cmd, cwd=cwd)
 
 def _openclaw_prompt_max(action_name, non_interactive, on_max):
     """Prompt user after max attempts reached."""
