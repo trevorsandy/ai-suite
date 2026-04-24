@@ -2465,62 +2465,64 @@ def display_service_endpoints(profile, supabase, env_vars={}):
         log.error("Profile required to display service endpoints")
         return
 
-    host = env_vars.get('AC_DOMAIN', 'localhost')
+    debug = log_level == logging.DEBUG
+    host = "localhost" if debug else env_vars.get('AC_DOMAIN', 'undefined')
     private = str(env_vars.get('AC_LOCAL')).lower()
     protocol = 'http' if private else 'https'
-    url = f'{protocol}://{host}'
+    def endpoint_url(container, endpoint):
+        return f'{protocol}://{container}.{host}:{endpoint}'
 
     # This dictionary holds a list of touples (container, Module Name, Endpoint)
     # grouped by module - aka profile argument
     ai_suite_modules = {
         'n8n': [
-            ('n8n',                 'n8n',            url + ':5678'),
-            ('mcp-gateway',         'MCP Gateway',    url + ':8060/'),
-            ('qdrant',              'QDrant',         url + ':6333/dashboard'),
-            ('postgres',            'PostgreSQL',     url + ':5432/'),
-            ('supabase-kong',       'Supabase',       url + ':8000'),
-            ('supabase-analytics',  'Logflare',       url + ':4000/dashboard'),
-            ('redis',               'Redis',          url + ':6379/'),
+            ('n8n',                 'n8n',            '5678'),
+            ('mcp-gateway',         'MCP Gateway',    '8060/'),
+            ('qdrant',              'QDrant',         '6333/dashboard'),
+            ('postgres',            'PostgreSQL',     '5432/'),
+            ('supabase-kong',       'Supabase',       '8000'),
+            ('supabase-analytics',  'Logflare',       '4000/dashboard'),
+            ('redis',               'Redis',          '6379/'),
             ('n8n-runner',          'n8n Runner',           ''),
             ('n8n-worker',          'n8n Worker',           ''),
             ('n8n-worker-runner',   'n8n Worker Runner',    '')
         ],
         'n8n-all': [
-            ('n8n',                 'n8n',                    url + ':5678'),
-            ('open-webui',          'Open WebUI',             url + ':8080/'),
-            ('open-webui-filesystem','Open WebUI Filesystem', url + ':8091/docs'),
-            ('mcp-gateway',         'MCP Gateway',            url + ':8060/'),
-            ('open-webui-mcpo',     'Open WebUI MCPO',        url + ':8090/'),
-            ('qdrant',              'QDrant',                 url + ':6333/dashboard'),
-            ('postgres',            'PostgreSQL',             url + ':5432/'),
-            ('supabase-kong',       'Supabase',               url + ':8000'),
-            ('supabase-analytics',  'Logflare',               url + ':4000/dashboard'),
-            ('redis',               'Redis',                  url + ':6379/'),
+            ('n8n',                 'n8n',                    '5678'),
+            ('open-webui',          'Open WebUI',             '8080/'),
+            ('open-webui-filesystem','Open WebUI Filesystem', '8091/docs'),
+            ('mcp-gateway',         'MCP Gateway',            '8060/'),
+            ('open-webui-mcpo',     'Open WebUI MCPO',        '8090/'),
+            ('qdrant',              'QDrant',                 '6333/dashboard'),
+            ('postgres',            'PostgreSQL',             '5432/'),
+            ('supabase-kong',       'Supabase',               '8000'),
+            ('supabase-analytics',  'Logflare',               '4000/dashboard'),
+            ('redis',               'Redis',                  '6379/'),
             ('n8n-runner',          'n8n Runner',           ''),
             ('n8n-worker',          'n8n Worker',           ''),
             ('n8n-worker-runner',   'n8n Worker Runner',    '')
         ],
         'opencode': [
             ('opencode',            'Opencode', './opencode/run_opencode_docker.py'),
-            ('mcp-gateway',         'MCP Gateway',            url + ':8060/')
+            ('mcp-gateway',         'MCP Gateway',            '8060/')
         ],
         'open-webui': [
-            ('open-webui',          'Open WebUI',             url + ':8080/'),
-            ('mcp-gateway',         'MCP Gateway',            url + ':8060/'),
-            ('open-webui-mcpo',     'Open WebUI MCPO',        url + ':8090/'),
-            ('open-webui-filesystem','Open WebUI Filesystem', url + ':8091/docs')
+            ('open-webui',          'Open WebUI',             '8080/'),
+            ('mcp-gateway',         'MCP Gateway',            '8060/'),
+            ('open-webui-mcpo',     'Open WebUI MCPO',        '8090/'),
+            ('open-webui-filesystem','Open WebUI Filesystem', '8091/docs')
         ],
         'open-webui-mcpo': [
-            ('mcp-gateway',         'MCP Gateway',     url + ':8060/'),
-            ('open-webui-mcpo',     'Open WebUI MCPO', url + ':8090/')
+            ('mcp-gateway',         'MCP Gateway',     '8060/'),
+            ('open-webui-mcpo',     'Open WebUI MCPO', '8090/')
         ],
         'flowise': [
-            ('flowise',             'Flowise',         url + ':3001/')
+            ('flowise',             'Flowise',         '3001/')
         ],
         'supabase': [
-            ('supabase-kong',       'Supabase',        url + ':8000'),
-            ('supabase-analytics',  'Logflare',        url + ':4000/dashboard'),
-            ('supabase-pooler',     'Supavisor',       url + ':6543'),
+            ('supabase-kong',       'Supabase',        '8000'),
+            ('supabase-analytics',  'Logflare',        '4000/dashboard'),
+            ('supabase-pooler',     'Supavisor',       '6543'),
             ('supabase-studio',     'Studio',              ''),
             ('supabase-auth',       'Auth',                ''),
             ('supabase-rest',       'PostgREST',           ''),
@@ -2533,44 +2535,44 @@ def display_service_endpoints(profile, supabase, env_vars={}):
             ('supabase-vector',     'Vector',              '')
         ],
         'langfuse': [
-            ('langfuse-web',        'Langfuse Web',    url + ':3000/'),
-            ('langfuse-worker',     'Langfuse Worker', url + ':3030/'),
-            ('clickhouse',          'ClickHouse',      url + ':8123/'),
-            ('postgres',            'PostgreSQL',      url + ':5432/'),
-            ('redis',               'Redis',           url + ':6379/'),
-            ('minio',               'MinIO',           url + ':9001/')
+            ('langfuse-web',        'Langfuse Web',    '3000/'),
+            ('langfuse-worker',     'Langfuse Worker', '3030/'),
+            ('clickhouse',          'ClickHouse',      '8123/'),
+            ('postgres',            'PostgreSQL',      '5432/'),
+            ('redis',               'Redis',           '6379/'),
+            ('minio',               'MinIO',           '9001/')
         ],
         'searxng': [
-            ('searxng',             'SearXNG',         url + ':8081/')
+            ('searxng',             'SearXNG',         '8081/')
         ],
         'neo4j': [
-            ('neo4j',               'Neo4j',           url + ':7473/')
+            ('neo4j',               'Neo4j',           '7473/')
         ],
         'caddy': [
-            ('caddy',               'Caddy',           url + ':443/'),
-            ('authelia',             'Authelia',         url + ':9091/')
+            ('caddy',               'Caddy',           '443/'),
+            ('authelia',             'Authelia',       '9091/')
         ],
         'nginx': [
-            ('nginx',               'Nginx',           url + ':443/'),
-            ('authelia',             'Authelia',         url + ':9091/')
+            ('nginx',               'Nginx',           '443/'),
+            ('authelia',             'Authelia',       '9091/')
         ],
         'cpu': [
-            ('ollama',              'Ollama',          url + ':11434/')
+            ('ollama',              'Ollama',          '11434/')
         ],
         'gpu-nvidia': [
-            ('ollama',              'Ollama',          url + ':11434/')
+            ('ollama',              'Ollama',          '11434/')
         ],
         'gpu-amd': [
-            ('ollama',              'Ollama',          url + ':11434/')
+            ('ollama',              'Ollama',          '11434/')
         ],
         'cpp-cpu': [
-            ('llamacpp',            'LLaMA.cpp',       url + ':8040')
+            ('llamacpp',            'LLaMA.cpp',       '8040')
         ],
         'cpp-gpu-nvidia': [
-            ('llamacpp',            'LLaMA.cpp',       url + ':8040')
+            ('llamacpp',            'LLaMA.cpp',       '8040')
         ],
         'cpp-gpu-amd': [
-            ('llamacpp',            'LLaMA.cpp',       url + ':8040')
+            ('llamacpp',            'LLaMA.cpp',       '8040')
         ]
     }
 
@@ -2656,22 +2658,23 @@ def display_service_endpoints(profile, supabase, env_vars={}):
     log.info(f"Projects Path: {projects_path}", extra=info_style)
     log.info("")
     log.info("Access Points:", extra=info_style)
-    for container, module_name, access_point in module_list:
-        if not access_point:
+    for container, module_name, endpoint in module_list:
+        if not endpoint:
             continue
         emoji = '🚀' if module_name.lower() == 'opencode' else '🔗'
         module_prefix = LSHF.prefix(LSHF.GREEN)
         apoint_prefix = LSHF.prefix(LSHF.BLUE)
+        url = endpoint_url(container, endpoint)
         if container in failed_container_list:
             emoji = '❌'
             module_prefix = LSHF.prefix(LSHF.YELLOW, italic=True)
             apoint_prefix = LSHF.prefix(LSHF.RED, italic=True)
         endpoint_prefix = ("{}• {:23s}{}{} {}{}").format(
             module_prefix, module_name + ":", LSHF.suffix(), emoji,
-            apoint_prefix, access_point)
+            apoint_prefix, url)
         endpoint_style = {'prefix': endpoint_prefix, 'suffix': LSHF.suffix()}
         endpoint_style.update({'purge_msg':'True'})
-        raw_msg = ("• {:23s}{} {}").format(module_name + ":", emoji, access_point)
+        raw_msg = ("• {:23s}{} {}").format(module_name + ":", emoji, url)
         log.info(raw_msg, extra=endpoint_style)
     if not started_ok:
         log.info("")
@@ -2679,7 +2682,7 @@ def display_service_endpoints(profile, supabase, env_vars={}):
         if len(failed_container_list) > 1:
             msg = "These Docker containers are not running:"
         log.info(msg, extra=info_style)
-        for container, module_name, access_point in module_list:
+        for container, module_name, __ in module_list:
             if container in failed_container_list:
                 log.info(("❌ {:30s} {}").format(container, module_name), extra=fail_style)
     log.info("="*60, extra=line_style)
