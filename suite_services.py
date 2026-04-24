@@ -3193,6 +3193,9 @@ def main():
          log.critical("No environment variables detected")
          sys.exit(1)
 
+    # Set build (update, install) status
+    build = args.operation in ['update', 'install']
+
     # Setup Supabase repository if using Supabase
     if any(p for p in args.profile if p == 'supabase'):
         if not any(p for p in args.profile if p in n8n_all_profiles):
@@ -3204,7 +3207,8 @@ def main():
     if supabase:
         args.profile.remove('supabase') if 'supabase' in args.profile else None
         mod_env_vars.update({'POSTGRES_HOST': 'db'})
-        clone_supabase_repo()
+        if build:
+            clone_supabase_repo()
         copy_supabase_authelia_schema()
         convert_supabase_pooler_line_endings()
 
@@ -3447,7 +3451,6 @@ def main():
 
     # Process operation argument
     install = False
-    build = False
     if args.operation:
         if args.operation == 'stop-llama':
             args.operation = "stop"
@@ -3466,7 +3469,6 @@ def main():
             sys.exit(0)
         if default_profile:
             args.profile = ['ai-all']
-        build = args.operation in ['update', 'install']
         if build:
             install = args.operation == 'install'
             if args.operation == 'update':
