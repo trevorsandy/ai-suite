@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Trevor SANDY
-# Last Update April, 17 2026
+# Last Update April, 24 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 set -euo pipefail
 
 : "${APP_NAME:="AI-Suite"}"
+: "${DEBUG_ON:=false}"
 : "${SILENT:=0}"
 
 # Reset BASH time counter
@@ -44,9 +45,6 @@ HEADER=''
 BODY='  - '
 COLON=':'
 APP="${APP_NAME}${COLON}"
-# shellcheck disable=SC2034
-PROMPT="${APP} PROMPT"
-# shellcheck disable=SC2034
 ERROR="${APP} ERROR"
 INFO="${APP} INFO"
 
@@ -59,11 +57,8 @@ if [[ -n "$SGR" ]]; then
 
     RED="${SGR}31m"
     GREEN="${SGR}32m"
-    # shellcheck disable=SC2034
     YELLOW="${SGR}33m"
-    # shellcheck disable=SC2034
     BLUE="${SGR}34m"
-    # shellcheck disable=SC2034
     MAGENTA="${SGR}35m"
     CYAN="${SGR}36m"
     WHITE="${SGR}37m"
@@ -74,7 +69,6 @@ if [[ -n "$SGR" ]]; then
     UNDERLINE_YELLOW="${SGR}${UNDERLINE}93m"
 
     HEADER="${SGR}${BOLD}${UNDERLINE}92m"
-    # shellcheck disable=SC2034
     BODY="${SGR}37m  -${END} ${SGR}32m"
 
     COLON="${SGR}97m:"
@@ -84,7 +78,6 @@ fi
 # Log level names
 declare -A LOG_LEVEL_NAME=(
     [NOTICE]='NOTICE'
-    [PROMPT]='PROMPT'
     [CRITICAL]='CRITICAL'
     [ERROR]='ERROR'
     [WARNING]='WARNING'
@@ -95,7 +88,6 @@ declare -A LOG_LEVEL_NAME=(
 # Log level styles
 declare -A LOG_LEVEL_STYLE=(
     [NOTICE]="${SGR}${BOLD}95m"     # MAGENTA
-    [PROMPT]="${SGR}${BOLD}92m"     # GREEN
     [CRITICAL]="${SGR}${BOLD}41m"   # RED_BG
     [ERROR]="${SGR}${BOLD}91m"      # RED
     [WARNING]="${SGR}${BOLD}${UNDERLINE}93m" # YELLOW
@@ -106,7 +98,6 @@ declare -A LOG_LEVEL_STYLE=(
 # Log message styles
 declare -A LOG_MESSAGE_STYLE=(
     [NOTICE]="$BOLD_MAGENTA"
-    [PROMPT]="$GREEN"
     [CRITICAL]="$ITALIC_RED_BG"
     [ERROR]="$RED"
     [WARNING]="$UNDERLINE_YELLOW"
@@ -161,7 +152,6 @@ log() {
 }
 
 # Semantic tokens
-log_header_prefix PROMPT 'PROMPT'
 log_header_prefix ERROR 'ERROR'
 log_header_prefix INFO 'INFO'
 
@@ -172,11 +162,6 @@ log_error()    { log ERROR "$*"; }
 log_warning()  { log WARNING "$*"; }
 log_debug()    { log DEBUG "$*"; }
 log_info()     { log INFO "$*"; }
-
-critical_exit() {
-    log_critical "$*"
-    exit 1
-}
 
 strip_sgr() {
     local line sgr=$'\033'
@@ -245,9 +230,13 @@ trap finish EXIT
 ########################################
 # ROOT / CONFIG
 ########################################
-
+log_info "${HEADER}ROOT / CONFIG VARIABLES"
+#-------------------------------------------
 ROOT_DIR="$(pwd)"
+log_info "${BODY}ROOT_DIR:${END} ${WHITE}$ROOT_DIR"
 OPENCLAW_DIR="$(cd "$ROOT_DIR/openclaw" && pwd)"
+log_info "${BODY}OPENCLAW_DIR:${END} ${WHITE}$OPENCLAW_DIR"
+
 COMPOSE_FILE="$OPENCLAW_DIR/docker-compose.yml"
 EXTRA_COMPOSE_FILE="$OPENCLAW_DIR/docker-compose.extra.yml"
 SANDBOX_COMPOSE_FILE="$OPENCLAW_DIR/docker-compose.sandbox.yml"
@@ -275,6 +264,8 @@ OPENCLAW_INSTALL_DOCKER_CLI=""
 
 PRIMARY_ARG=""
 if [[ $# -gt 0 ]]; then
+  log_info "${header}Parse Arguments"
+  #-------------------------------------------
   PRIMARY_ARG="$1"
   shift || true
 fi
@@ -282,6 +273,8 @@ fi
 ENV_MODE=""
 case "$PRIMARY_ARG" in
   --setenv) ENV_MODE="1" ;;
+  --onboarding|--configuration|--gateway) ;;
+  *) echo -e "${ERROR} ${RED}Unknown primary argument.${END}" >&2 ;;
 esac
 
 # Parse remaining flags
@@ -290,17 +283,18 @@ ENVIRONMENT="${ENVIRONMENT:-private}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --build) BUILD="1" ;;
+    --debug) DEBUG_ON="true" ;;
     --sandbox) OPENCLAW_SANDBOX="1" ;;
     --environment)
       shift
       if [[ $# -eq 0 ]]; then
-        echo "WARNING: --environment option requires 'public/private' argument."
+        echo -e "${WARNING} ${YELLOW}--environment option requires 'public/private' argument.${END}"
       else
         ENVIRONMENT="$1"
       fi
       ;;
     *)
-      echo "WARNING: Ignoring extra argument: $1" >&2
+      echo -e "${NOTICE} Extra argument ignored: ${WHITE}$1${END}" >&2
       ;;
   esac
   shift
@@ -311,13 +305,13 @@ done
 ########################################
 
 fail() {
-  echo "ERROR: $*" >&2
+  log_critical "$*"
   exit 1
 }
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    fail "ERROR: Missing dependency: $1"
+    fail "Missing dependency: $1"
   fi
 }
 
@@ -441,7 +435,7 @@ validate_mount_spec() {
 
 run_docker_image() {
   if [[ "$IMAGE_NAME" == "openclaw:local" ]]; then
-    echo "==> Building Docker image: $IMAGE_NAME"
+    log_info "${BLUE}==>${END} ${GREEN}Building Docker image:${END} ${WHITE}$IMAGE_NAME"
     run_docker_build \
       --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES}" \
       --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS}" \
@@ -450,7 +444,7 @@ run_docker_image() {
       -f "$OPENCLAW_DIR/Dockerfile" \
       "$OPENCLAW_DIR"
   else
-    echo "==> Pulling Docker image: $IMAGE_NAME"
+    log_info "${BLUE}==>${END} ${GREEN}Pulling Docker image:${END} ${WHITE}$IMAGE_NAME"
     if ! docker pull "$IMAGE_NAME"; then
       fail "Failed to pull image $IMAGE_NAME. Please check the image name and your access permissions."
     fi
@@ -469,8 +463,8 @@ run_docker_image() {
 # After fixing the config dir, only the OpenClaw metadata subdirectory
 # (.openclaw/) inside the workspace gets chowned, not the user's project files.
 fix_permissions() {
-  echo ""
-  echo "==> Fixing data-directory permissions"
+  log_info ""
+  log_info "${BLUE}==>${END} ${GREEN}Fixing data-directory permissions"
   run_prestart_gateway --user root --entrypoint sh openclaw-gateway -c \
     'find /home/node/.openclaw -xdev -exec chown node:node {} +; \
     [ -d /home/node/.openclaw/workspace/.openclaw ] && chown -R node:node /home/node/.openclaw/workspace/.openclaw || true'
@@ -493,7 +487,7 @@ sync_gateway_config() {
   batch_json="$(printf '[{"path":"gateway.mode","value":"local"},{"path":"gateway.bind","value":"%s"}' "$OPENCLAW_GATEWAY_BIND")"
   if [[ -n "$allowed_origin_json" ]]; then
     if [[ -n "$current_allowed_origins" && "$current_allowed_origins" != "null" && "$current_allowed_origins" != "[]" ]]; then
-      echo "Control UI allowlist already configured; leaving gateway.controlUi.allowedOrigins unchanged."
+      log_info "${GREEN}Control UI allowlist already configured; leaving gateway.controlUi.allowedOrigins unchanged."
     else
       batch_json+=",{\"path\":\"gateway.controlUi.allowedOrigins\",\"value\":$allowed_origin_json}"
     fi
@@ -501,10 +495,10 @@ sync_gateway_config() {
   batch_json+="]"
 
   run_prestart_cli config set --batch-json "$batch_json" >/dev/null
-  echo "Pinned gateway.mode=local and gateway.bind=$OPENCLAW_GATEWAY_BIND for Docker setup."
+  log_info "${GREEN}Pinned gateway.mode=local and gateway.bind=${END}${WHITE}$OPENCLAW_GATEWAY_BIND for Docker setup."
   if [[ -n "$allowed_origin_json" ]]; then
     if [[ -z "$current_allowed_origins" || "$current_allowed_origins" == "null" || "$current_allowed_origins" == "[]" ]]; then
-      echo "Set gateway.controlUi.allowedOrigins to $allowed_origin_json for non-loopback bind."
+      log_info "${GREEN}Set gateway.controlUi.allowedOrigins to $allowed_origin_json for non-loopback bind."
     fi
   fi
 }
@@ -515,6 +509,8 @@ sync_gateway_config() {
 
 is_env_mode() {
   if is_truthy_value "$ENV_MODE"; then
+    log_info "${header}Query Mode"
+    #-------------------------------------------
     return 0
   fi
   return 1
@@ -626,41 +622,41 @@ run_runtime_cli() {
 
 run_onboarding() {
   fix_permissions
-  echo ""
-  echo "==> Onboarding (interactive)"
-  echo "Docker setup pins Gateway mode to local."
-  echo "Gateway runtime bind comes from OPENCLAW_GATEWAY_BIND (default: lan)."
-  echo "Current runtime bind: $OPENCLAW_GATEWAY_BIND"
-  echo "Gateway token: $OPENCLAW_GATEWAY_TOKEN"
-  echo "Tailscale exposure: Off (use host-level tailnet/Tailscale setup separately)."
-  echo "Install Gateway daemon: No (managed by Docker Compose)"
-  echo ""
+  log_info ""
+  log_info "${BLUE}==>${END} ${GREEN}Onboarding (interactive)"
+  log_info "Docker setup pins Gateway mode to local."
+  log_info "Gateway runtime bind comes from OPENCLAW_GATEWAY_BIND (default: lan)."
+  log_info "Current runtime bind: $OPENCLAW_GATEWAY_BIND"
+  log_info "Gateway token: $OPENCLAW_GATEWAY_TOKEN"
+  log_info "Tailscale exposure: Off (use host-level tailnet/Tailscale setup separately)."
+  log_info "Install Gateway daemon: No (managed by Docker Compose)"
+  log_info ""
   run_prestart_cli onboard --mode local --no-install-daemon
 }
 
 run_configuration() {
   [[ -z "$PERMISSIONS" ]] && \
   fix_permissions
-  echo ""
-  echo "==> Docker gateway defaults"
+  log_info ""
+  log_info "${BLUE}==>${END} ${GREEN}Docker gateway defaults"
   sync_gateway_config
 }
 
 run_gateway() {
   [[ -z "$PERMISSIONS" ]] && \
   fix_permissions
-  echo ""
-  echo "==> Provider setup (optional)"
-  echo "WhatsApp (QR):"
-  echo "  ${COMPOSE_HINT} run --rm openclaw-cli channels login"
-  echo "Telegram (bot token):"
-  echo "  ${COMPOSE_HINT} run --rm openclaw-cli channels add --channel telegram --token <token>"
-  echo "Discord (bot token):"
-  echo "  ${COMPOSE_HINT} run --rm openclaw-cli channels add --channel discord --token <token>"
-  echo "Docs: https://docs.openclaw.ai/channels"
+  log_info ""
+  log_info "${BLUE}==>${END} ${GREEN}Provider setup (optional)"
+  log_info "${GREEN}WhatsApp (QR):"
+  log_info "  ${WHITE}${COMPOSE_HINT} run --rm openclaw-cli channels login"
+  log_info "${GREEN}Telegram (bot token):"
+  log_info "  ${WHITE}${COMPOSE_HINT} run --rm openclaw-cli channels add --channel telegram --token <token>"
+  log_info "${GREEN}Discord (bot token):"
+  log_info "  ${WHITE}${COMPOSE_HINT} run --rm openclaw-cli channels add --channel discord --token <token>"
+  log_info "${GREEN}Docs:${END} ${WHITE}https://docs.openclaw.ai/channels"
 
-  echo ""
-  echo "==> Starting gateway"
+  log_info ""
+  log_info "${BLUE}==>${END} ${GREEN}Starting gateway"
   [[ -n "$BUILD" ]] && \
     COMPOSE_ARGS+=("--build")
   docker compose "${COMPOSE_ARGS[@]}" up -d openclaw-gateway
@@ -669,16 +665,16 @@ run_gateway() {
     enable_sandbox
   fi
 
-  echo ""
-  echo "Gateway running with host port mapping."
-  echo "Access from tailnet devices via the host's tailnet IP."
-  echo "Config: $OPENCLAW_CONFIG_DIR"
-  echo "Workspace: $OPENCLAW_WORKSPACE_DIR"
-  echo "Token: $OPENCLAW_GATEWAY_TOKEN"
-  echo ""
-  echo "Commands:"
-  echo "  ${COMPOSE_HINT} logs -f openclaw-gateway"
-  echo "  ${COMPOSE_HINT} exec openclaw-gateway node dist/index.js health --token \"$OPENCLAW_GATEWAY_TOKEN\""
+  log_info ""
+  log_info "${GREEN}Gateway running with host port mapping."
+  log_info "${GREEN}Access from tailnet devices via the host's tailnet IP."
+  log_info "${GREEN}Config:${END} ${WHITE}$OPENCLAW_CONFIG_DIR"
+  log_info "${GREEN}Workspace:${END} ${WHITE}$OPENCLAW_WORKSPACE_DIR"
+  log_info "${GREEN}Token:${END} ${WHITE}$OPENCLAW_GATEWAY_TOKEN"
+  log_info ""
+  log_info "${GREEN}Commands:"
+  log_info "  ${WHITE}${COMPOSE_HINT} logs -f openclaw-gateway"
+  log_info "  ${WHITE}${COMPOSE_HINT} exec openclaw-gateway node dist/index.js health --token \"$OPENCLAW_GATEWAY_TOKEN\""
 }
 
 ########################################
@@ -770,30 +766,30 @@ YAML
 ########################################
 
 enable_sandbox() {
-  echo ""
+  log_info ""
   # --- Sandbox setup (opt-in via OPENCLAW_SANDBOX=1) ---
-  echo "==> Sandbox setup"
+  log_info "${BLUE}==>${END} ${WHITE}Sandbox setup"
 
   # Build sandbox image if Dockerfile.sandbox exists.
   if [[ -f "$OPENCLAW_DIR/Dockerfile.sandbox" ]]; then
-    echo "Building sandbox image: openclaw-sandbox:bookworm-slim"
+    log_info "${GREEN}Building sandbox image:${END} ${WHITE}openclaw-sandbox:bookworm-slim"
     run_docker_build \
       -t "openclaw-sandbox:bookworm-slim" \
       -f "$OPENCLAW_DIR/Dockerfile.sandbox" \
       "$OPENCLAW_DIR"
   else
-    echo "WARNING: Dockerfile.sandbox not found in $OPENCLAW_DIR" >&2
-    echo "  Sandbox config will be applied but no sandbox image will be built." >&2
-    echo "  Agent exec may fail if the configured sandbox image does not exist." >&2
+    log_warning "${YELLOW}Dockerfile.sandbox not found in $OPENCLAW_DIR" >&2
+    log_notice "  Sandbox config will be applied but no sandbox image will be built." >&2
+    log_notice "  Agent exec may fail if the configured sandbox image does not exist." >&2
   fi
 
   # Defense-in-depth: verify Docker CLI in the running image before enabling
   # sandbox. This avoids claiming sandbox is enabled when the image cannot
   # launch sandbox containers.
   if ! docker compose "${COMPOSE_ARGS[@]}" run --rm --entrypoint docker openclaw-gateway --version >/dev/null 2>&1; then
-    echo "WARNING: Docker CLI not found inside the container image." >&2
-    echo "  Sandbox requires Docker CLI. Rebuild with --build-arg OPENCLAW_INSTALL_DOCKER_CLI=1" >&2
-    echo "  or use a local build (OPENCLAW_IMAGE=openclaw:local). Skipping sandbox setup." >&2
+    log_warning "${YELLOW}Docker CLI not found inside the container image." >&2
+    log_notice "  Sandbox requires Docker CLI. Rebuild with --build-arg OPENCLAW_INSTALL_DOCKER_CLI=1" >&2
+    log_notice "  or use a local build (OPENCLAW_IMAGE=openclaw:local). Skipping sandbox setup." >&2
     SANDBOX_ENABLED=""
   fi
 
@@ -817,10 +813,10 @@ YAML
 YAML
       fi
       COMPOSE_ARGS+=("-f" "$SANDBOX_COMPOSE_FILE")
-      echo "==> Sandbox: added Docker socket mount"
+      log_info "${BLUE}==>${END} ${GREEN}Sandbox:${END} ${WHITE}added Docker socket mount"
     else
-      echo "WARNING: OPENCLAW_SANDBOX enabled but Docker socket not found at $DOCKER_SOCKET_PATH." >&2
-      echo "  Sandbox requires Docker socket access. Skipping sandbox setup." >&2
+      log_warning "${YELLOW}OPENCLAW_SANDBOX enabled but Docker socket not found at $DOCKER_SOCKET_PATH." >&2
+      log_notice "  Sandbox requires Docker socket access. Skipping sandbox setup." >&2
       SANDBOX_ENABLED=""
     fi
   fi
@@ -830,33 +826,33 @@ YAML
     sandbox_config_ok=true
     if ! run_runtime_cli current no-deps \
       config set agents.defaults.sandbox.mode "non-main" >/dev/null; then
-      echo "WARNING: Failed to set agents.defaults.sandbox.mode" >&2
+      log_warning "${YELLOW}Failed to set agents.defaults.sandbox.mode" >&2
       sandbox_config_ok=false
     fi
     if ! run_runtime_cli current no-deps \
       config set agents.defaults.sandbox.scope "agent" >/dev/null; then
-      echo "WARNING: Failed to set agents.defaults.sandbox.scope" >&2
+      log_warning "${YELLOW}Failed to set agents.defaults.sandbox.scope" >&2
       sandbox_config_ok=false
     fi
     if ! run_runtime_cli current no-deps \
       config set agents.defaults.sandbox.workspaceAccess "none" >/dev/null; then
-      echo "WARNING: Failed to set agents.defaults.sandbox.workspaceAccess" >&2
+      log_warning "${YELLOW}Failed to set agents.defaults.sandbox.workspaceAccess" >&2
       sandbox_config_ok=false
     fi
 
     if [[ "$sandbox_config_ok" == true ]]; then
-      echo "Sandbox enabled: mode=non-main, scope=agent, workspaceAccess=none"
-      echo "Docs: https://docs.openclaw.ai/gateway/sandboxing"
+      log_info "${GREEN}Sandbox enabled:${END} ${WHITE}mode=non-main, scope=agent, workspaceAccess=none"
+      log_info "${GREEN}Docs:${END} ${WHITE}https://docs.openclaw.ai/gateway/sandboxing"
       # Restart gateway with sandbox compose overlay to pick up socket mount + config.
       docker compose "${COMPOSE_ARGS[@]}" up -d openclaw-gateway
     else
-      echo "WARNING: Sandbox config was partially applied. Check errors above." >&2
-      echo "  Skipping gateway restart to avoid exposing Docker socket without a full sandbox policy." >&2
+      log_warning "${YELLOW}Sandbox config was partially applied. Check errors above." >&2
+      log_info "  ${YELLOW}Skipping gateway restart to avoid exposing Docker socket without a full sandbox policy." >&2
       if ! run_runtime_cli base no-deps \
         config set agents.defaults.sandbox.mode "off" >/dev/null; then
-        echo "WARNING: Failed to roll back agents.defaults.sandbox.mode to off" >&2
+        log_warning "${YELLOW}Failed to roll back agents.defaults.sandbox.mode to off" >&2
       else
-        echo "Sandbox mode rolled back to off due to partial sandbox config failure."
+        log_info "${MAGENTA}Sandbox mode rolled back to off due to partial sandbox config failure."
       fi
       if [[ -n "${SANDBOX_COMPOSE_FILE:-}" ]]; then
         rm -f "$SANDBOX_COMPOSE_FILE"
@@ -870,7 +866,7 @@ YAML
     # config alone.
     if ! run_runtime_cli current with-deps \
       config set agents.defaults.sandbox.mode "off" >/dev/null; then
-      echo "WARNING: Failed to reset agents.defaults.sandbox.mode to off" >&2
+      log_warning "${YELLOW}Failed to reset agents.defaults.sandbox.mode to off" >&2
     fi
     if [[ -f "$OPENCLAW_DIR/docker-compose.sandbox.yml" ]]; then
       rm -f "$OPENCLAW_DIR/docker-compose.sandbox.yml"
@@ -891,12 +887,12 @@ if [[ -z "${OPENCLAW_GATEWAY_TOKEN:-}" ]]; then
   EXISTING_CONFIG_TOKEN="$(read_config_gateway_token || true)"
   if [[ -n "$EXISTING_CONFIG_TOKEN" ]]; then
     OPENCLAW_GATEWAY_TOKEN="$EXISTING_CONFIG_TOKEN"
-    echo "Reusing gateway token from $OPENCLAW_CONFIG_DIR/openclaw.json"
+    log_info "${GREEN}Reusing gateway token from $OPENCLAW_CONFIG_DIR/openclaw.json"
   else
     DOTENV_GATEWAY_TOKEN="$(read_env_gateway_token "$OPENCLAW_DIR/.env" || true)"
     if [[ -n "$DOTENV_GATEWAY_TOKEN" ]]; then
       OPENCLAW_GATEWAY_TOKEN="$DOTENV_GATEWAY_TOKEN"
-      echo "Reusing gateway token from $OPENCLAW_DIR/.env"
+      log_info "${GREEN}Reusing gateway token from $OPENCLAW_DIR/.env"
     elif command -v openssl >/dev/null 2>&1; then
       OPENCLAW_GATEWAY_TOKEN="$(openssl rand -hex 32)"
     else
@@ -936,6 +932,9 @@ fi
 if is_env_mode; then
   run_create_env
   exit 0
+else
+  log_info "${header}Execution Mode"
+  #-------------------------------------------
 fi
 
 validate_mount_path_value "OPENCLAW_CONFIG_DIR" "$OPENCLAW_CONFIG_DIR"
@@ -1033,8 +1032,5 @@ case "$PRIMARY_ARG" in
     ;;
   --gateway)
     run_gateway
-    ;;
-  *)
-    fail "Unknown execution argument"
     ;;
 esac
