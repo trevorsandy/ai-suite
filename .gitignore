@@ -24,6 +24,7 @@ neo4j/
 ollama/
 ollama_launch.vbs
 opencode/*
+openclaw.json
 !opencode/opencode.jsonc
 !opencode/run_opencode_docker.py
 open-webui/functions/

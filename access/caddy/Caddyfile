@@ -28,6 +28,12 @@ import /etc/caddy/addons/cors.conf {
     reverse_proxy n8n:5678
 }
 
+# OPENCLAW
+{$OPENCLAW_HOSTNAME} {
+    import configuration
+    reverse_proxy openclaw-gateway:18789
+}
+
 # Open WebUI
 {$WEBUI_HOSTNAME} {
     import configuration

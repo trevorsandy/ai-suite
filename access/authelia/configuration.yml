@@ -42,6 +42,8 @@ access_control:
       policy: "two_factor"
     - domain: "n8n.example.com"
       policy: "two_factor"
+    - domain: "openclaw.example.com"
+      policy: "two_factor"
     - domain: "flowise.example.com"
       policy: "two_factor"
     - domain: "langfuse-web.example.com"

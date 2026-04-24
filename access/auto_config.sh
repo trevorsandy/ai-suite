@@ -503,7 +503,7 @@ fi
 
 # Set all subdomains if no subdomain specified
 if (( ${#subdomains[@]} == 0 )); then
-    subdomains+=(open-webui n8n supabase flowise langfuse searxng neo4j llamacpp ollama)
+    subdomains+=(open-webui openclaw n8n supabase flowise langfuse searxng neo4j llamacpp ollama)
 fi
 log_info "${HEADER}Subdomains (${#subdomains[@]})"
 #-------------------------------------------
@@ -1867,6 +1867,41 @@ uncomment_compose_vars
 
 generate_dot_env_file
 
+openclaw_compose_path="./openclaw/docker-compose.yml"
+if [[ -f "$openclaw_compose_path" ]]; then
+    log_info "${HEADER}Rebuild OpenClaw Services"
+    #-------------------------------------------
+    # Rebuild OpenClaw services
+    # shellcheck disable=SC2016
+    openclaw_service_yaml='
+    . as $root |
+    {
+      "name": "openclaw",
+      "services": (
+        $root.services
+        | to_entries
+        | map(
+            .value = (
+              {
+                "image": .value.image,
+                "container_name": (.value.container_name // .key)
+              }
+              +
+              (
+                .value
+                | with_entries(
+                    select(.key != "image" and .key != "container_name")
+                  )
+              )
+            )
+          )
+        | from_entries
+      )
+    }
+    '
+    update_yaml_file "$openclaw_service_yaml" "$openclaw_compose_path"
+fi
+
 log_info "${HEADER}Configure Proxy Service"
 #-------------------------------------------
 # DEFINE PROXY service
@@ -1985,12 +2020,13 @@ if [[ "$with_authelia" == true ]]; then
     authelia_config_file_yaml="
             .access_control.rules[0].domain=strenv(webui_domain) |
             .access_control.rules[1].domain=strenv(n8n_domain) |
-            .access_control.rules[2].domain=strenv(flowise_domain) |
-            .access_control.rules[3].domain=strenv(langfuse_domain) |
-            .access_control.rules[4].domain=strenv(supabase_domain) |
-            .access_control.rules[5].domain=strenv(searxng_domain) |
-            .access_control.rules[6].domain=strenv(neo4j_domain) |
-            .access_control.rules[7].domain=strenv(llama_domain) |
+            .access_control.rules[2].domain=strenv(openclaw_domain) |
+            .access_control.rules[3].domain=strenv(flowise_domain) |
+            .access_control.rules[4].domain=strenv(langfuse_domain) |
+            .access_control.rules[5].domain=strenv(supabase_domain) |
+            .access_control.rules[6].domain=strenv(searxng_domain) |
+            .access_control.rules[7].domain=strenv(neo4j_domain) |
+            .access_control.rules[8].domain=strenv(llama_domain) |
             .session.cookies[0].domain=strenv(registered_domain) |
             .session.cookies[0].authelia_url=strenv(authelia_url) |
             .session.cookies[0].default_redirection_url=strenv(redirect_url)"
@@ -2086,6 +2122,7 @@ write_dot_env_vars "${dot_env_vars[@]}"
 # | Ex | In | Service                 | Container - Docker internal       | Domain - Docker external |
 # | -: | -: | ----------------------: | --------------------------------: | -----------------------: |
 # | ++ |    | `n8n`                   | n8n:5678/                         | localhost:5678/          |
+# | ++ |    | `OpenClaw`              | openclaw-gateway:18789/           | localhost:18789/          |
 # | ++ |    | `Open WebUI`            | open-webui:8080/                  | localhost:8080/          |
 # | ++ | ++ | `Flowise`               | flowise:3001/                     | localhost:3001/          |
 # |    | ++ | `Open webUI MCPO`       | open-webui-mcpo:8090/             | localhost:8090/          |
@@ -2148,6 +2185,12 @@ import /etc/caddy/addons/cors.conf {
     # For domains, Caddy will automatically use Let's Encrypt
     # For localhost/port addresses, HTTPS won't be enabled
     reverse_proxy n8n:5678
+}
+
+# OPENCLAW
+{\$OPENCLAW_HOSTNAME} {
+    import configuration
+    reverse_proxy openclaw-gateway:18789
 }
 
 # Open WebUI
@@ -2297,6 +2340,11 @@ upstream n8n_upstream {
     keepalive 2;
 }
 
+upstream openclaw_upstream {
+    server openclaw-gateway:18789;
+    keepalive 2;
+}
+
 upstream open-webui_upstream {
     server open-webui:8080;
     keepalive 2;
@@ -2363,6 +2411,11 @@ server {
     # n8n
     location /n8n {
         proxy_pass http://n8n_upstream
+    }
+
+    # OpenClaw
+    location /openclaw {
+        proxy_pass http://openclaw_upstream
     }
 
     # Open-webui

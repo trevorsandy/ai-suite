@@ -66,6 +66,8 @@ import pathlib
 import platform
 import queue
 import re
+import requests
+import secrets
 import shutil
 import subprocess
 import tarfile
@@ -1562,6 +1564,76 @@ def clone_supabase_repo():
         run_command(["git", "-c", "core.autocrlf=input", "pull"])
         os.chdir("..")
 
+def clone_openclaw_repo():
+    """Clone or update the OpenClaw repository with sparse checkout, then clean and commit."""
+    def git(*args):
+        run_command(["git", "-c", "core.autocrlf=input", *args])
+
+    repo_dir = pathlib.Path("openclaw")
+    if not repo_dir.exists():
+        log.info("Cloning the OpenClaw repository...")
+        git("clone", "--filter=blob:none", "--no-checkout",
+            "https://github.com/openclaw/openclaw.git")
+        os.chdir(repo_dir)
+        git("sparse-checkout", "init", "--cone")
+        git("sparse-checkout", "set",
+            "scripts/docker/setup.sh",
+            "scripts/clawdock",
+            "docs"
+        )
+        git("checkout", "main")
+    else:
+        log.info("OpenClaw repository already exists, updating...")
+        os.chdir(repo_dir)
+        git("pull")
+
+    retain_root = {
+        ".git", "docs", "scripts", ".codex",
+        ".env.example", ".gitattributes", ".gitignore",
+        "AGENTS.md", "CHANGELOG.md", "CLAUDE.md",
+        "CONTRIBUTING.md", "docker-compose.yml",
+        "Dockerfile", "Dockerfile.sandbox",
+        "Dockerfile.sandbox-browser",
+        "Dockerfile.sandbox-common",
+        "docker-setup.sh", "docs.acp.md",
+        "LICENSE", "README.md", "SECURITY.md", "VISION.md"
+    }
+    log.info("Cleaning up OpenClaw repository...")
+    for item in pathlib.Path.cwd().iterdir():
+        if item.name not in retain_root:
+            if item.is_file():
+                item.unlink()
+            elif item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
+    scripts_dir = pathlib.Path("scripts")
+    if scripts_dir.exists():
+        for item in scripts_dir.iterdir():
+            if item.is_file():
+                item.unlink()
+    git("add", "-A")
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        capture_output=True,
+        text=True
+    )
+    if not status.stdout.strip():
+        log.info("No OpenClaw repo changes to commit.")
+        os.chdir("..")
+        return
+    last_commit = subprocess.run(
+        ["git", "log", "-1", "--pretty=%B"],
+        capture_output=True,
+        text=True
+    ).stdout.strip()
+    commit_msg = "Repository cleanup"
+    if last_commit == commit_msg:
+        log.info("Amending previous cleanup commit...")
+        git("commit", "--amend", "--no-edit")
+    else:
+        log.info("Creating new cleanup commit...")
+        git("commit", "-m", commit_msg)
+    os.chdir("..")
+
 def clone_open_webui_tools_filesystem_repo():
     """Clone the Open WebUI Tools Filesystem repository using sparse checkout if
        not already present.
@@ -1648,6 +1720,311 @@ def prepare_supabase_env(env_vars):
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
     write_dotenv_file(env_file, built_env_vars)
 
+def prepare_openclaw_env(cwd):
+    """
+    Creates a .env file from env.example with required values set.
+    """
+    modified_lines: list[str] = []
+    gateway_token = secrets.token_hex(32)     # 32 bytes -> 64 hex chars
+    gateway_password = secrets.token_hex(16)  # 16 bytes -> 32 hex chars
+    openclaw_image = "ghcr.io/openclaw/openclaw:latest"
+    openapi_key = "llamacpp-local" if llama_cpp else "ollama-local"
+    config_dir = f"~/.openclaw"
+    workspace_dir = f"~/.openclaw/workspace"
+    cwd = "./openclaw" if not cwd else cwd
+    example_path = os.path.join(cwd, ".env.example")
+    output_path=os.path.join(cwd, ".env")
+    log.info(f"Writing .env file to {output_path}...")
+    try:
+        with open(example_path, "r", newline="\n") as f:
+            lines = f.readlines()
+        add_remote_image = True
+        add_config_dir = True
+        add_workspace_dir = True
+        for line in lines:
+            modified_line = line.strip()
+            if modified_line.startswith("OPENCLAW_IMAGE="):
+                add_remote_image = False
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_IMAGE={openclaw_image}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_GATEWAY_TOKEN="):
+                modified_lines.append(f"OPENCLAW_GATEWAY_TOKEN={gateway_token}\n")
+            elif modified_line.startswith("# OPENCLAW_GATEWAY_PASSWORD="):
+                modified_lines.append(f"OPENCLAW_GATEWAY_PASSWORD={gateway_password}\n")
+            elif modified_line.startswith("OPENCLAW_CONFIG_DIR="):
+                add_config_dir = False
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_CONFIG_DIR={config_dir}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_WORKSPACE_DIR=\n"):
+                add_workspace_dir = False
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    modified_lines.append(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("# OPENCLAW_HOME="):
+                modified_lines.append("OPENCLAW_HOME=~\n")
+            elif modified_line.startswith("# OPENAI_API_KEY="):
+                modified_lines.append(f"OPENAI_API_KEY={openapi_key}\n")
+            else:
+                modified_lines.append(line)
+        default_paths = add_config_dir or add_workspace_dir
+        if add_remote_image or default_paths:
+            lines = modified_lines
+            modified_lines = []
+            for line in lines:
+                modified_line = line.strip()
+                section_header = modified_line.startswith("# ----------------------------")
+                default_path_insert = modified_line.startswith("# Optional path overrides ")
+                if section_header and add_remote_image:
+                    add_remote_image = False
+                    modified_lines.append("# " + "-" * 77 + "\n")
+                    modified_lines.append("# Prebuilt Image\n")
+                    modified_lines.append("# " + "-" * 77 + "\n")
+                    modified_lines.append("# Use a remote image instead of building locally.\n")
+                    modified_lines.append(f"OPENCLAW_IMAGE={openclaw_image}\n")
+                    modified_lines.append("\n")
+                    modified_lines.append(line)
+                elif default_paths and default_path_insert:
+                    modified_lines.append("# Default mount paths.\n")
+                    if add_config_dir:
+                        modified_lines.append(f"OPENCLAW_CONFIG_DIR={config_dir}\n")
+                    if add_workspace_dir:
+                        modified_lines.append(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}\n")
+                elif modified_line.startswith("# OPENCLAW_STATE_DIR="):
+                    continue
+                elif modified_line.startswith("# OPENCLAW_CONFIG_PATH="):
+                    continue
+                else:
+                    modified_lines.append(line)
+        with open(output_path, "w", newline="\n") as f:
+            f.writelines(modified_lines)
+    except Exception as e:
+        log.error(f"Exception: OpenClaw Setup: {e}")
+        return False
+    log.info(f".env file created at {output_path}", extra=log_bright)
+    debug_style = LSHF.style(logging.WARNING)
+    log.debug(f"OPENCLAW_IMAGE={openclaw_image}", extra=debug_style)
+    log.debug(f"OPENCLAW_CONFIG_DIR={config_dir}", extra=debug_style)
+    log.debug(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}", extra=debug_style)
+    log.debug(f"OPENCLAW_GATEWAY_TOKEN={elide(gateway_token)}", extra=debug_style)
+    log.debug(f"OPENCLAW_GATEWAY_PASSWORD={elide(gateway_password)}", extra=debug_style)
+    log.debug(f"OPENAI_API_KEY={openapi_key}", extra=debug_style)
+    return True
+
+def prepare_openclaw_config(cwd, env_vars):
+    log.info("Starting OpenClaw config preparation...")
+    src_path = pathlib.Path("./.openclaw.example.json")
+    dst_dir = pathlib.Path.home() / ".openclaw"
+    dst_path = dst_dir / "openclaw.json"
+    if not src_path.exists():
+        log.error(f"Template not found: {src_path}")
+        raise FileNotFoundError(src_path)
+    with open(src_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    cwd = "./openclaw" if not cwd else cwd
+    oc_env_file=os.path.join(cwd, ".env")
+    oc_env_vars = get_dotenv_vars(oc_env_file)
+    if not oc_env_vars:
+         log.error("No OpenClaw environment variables detected!")
+         return
+    if env_vars is None:
+        log.error("The env_vars dictionary is empty!")
+        return
+
+    token = oc_env_vars.get("OPENCLAW_GATEWAY_TOKEN")
+    log.info("Updating gateway token")
+    config["gateway"]["auth"]["token"] = token
+    openapi_key = oc_env_vars.get("OPENAI_API_KEY")
+
+    if llama_cpp:
+        log.info("Configuring llama.cpp provider")
+        port = env_vars.get("LLAMA_ARG_PORT", "8040")
+        base_url = f"http://host.docker.internal:{port}/v1"
+        models_env = [
+            env_vars.get("LLAMACPP_MODEL_GEMMA_ID"),
+            env_vars.get("LLAMACPP_MODEL_DEEPSEEK_ID"),
+            env_vars.get("LLAMACPP_MODEL_MISTRAL_ID"),
+            env_vars.get("LLAMACPP_MODEL_LLAMA_ID"),
+            env_vars.get("LLAMACPP_MODEL_QWEN_ID"),
+            env_vars.get("LLAMACPP_MODEL_USER_ID"),
+        ]
+        models_env = [m for m in models_env if m]
+        service_ok = _openclaw_check_service(base_url)
+        available = _openclaw_fetch_available_models(base_url) if service_ok else set()
+        matches = {_openclaw_normalize(a): a for a in available}
+        valid_models = []
+        for m in models_env:
+            if available:
+                if _openclaw_normalize(m) in matches:
+                    resolved = matches[_openclaw_normalize(m)]
+                    valid_models.append(resolved)
+                else:
+                    log.warning(f"Model not available in llama.cpp: {m}")
+            else:
+                log.debug(f"Skipping availability check for {m}")
+                valid_models.append(m)
+        if not valid_models:
+            raise RuntimeError("No valid llama.cpp models found")
+        primary = f"llamacpp/{valid_models[0]}"
+        fallbacks = [f"llamacpp/{m}" for m in valid_models]
+        config["agents"]["defaults"]["model"]["primary"] = primary
+        config["agents"]["defaults"]["model"]["fallbacks"] = fallbacks
+        log.info(f"Primary model: {primary}")
+        log.debug(f"Fallbacks: {fallbacks}")
+        config["models"] = {
+            "mode": "merge",
+            "providers": {
+                "llamacpp": {
+                    "baseUrl": base_url,
+                    "apiKey": "llamacpp-local",
+                    "api": "openai-completions",
+                    "models": [
+                        _openclaw_build_model_entry(
+                            m, m.split("/")[-1]
+                        )
+                        for m in valid_models
+                    ]
+                }
+            }
+        }
+
+    else:
+        log.info("Configuring Ollama provider")
+        port = env_vars.get("OLLAMA_PORT", "11434")
+        base_url = f"http://host.docker.internal:{port}/v1"
+        models_env = [
+            env_vars.get("OLLAMA_DEFAULT_MODEL"),
+            env_vars.get("OLLAMA_SUPPLEMENT_MODEL"),
+            env_vars.get("OLLAMA_EMBEDDING_MODEL"),
+        ]
+        models_env = [m for m in models_env if m]
+        service_ok = _openclaw_check_service(base_url)
+        available = _openclaw_fetch_available_models(base_url) if service_ok else set()
+        matches = {_openclaw_normalize(a): a for a in available}
+        valid_models = []
+        for m in models_env:
+            if available:
+                if _openclaw_normalize(m) in matches:
+                    resolved = matches[_openclaw_normalize(m)]
+                    valid_models.append(resolved)
+                else:
+                    log.warning(f"Model not available in Ollama: {m}")
+            else:
+                log.debug(f"Skipping availability check for {m}")
+                valid_models.append(m)
+        if not valid_models:
+            raise RuntimeError("No valid Ollama models found")
+        primary = f"ollama/{valid_models[0]}"
+        fallbacks = [f"ollama/{m}" for m in valid_models]
+        config["agents"]["defaults"]["model"]["primary"] = primary
+        config["agents"]["defaults"]["model"]["fallbacks"] = fallbacks
+        log.info(f"Primary model: {primary}")
+        log.debug(f"Fallbacks: {fallbacks}")
+        config["models"] = {
+            "mode": "merge",
+            "providers": {
+                "ollama": {
+                    "baseUrl": base_url,
+                    "apiKey": "ollama-local",
+                    "api": "ollama",
+                    "models": [
+                        _openclaw_build_model_entry(m, m)
+                        for m in valid_models
+                    ]
+                }
+            }
+        }
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    config["meta"]["lastTouchedAt"] = now
+    config["wizard"]["lastRunAt"] = now
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = None
+    if dst_path.exists():
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
+        backup_path = dst_path.with_name(f"openclaw.json.bak.{timestamp}")
+        log.warning(f"Creating backup: {backup_path}")
+        shutil.copy(dst_path, backup_path)
+
+    try:
+        log.info(f"Writing config to {dst_path}")
+        with open(dst_path, "w", encoding="utf-8", newline='\n') as f:
+            json.dump(config, f, indent=2)
+        log.info("Configuration written successfully")
+    except Exception as e:
+        log.error(f"Failed to write config: {e}")
+        if backup_path and backup_path.exists():
+            log.warning("Restoring from backup")
+            shutil.copy(backup_path, dst_path)
+            log.info("Rollback complete")
+        raise
+    log.info("OpenClaw .json configuration complete")
+
+def _openclaw_normalize(name: str):
+    if not isinstance(name, str):
+        raise TypeError("Model name must be a string")
+    name = name.strip()
+    if not name:
+        raise ValueError("Model name must not be empty")
+    if ":" in name:
+        parts = [p for p in name.split(":") if p]
+        if not parts:
+            raise ValueError("Invalid ':'-separated model id")
+        return parts[0]
+    parts = [p for p in name.split("/") if p]
+    if not parts:
+        raise ValueError("Invalid '/'-separated model id")
+    return parts[-1]
+
+def _openclaw_check_service(base_url):
+    """Check if model service is reachable."""
+    if not base_url:
+        log.error("Cannot check service, the base URL is empty")
+        return False
+    try:
+        log.debug(f"Checking service health at {base_url}")
+        r = requests.get(base_url.replace("/v1", ""), timeout=2)
+        return r.status_code < 500
+    except Exception as e:
+        log.warning(f"Service check failed: {e}")
+        return False
+
+def _openclaw_fetch_available_models(base_url):
+    """Try to fetch available models from API."""
+    if not base_url:
+        log.error("Cannot fetch model, the base URL is empty")
+        return set()
+    try:
+        url = f"{base_url}/models"
+        log.debug(f"Fetching models from {url}")
+        r = requests.get(url, timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            return {m.get("id") for m in data.get("data", [])}
+    except Exception as e:
+        log.warning(f"Could not fetch models: {e}")
+    return set()
+
+def _openclaw_build_model_entry(model_id, name):
+    return {
+        "id": model_id,
+        "name": name,
+        "reasoning": True,
+        "input": ["text"],
+        "cost": {
+            "input": 0,
+            "output": 0
+        },
+        "contextWindow": 400000
+    }
+
 def prepare_open_webui_tools_filesystem_env(env_vars):
     """Write env_vars to .env and compose.yaml to open-webui/tools/servers/filesystem."""
     env_file = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
@@ -1715,6 +2092,8 @@ def destroy_ai_suite(profile, install):
     if not profile:
         log.error("Profile required to destroy containers")
         return
+    profile.remove('supabase') if 'supabase' in profile else None
+    profile.remove('openclaw') if 'openclaw' in profile else None
     insert = "and volumes for" if install else "for"
     insert = f"Destroying {name} containers {insert}"
     log.info(f"{insert} profile arguments: {profile}...", extra=log_bright)
@@ -1748,11 +2127,15 @@ def operate_ai_suite(operation, profile, environment, env_vars):
         f.write(operation + ':' + llama.lower())
 
     supabase = False
+    openclaw = False
     open_webui = False
-    # WebUI built - nothing to pull, Supabase pulled with suite via include.
+    # WebUI built - nothing to pull, Supabase and OpenClaw pulled with suite via include.
     if operation != 'pull':
         supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
+        openclaw = any(p for p in profile if p in ['openclaw', 'ai-all'])
         open_webui = any(p for p in profile if p in open_webui_all_profiles)
+    profile.remove('supabase') if 'supabase' in profile else None
+    profile.remove('openclaw') if 'openclaw' in profile else None
 
     if operation == 'start' and environment:
         load_dotenv_vars(env_vars)
@@ -1780,6 +2163,9 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     base = ["docker", "compose", "-p", "ai-suite"]
     if supabase:
         cmd = base + ["-f", "supabase/docker/docker-compose.yml", operation]
+        run_command(cmd)
+    if openclaw:
+        cmd = base + ["-f", "openclaw/docker-compose.yml", operation]
         run_command(cmd)
     if open_webui:
         cmd = base + ["-f", "open-webui/tools/servers/filesystem/compose.yaml", operation]
@@ -1819,6 +2205,135 @@ def start_open_webui_tools_filesystem(environment=None, build=False):
     log.info("Starting Open WebUI Tools Filesystem services...")
     compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     start_built_container(compose_file, environment, build)
+
+def start_openclaw(
+    environment=None,
+    build=False,
+    cwd=None,
+    *,
+    non_interactive=False,
+    on_failure="continue",  # "continue" | "quit"
+    on_max="continue",      # "continue" | "quit"
+    ):
+    """Start the OpenClaw services (using its compose file)."""
+    log.info("Starting OpenClaw services...")
+    cwd = "./openclaw" if not cwd else cwd
+    compose_file = os.path.join(cwd, "docker-compose.yml")
+    if build:
+        # --- Onboarding loop ---
+        onboarding_cmd = [
+            'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
+            '--entrypoint', 'node',
+            'openclaw-gateway', 'dist/index.js', 'onboard',
+            '--mode', 'local', '--no-install-daemon'
+        ]
+        _openclaw_run_with_retries(
+            onboarding_cmd,
+            cwd,
+            "Onboarding",
+            non_interactive=non_interactive,
+            on_failure=on_failure,
+            on_max=on_max,
+        )
+        # --- Configuration loop ---
+        config_cmd = [
+            'docker', 'compose', '-p', 'ai-suite', 'run', '--rm', '--no-deps',
+            '--entrypoint', 'node',
+            'openclaw-gateway', 'dist/index.js',
+            'config', 'set', '--batch-json',
+            '[{"path":"gateway.mode","value":"local"},'
+            '{"path":"gateway.bind","value":"lan"},'
+            '{"path":"gateway.controlUi.allowedOrigins","value":["http://localhost:18789","http://127.0.0.1:18789"]}]'
+        ]
+        _openclaw_run_with_retries(
+            config_cmd,
+            cwd,
+            "Configuration",
+            non_interactive=non_interactive,
+            on_failure=on_failure,
+            on_max=on_max,
+        )
+    # --- Up ---
+    cmd = ["docker", "compose", "-p", "ai-suite", "-f", compose_file]
+    if environment == "public":
+        cmd.extend(["-f", "docker-compose.override.public.yml"])
+    cmd.extend(["up", "-d"])
+    if build:
+        cmd.append("--build")
+    run_command(cmd, cwd=cwd)
+
+def _openclaw_prompt_max(action_name, non_interactive, on_max):
+    """Prompt user after max attempts reached."""
+    if non_interactive:
+        log.info(
+            f"{action_name} reached max attempts → non-interactive mode: auto '{on_max}'."
+        )
+        return on_max
+    while True:
+        choice = input(
+            f"{action_name} reached max attempts. "
+            "What do you want to do? [c]ontinue / [q]uit: "
+        ).strip().lower()
+
+        if choice in ("c", "continue"):
+            return "continue"
+        elif choice in ("q", "quit"):
+            return "quit"
+
+def _openclaw_prompt_retry(action_name, non_interactive, on_failure):
+    """Prompt user after a failed attempt (before max attempts)."""
+    if non_interactive:
+        log.info(
+            f"{action_name} failed → non-interactive mode: auto '{on_failure}'."
+        )
+        return on_failure
+    while True:
+        choice = input(
+            f"{action_name} failed. What do you want to do? "
+            "[r]etry / [c]ontinue / [q]uit: "
+        ).strip().lower()
+        if choice in ("r", "retry"):
+            return "retry"
+        elif choice in ("c", "continue"):
+            return "continue"
+        elif choice in ("q", "quit"):
+            return "quit"
+
+def _openclaw_run_with_retries(
+    cmd,
+    cwd,
+    action_name,
+    max_attempts=3,
+    non_interactive=False,
+    on_failure="continue",  # or "quit"
+    on_max="continue",      # or "quit"
+    ):
+    """Run a command with controlled retry behavior for run_command that raises exceptions on failure."""
+    attempts = 0
+    while attempts < max_attempts:
+        try:
+            run_command(cmd, cwd=cwd)
+            log.info(f"{action_name} completed successfully.")
+            return 0  # success → exit loop
+        except Exception as e:
+            attempts += 1
+            log.warning(f"{action_name} attempt {attempts} failed {e}")
+            if attempts < max_attempts:
+                decision = _openclaw_prompt_retry(action_name, non_interactive, on_failure)
+                if decision == "retry":
+                    continue
+                elif decision == "continue":
+                    return 1
+                elif decision == "quit":
+                    raise SystemExit(f"{action_name} aborted by user.")
+            else:
+                log.error(f"{action_name} reached max attempts ({max_attempts}).")
+                decision = _openclaw_prompt_max(action_name, non_interactive, on_max)
+                if decision == "continue":
+                    return 1
+                elif decision == "quit":
+                    raise SystemExit(f"{action_name} aborted after max attempts.")
+    return 1  # fallback, should not reach here
 
 def start_ai_suite(profile=None, environment=None, build=False):
     """Start the AI-Suite services (using its compose file) for the specified
@@ -2027,11 +2542,13 @@ def convert_supabase_pooler_line_endings():
         log.info("Converting supavisor pooler line endings...")
         convert_line_endings(file_path)
 
-
-def docker_compose_include(supabase, filesystem, verbose):
-    """Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml"""
+def docker_compose_include(supabase, openclaw, filesystem, verbose):
+    """Add or remove Supabase, OpenClaw and Filesystem include compose.yml in
+       docker-compose.yml
+    """
     compose_file = "docker-compose.yml"
     supabase_compose_file = "supabase/docker/docker-compose.yml"
+    openclaw_compose_file = "openclaw/docker-compose.yml"
     filesystem_compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     if not os.path.exists(compose_file):
         log.error(f"Docker Compose file '{compose_file}' not found - include skipped...")
@@ -2040,19 +2557,27 @@ def docker_compose_include(supabase, filesystem, verbose):
         if verbose:
             log.warning(f"Include file '{supabase_compose_file}' not found.")
         supabase = False
+    if openclaw and not os.path.exists(openclaw_compose_file):
+        if verbose:
+            log.warning(f"Include file '{openclaw_compose_file}' not found.")
+        openclaw = False
     if filesystem and not os.path.exists(filesystem_compose_file):
         if verbose:
             log.warning(f"Include file '{filesystem_compose_file}' not found.")
         filesystem = False
     if verbose:
         supabase_ins = "add" if supabase else "remove"
+        openclaw_ins = "add" if openclaw else "remove"
         filesystem_ins = "add" if filesystem else "remove"
         log.info(
-            f"Perform {supabase_ins} Supabase and {filesystem_ins} Filesystem "
+            f"Perform {supabase_ins} Supabase, "
+            f"{openclaw_ins} OpenClaw, "
+            f"and {filesystem_ins} Filesystem "
             f"'include:' in {compose_file}...")
-    include = supabase or filesystem
+    include = supabase or openclaw or filesystem
     compose_include = "include:\n"
     supabase_include = f"  - ./{supabase_compose_file}\n"
+    openclaw_include = f"  - ./{openclaw_compose_file}\n"
     filesystem_include = f"  - ./{filesystem_compose_file}\n"
 
     try:
@@ -2070,15 +2595,6 @@ def docker_compose_include(supabase, filesystem, verbose):
             if verbose:
                 log.info(f"Removing 'include:' element from {compose_file}...")
 
-        if supabase and supabase_include not in content:
-            if verbose:
-                log.info(f"Adding include file ./{supabase_compose_file}...")
-            content = supabase_include + content
-        elif not supabase and supabase_include in content:
-            if verbose:
-                log.info(f"Removing include file ./{supabase_compose_file}...")
-            content = content.replace(supabase_include, "")
-
         if filesystem and filesystem_include not in content:
             if verbose:
                 log.info(f"Adding include file ./{filesystem_compose_file}...")
@@ -2087,6 +2603,24 @@ def docker_compose_include(supabase, filesystem, verbose):
             if verbose:
                 log.info(f"Removing include file ./{filesystem_compose_file}...")
             content = content.replace(filesystem_include, "")
+
+        if openclaw and openclaw_include not in content:
+            if verbose:
+                log.info(f"Adding include file ./{openclaw_compose_file}...")
+            content = openclaw_include + content
+        elif not openclaw and openclaw_include in content:
+            if verbose:
+                log.info(f"Removing include file ./{openclaw_compose_file}...")
+            content = content.replace(openclaw_include, "")
+
+        if supabase and supabase_include not in content:
+            if verbose:
+                log.info(f"Adding include file ./{supabase_compose_file}...")
+            content = supabase_include + content
+        elif not supabase and supabase_include in content:
+            if verbose:
+                log.info(f"Removing include file ./{supabase_compose_file}...")
+            content = content.replace(supabase_include, "")
 
         if include and not compose_include in content:
             content = compose_include + content
@@ -2459,8 +2993,8 @@ def docker_container_is_running(container):
         log.error(f"Exception: {e.stderr}.")
         return False
 
-def display_service_endpoints(profile, supabase, env_vars={}):
-    """Display AI-Suite installation or operationstatus"""
+def display_service_endpoints(profile, supabase, openclaw, env_vars={}):
+    """Display AI-Suite installation or operation status"""
     if not profile:
         log.error("Profile required to display service endpoints")
         return
@@ -2515,6 +3049,10 @@ def display_service_endpoints(profile, supabase, env_vars={}):
         'open-webui-mcpo': [
             ('mcp-gateway',         'MCP Gateway',     '8060/'),
             ('open-webui-mcpo',     'Open WebUI MCPO', '8090/')
+        ],
+        'openclaw': [
+            ('openclaw-gateway',    'OpenClaw Gateway','18789/'),
+            ('openclaw-cli',        'OpenClaw CLI',    '18790/')
         ],
         'flowise': [
             ('flowise',             'Flowise',         '3001/')
@@ -2582,6 +3120,8 @@ def display_service_endpoints(profile, supabase, env_vars={}):
     proxy_in_profile = any(p in profile for p in ('caddy', 'nginx'))
     if supabase is None:
         supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
+    if openclaw is None:
+        openclaw = any(p for p in profile if p in ['openclaw', 'ai-all'])
 
     def skip_module(module, module_name):
         if llama_cpp and module in ('cpu', 'gpu-nvidia', 'gpu-amd'):
@@ -2603,6 +3143,8 @@ def display_service_endpoints(profile, supabase, env_vars={}):
         if not container or container in container_list:
             return True
         if not supabase and 'supabase-' in container:
+            return True
+        if not openclaw and 'openclaw-' in container:
             return True
         if llama_on_host and container in ('ollama', 'llamacpp'):
             return True
@@ -2969,7 +3511,7 @@ def main():
     open_webui_profiles = ['open-webui', 'open-webui-all']
     open_webui_all_profiles = open_webui_profiles + n8n_all_profiles
     agent_all_profiles = open_webui_all_profiles + ['opencode']
-    server_profiles = ['supabase', 'flowise', 'searxng', 'langfuse', 'neo4j']
+    server_profiles = ['supabase', 'openclaw', 'flowise', 'searxng', 'langfuse', 'neo4j']
     subdomain_profiles = n8n_profiles + open_webui_profiles + server_profiles + \
                          llama_host_profiles
     proxy_profiles = ['caddy', 'nginx']
@@ -3008,6 +3550,7 @@ def main():
             profile arguments:
               - functional modules:
                 open-webui                                  Open WebUI client
+                openclaw                                    OpenClaw AI assistant
                 n8n                                         n8n
                 opencode                                    OpenCode
                 open-webui-mcpo open-webui-pipe             Open WebUI pipelines, tools and functions
@@ -3049,22 +3592,22 @@ def main():
 
             Example commands:
 
-            - Install functional modules n8n and opencode...
+            - Install functional modules OpenClaw, n8n and OpenCode...
               ...with {llama} running on the Host:
-              python {file} --profile n8n opencode
+              python {file} --profile openclaw, n8n opencode
 
               ...with Ollama CPU running in Docker:
-              python {file} --profile n8n opencode cpu
+              python {file} --profile openclaw, n8n opencode cpu
 
               ...with LLaMA.cpp AMD GPU in Docker and on production environment:
-              python {file} --profile n8n opencode cpp-gpu-amd --environment public
+              python {file} --profile openclaw, n8n opencode cpp-gpu-amd --environment public
 
             - Perform (stop, start, pause, unpause) operation...
               ...to stop n8n and opencode:
-              python {file} --profile n8n opencode --operation stop
+              python {file} --profile openclaw, n8n opencode --operation stop
 
               ...to stop n8n, opencode and {llama} running on the Host:
-              python {file} --profile n8n opencode --operation stop-llama
+              python {file} --profile openclaw, n8n opencode --operation stop-llama
 
             - Perform (install, update) operation...
               ...to update all modules and restart using Ollama running on the Host:
@@ -3208,12 +3751,26 @@ def main():
     supabase = \
         any(p for p in args.profile if p in ['supabase', 'ai-all'])
     if supabase:
-        args.profile.remove('supabase') if 'supabase' in args.profile else None
         mod_env_vars.update({'POSTGRES_HOST': 'db'})
         if build:
             clone_supabase_repo()
         copy_supabase_authelia_schema()
         convert_supabase_pooler_line_endings()
+
+    # Setup OpenClaw repository if using OpenClaw
+    openclaw = \
+        any(p for p in args.profile if p in ['openclaw', 'ai-all'])
+    ocwd = None
+    base_dir = pathlib.Path(__file__).parent
+    if openclaw:
+        if build:
+            clone_openclaw_repo()
+        ocwd = os.path.join(base_dir, "openclaw")
+        prepare_openclaw_env(ocwd)
+
+    # Setup Open WebUI Functions and Tools Filesystem repository
+    open_webui = \
+        any(p for p in args.profile if p in open_webui_all_profiles)
 
     # Automatic configuration
     ac_env_vars = []
@@ -3492,7 +4049,7 @@ def main():
                 args.profile.extend([llama_arg])
             else:
                 log.info(f"""{insert} container images for {args.profile}...""")
-            docker_compose_include(True, True, False)
+            docker_compose_include(supabase, openclaw, open_webui, False)
             destroy_ai_suite(args.profile, install)
         operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
         if build:
@@ -3529,9 +4086,11 @@ def main():
         generate_searxng_secret_key()
         check_and_fix_docker_compose_for_searxng()
 
+    # Setup OpenClaw configuration
+    if openclaw:
+        prepare_openclaw_config(ocwd, env_vars)
+
     # Setup Open WebUI Functions and Tools Filesystem repos
-    open_webui = \
-        any(p for p in args.profile if p in open_webui_all_profiles)
     if open_webui:
         clone_open_webui_functions_repos()
         clone_open_webui_tools_filesystem_repo()
@@ -3544,7 +4103,7 @@ def main():
         prepare_opencode_config(env_vars)
 
     # Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml
-    docker_compose_include(supabase, open_webui, True)
+    docker_compose_include(supabase, openclaw, open_webui, True)
 
     # Stop and remove AI-Suite containers
     if not build:
@@ -3558,6 +4117,13 @@ def main():
         start_supabase(args.environment, build)
         # Give Supabase some time to initialize
         log.info("Waiting for Supabase to initialize...", extra=log_bright)
+        wait_with_progress(10)
+
+    # Start OpenClaw
+    if openclaw:
+        start_openclaw(args.environment, build, ocwd)
+        # Give OpenClaw some time to initialize
+        log.info("Waiting for OpenClaw to initialize...", extra=log_bright)
         wait_with_progress(10)
 
     # Start Open WebUI Tools Filesystem
@@ -3606,7 +4172,7 @@ def main():
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, build)
-    display_service_endpoints(args.profile, supabase, env_vars)
+    display_service_endpoints(args.profile, supabase, openclaw, env_vars)
 
     os.makedirs('./state', exist_ok=True)
     with open('./state/.operation', 'w', newline='\n') as f:

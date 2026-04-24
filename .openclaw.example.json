@@ -1,0 +1,151 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.4.6",
+    "lastTouchedAt": "2026-04-06T16:48:36.938Z"
+  },
+  "wizard": {
+    "lastRunAt": "2026-04-06T16:48:36.935Z",
+    "lastRunVersion": "2026.4.6",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+		"primary": "ollama/llama3.2",
+        "fallbacks": [
+          "ollama/qwen3:8b"
+        ]
+      },
+      "thinkingDefault": "low",
+      "sandbox": {
+        "mode": "non-main"
+      },
+      "workspace": "/home/node/.openclaw/workspace",
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "loopback",
+    "controlUi": {
+      "allowedOrigins": [
+        "http://localhost:18789",
+        "http://127.0.0.1:18789"
+      ]
+    },
+    "auth": {
+      "mode": "token",
+      "token": "change-me-to-a-long-random-token"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    }
+  },
+  "tools": {
+    "profile": "coding",
+    "allow": [
+      "group:web",
+      "browser",
+      "pdf"
+    ],
+    "deny": [
+      "cron"
+    ],
+    "sandbox": {
+      "tools": {
+        "allow": [
+          "bash",
+          "process",
+          "read",
+          "write",
+          "edit",
+          "sessions_list",
+          "sessions_history",
+          "sessions_send",
+          "sessions_spawn"
+        ],
+        "deny": [
+          "browser",
+          "canvas",
+          "nodes",
+          "cron",
+          "discord",
+          "gateway"
+        ]
+      }
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://host.docker.internal:11434/v1",
+        "apiKey": "ollama-local",
+        "api": "ollama",
+        "models": [
+          {
+            "id": "llama3.2",
+            "name": "LLaMA 3.2",
+            "reasoning": true,
+            "input": [
+              "text"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 400000
+          }
+        ]
+      }
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "session-memory": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "skills": {
+    "install": {
+      "nodeManager": "npm"
+    }
+  },
+  "plugins": {
+    "entries": {
+      "whatsapp": {
+        "enabled": false
+      }
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "browser": {
+    "executablePath": "/usr/bin/brave-browser"
+  }
+}
