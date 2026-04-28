@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # Trevor SANDY
-# Last Update April, 24 2026
+# Last Update April, 30 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
+# Change Updates
+# https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
+# 66f4b52 - 28/04/2026
+
 set -euo pipefail
 
-: "${APP_NAME:="AI-Suite"}"
+: "${APP_NAME:='AI-Suite'}"
 : "${DEBUG_ON:=false}"
+: "${PLATFORM:='unknown'}"
+: "${PRIMARY_ARG:=''}"
+: "${ENV_MODE:=''}"
 : "${SILENT:=0}"
 
 # Reset BASH time counter
@@ -163,6 +170,11 @@ log_warning()  { log WARNING "$*"; }
 log_debug()    { log DEBUG "$*"; }
 log_info()     { log INFO "$*"; }
 
+fail() {
+  log_critical "$*"
+  exit 1
+}
+
 strip_sgr() {
     local line sgr=$'\033'
     while IFS= read -r line; do
@@ -204,23 +216,31 @@ finish_elapsed_time() {
     printf '%s\n' "${INFO} ${GREEN}-------------------------------------------${END}"
 }
 
+completion=''
 # shellcheck disable=SC2329
-completion='Success!'
 finish () {
     local header="${END}✅ ${HEADER}"
+    local action="Set .env"
     local status="Completed"
-
-    if [ "$completion" == "Success!" ]; then
-        :
-    elif [ "$completion" == "Partial!" ]; then
+    case "$PRIMARY_ARG" in
+        --setenv) : ;;
+        --onboarding) action="Onboarding" ;;
+        --configuration) action="Configuration" ;;
+        --gateway) action="Gateway" ;;
+        *) action="Unknown" ;;
+    esac
+    case "$completion" in
+        Success!) : ;;
+        Partial!)
         header="${END}⚠️ ${HEADER}"
         status="Finished"
-    else
+        ;;
+        *)
         header="${END}❌ ${SGR}${BOLD}${UNDERLINE}91m"
         status="Terminated"
-    fi
-
-    log_info "${header}Configuration $status"
+        ;;
+    esac
+    log_info "${header}OpenClaw - $action $status"
     #-------------------------------------------
     finish_elapsed_time
 }
@@ -228,32 +248,105 @@ finish () {
 trap finish EXIT
 
 ########################################
+# ENVIRONMENT
+########################################
+log_info "${HEADER}OpenClaw - Environment"
+#-------------------------------------------
+detect_arch() {
+  local -n _ref=$1
+  case $(uname -m) in
+  x86_64) _ref='amd64' ;;
+  aarch64 | arm64) _ref='arm64' ;;
+  armv7l) _ref='arm' ;;
+  i686 | i386) _ref='386' ;;
+  *) _ref='err' ;;
+  esac
+}
+
+detect_os() {
+  local -n _ref=$1
+  case $(uname | tr '[:upper:]' '[:lower:]') in
+  linux*) _ref='linux' ;;
+  darwin*) _ref='darwin' ;;
+  *) _ref='err' ;;
+  esac
+}
+
+is_wsl() {
+  case "$(uname -r)" in
+  *icrosoft*WSL2 | *icrosoft*wsl2) return ;;
+  *icrosoft) fail "Microsoft WSL1 is not supported. Use WSL2 with 'wsl --set-version <distro> 2'" ;;
+  *) return 1 ;;
+  esac
+}
+
+os=''
+detect_os os
+case "$os" in
+linux*)
+  if is_wsl; then
+    PLATFORM="wsl"
+  else
+    PLATFORM="linux"
+  fi
+  ;;
+darwin*) PLATFORM="mac" ;;
+err) fail "Unsupported platform." ;;
+esac
+
+arch=''
+detect_arch arch
+if [[ "$arch" == "err" ]]; then fail "Unsupported CPU architecture"; fi
+
+log_info "${BODY}OS:${END} ${WHITE}$os"
+log_info "${BODY}PLATFORM:${END} ${WHITE}$PLATFORM"
+log_info "${BODY}ARCHITECTURE:${END} ${WHITE}$arch"
+
+########################################
 # ROOT / CONFIG
 ########################################
-log_info "${HEADER}ROOT / CONFIG VARIABLES"
+log_info "${HEADER}OpenClaw - Variables"
 #-------------------------------------------
 ROOT_DIR="$(pwd)"
+OPENCLAW_DIR=""
 log_info "${BODY}ROOT_DIR:${END} ${WHITE}$ROOT_DIR"
-OPENCLAW_DIR="$(cd "$ROOT_DIR/openclaw" && pwd)"
+case "$(basename "$ROOT_DIR")" in
+  openclaw) 
+    OPENCLAW_DIR="${ROOT_DIR}"
+    ROOT_DIR="$(cd "$ROOT_DIR/../" && pwd)"
+    ;;
+  ai-suite)
+    OPENCLAW_DIR="$(cd "$ROOT_DIR/openclaw" && pwd)"
+    ;;
+  *) fail "Must be run from 'openclaw' or 'ai-suite'." ;;
+esac
 log_info "${BODY}OPENCLAW_DIR:${END} ${WHITE}$OPENCLAW_DIR"
+# shellcheck disable=SC1091
+source "$OPENCLAW_DIR/scripts/lib/docker-build.sh"
 
 COMPOSE_FILE="$OPENCLAW_DIR/docker-compose.yml"
 EXTRA_COMPOSE_FILE="$OPENCLAW_DIR/docker-compose.extra.yml"
 SANDBOX_COMPOSE_FILE="$OPENCLAW_DIR/docker-compose.sandbox.yml"
-PRIVATE_COMPOSE_FILE="$ROOT_DIR/docker-compose.override.private.yml"
-PUBLIC_COMPOSE_FILE="$ROOT_DIR/docker-compose.override.public.yml"
+#PRIVATE_COMPOSE_FILE="$ROOT_DIR/docker-compose.override.private.yml"
+#PUBLIC_COMPOSE_FILE="$ROOT_DIR/docker-compose.override.public.yml"
 
 IMAGE_NAME="${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}"
 EXTRA_MOUNTS="${OPENCLAW_EXTRA_MOUNTS:-}"
 HOME_VOLUME_NAME="${OPENCLAW_HOME_VOLUME:-}"
 DOCKER_SOCKET_PATH="${OPENCLAW_DOCKER_SOCKET:-}"
 ENV_FILE="$OPENCLAW_DIR/.env"
-BUILD="${BUILD:-}"
 TIMEZONE="${OPENCLAW_TZ:-}"
 PERMISSIONS="${PERMISSIONS:-}"
 
-OPENCLAW_CONFIG_DIR="${OPENCLAW_CONFIG_DIR:-$HOME/.openclaw}"
-OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$HOME/.openclaw/workspace}"
+HOME_DIR="$HOME"
+[[ "$PLATFORM" == "wsl" ]] && \
+HOME_DIR="$(wslpath "$(cmd.exe /c "<nul set /p=%USERPROFILE%" 2>/dev/null)")"
+OPENCLAW_CONFIG_DIR="${OPENCLAW_CONFIG_DIR:-$HOME_DIR/.openclaw}"
+log_info "${BODY}OPENCLAW_CONFIG_DIR:${END} ${WHITE}$OPENCLAW_CONFIG_DIR"
+OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$HOME_DIR/.openclaw/workspace}"
+log_info "${BODY}OPENCLAW_WORKSPACE_DIR:${END} ${WHITE}$OPENCLAW_WORKSPACE_DIR"
+OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18789}"
+OPENCLAW_GATEWAY_BIND="${OPENCLAW_GATEWAY_BIND:-lan}"
 
 OPENCLAW_DOCKER_GID=""
 OPENCLAW_INSTALL_DOCKER_CLI=""
@@ -262,18 +355,17 @@ OPENCLAW_INSTALL_DOCKER_CLI=""
 # ARGUMENT PARSING (single primary arg)
 ########################################
 
-PRIMARY_ARG=""
 if [[ $# -gt 0 ]]; then
-  log_info "${header}Parse Arguments"
+  log_info "${HEADER}OpenClaw - Arguments"
   #-------------------------------------------
   PRIMARY_ARG="$1"
+  log_info "${BODY}Primary Argument:${END} ${WHITE}$PRIMARY_ARG"
   shift || true
 fi
 
-ENV_MODE=""
 case "$PRIMARY_ARG" in
   --setenv) ENV_MODE="1" ;;
-  --onboarding|--configuration|--gateway) ;;
+  --onboarding|--configuration|--gateway) : ;;
   *) echo -e "${ERROR} ${RED}Unknown primary argument.${END}" >&2 ;;
 esac
 
@@ -282,17 +374,16 @@ SANDBOX_ENABLED="${OPENCLAW_SANDBOX:-0}"
 ENVIRONMENT="${ENVIRONMENT:-private}"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --build) BUILD="1" ;;
     --debug) DEBUG_ON="true" ;;
     --sandbox) OPENCLAW_SANDBOX="1" ;;
-    --environment)
-      shift
-      if [[ $# -eq 0 ]]; then
-        echo -e "${WARNING} ${YELLOW}--environment option requires 'public/private' argument.${END}"
-      else
-        ENVIRONMENT="$1"
-      fi
-      ;;
+    # --environment)
+    #   shift
+    #   if [[ $# -eq 0 ]]; then
+    #     echo -e "${WARNING} ${YELLOW}--environment option requires 'public/private' argument.${END}"
+    #   else
+    #     ENVIRONMENT="$1"
+    #   fi
+    #   ;;
     *)
       echo -e "${NOTICE} Extra argument ignored: ${WHITE}$1${END}" >&2
       ;;
@@ -303,11 +394,6 @@ done
 ########################################
 # UTILITIES
 ########################################
-
-fail() {
-  log_critical "$*"
-  exit 1
-}
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -494,7 +580,9 @@ sync_gateway_config() {
   fi
   batch_json+="]"
 
-  run_prestart_cli config set --batch-json "$batch_json" >/dev/null
+  if ! run_prestart_cli config set --batch-json "$batch_json" >/dev/null; then
+      : #fail "Could not complete run configuration"
+  fi
   log_info "${GREEN}Pinned gateway.mode=local and gateway.bind=${END}${WHITE}$OPENCLAW_GATEWAY_BIND for Docker setup."
   if [[ -n "$allowed_origin_json" ]]; then
     if [[ -z "$current_allowed_origins" || "$current_allowed_origins" == "null" || "$current_allowed_origins" == "[]" ]]; then
@@ -509,7 +597,7 @@ sync_gateway_config() {
 
 is_env_mode() {
   if is_truthy_value "$ENV_MODE"; then
-    log_info "${header}Query Mode"
+    log_info "${HEADER}OpenClaw - Set .env"
     #-------------------------------------------
     return 0
   fi
@@ -533,6 +621,7 @@ upsert_env() {
       for k in "${keys[@]}"; do
         if [[ "$key" == "$k" ]]; then
           printf '%s=%s\n' "$k" "${!k-}" >>"$tmp"
+          log_info "${BODY}$k:${END} ${WHITE}${!k-}"
           seen="$seen$k "
           replaced=true
           break
@@ -547,21 +636,41 @@ upsert_env() {
   for k in "${keys[@]}"; do
     if [[ "$seen" != *" $k "* ]]; then
       printf '%s=%s\n' "$k" "${!k-}" >>"$tmp"
+      log_info "${BODY}$k:${END} ${WHITE}${!k-}"
     fi
   done
 
   mv "$tmp" "$file"
 }
 
-run_create_env() {
+run_set_env() {
+  export OPENCLAW_CONFIG_DIR
+  export OPENCLAW_WORKSPACE_DIR
+  export OPENCLAW_DISABLE_BONJOUR="${OPENCLAW_DISABLE_BONJOUR:-}"
+  export OPENCLAW_DOCKER_APT_PACKAGES="${OPENCLAW_DOCKER_APT_PACKAGES:-}"
+  export OPENCLAW_EXTENSIONS="${OPENCLAW_EXTENSIONS:-}"
+  export OPENCLAW_EXTRA_MOUNTS="$EXTRA_MOUNTS"
+  export OPENCLAW_HOME_VOLUME="$HOME_VOLUME_NAME"
+  export OPENCLAW_ALLOW_INSECURE_PRIVATE_WS="${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}"
+  export OPENCLAW_SANDBOX="$SANDBOX_ENABLED"
+  export OPENCLAW_DOCKER_SOCKET="$DOCKER_SOCKET_PATH"
+  export OPENCLAW_DOCKER_SETUP=1
+  export OPENCLAW_TZ="$TIMEZONE"
+  export COMPOSE_IGNORE_ORPHANS="${COMPOSE_IGNORE_ORPHANS:-'true'}"
+  export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+  export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}"
+  export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT="${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:-}"
+  export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT="${OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:-}"
+  export OTEL_EXPORTER_OTLP_PROTOCOL="${OTEL_EXPORTER_OTLP_PROTOCOL:-}"
+  export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-}"
+  export OTEL_SEMCONV_STABILITY_OPT_IN="${OTEL_SEMCONV_STABILITY_OPT_IN:-}"
+  export OPENCLAW_OTEL_PRELOADED="${OPENCLAW_OTEL_PRELOADED:-}"
+
   upsert_env "$ENV_FILE" \
     OPENCLAW_CONFIG_DIR \
     OPENCLAW_WORKSPACE_DIR \
-    OPENCLAW_GATEWAY_PORT \
-    OPENCLAW_BRIDGE_PORT \
-    OPENCLAW_GATEWAY_BIND \
+    OPENCLAW_DISABLE_BONJOUR \
     OPENCLAW_GATEWAY_TOKEN \
-    OPENCLAW_IMAGE \
     OPENCLAW_EXTRA_MOUNTS \
     OPENCLAW_HOME_VOLUME \
     OPENCLAW_DOCKER_APT_PACKAGES \
@@ -571,7 +680,17 @@ run_create_env() {
     OPENCLAW_DOCKER_GID \
     OPENCLAW_INSTALL_DOCKER_CLI \
     OPENCLAW_ALLOW_INSECURE_PRIVATE_WS \
-    OPENCLAW_TZ
+    OPENCLAW_TZ \
+    COMPOSE_IGNORE_ORPHANS \
+    OTEL_EXPORTER_OTLP_ENDPOINT \
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT \
+    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT \
+    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT \
+    OTEL_EXPORTER_OTLP_PROTOCOL \
+    OTEL_SERVICE_NAME \
+    OTEL_SEMCONV_STABILITY_OPT_IN \
+    OPENCLAW_OTEL_PRELOADED
+    completion='Success!'
 }
 
 ########################################
@@ -581,7 +700,7 @@ run_create_env() {
 # Dockerfile uses BuildKit-only syntax (RUN --mount=type=cache). Force
 # BuildKit so hosts defaulting to the legacy builder do not fail.
 run_docker_build() {
-  DOCKER_BUILDKIT=1 docker build "$@"
+  docker_build_exec "$@"
 }
 
 run_prestart_gateway() {
@@ -621,30 +740,44 @@ run_runtime_cli() {
 }
 
 run_onboarding() {
-  fix_permissions
+  if ! fix_permissions; then
+    log_error "Could not fix permissions for run onboarding."
+  fi
   log_info ""
   log_info "${BLUE}==>${END} ${GREEN}Onboarding (interactive)"
-  log_info "Docker setup pins Gateway mode to local."
-  log_info "Gateway runtime bind comes from OPENCLAW_GATEWAY_BIND (default: lan)."
-  log_info "Current runtime bind: $OPENCLAW_GATEWAY_BIND"
-  log_info "Gateway token: $OPENCLAW_GATEWAY_TOKEN"
-  log_info "Tailscale exposure: Off (use host-level tailnet/Tailscale setup separately)."
-  log_info "Install Gateway daemon: No (managed by Docker Compose)"
+  log_info "${GREEN}Docker setup pins Gateway mode to local."
+  log_info "${GREEN}Gateway runtime bind comes from OPENCLAW_GATEWAY_BIND (default: lan)."
+  log_info "${GREEN}Current runtime bind:${END} ${WHITE}$OPENCLAW_GATEWAY_BIND"
+  if is_truthy_value "$OPENCLAW_DISABLE_BONJOUR"; then
+    log_info "${GREEN}Bonjour/mDNS advertising:${END} ${WHITE}force disabled (OPENCLAW_DISABLE_BONJOUR=$OPENCLAW_DISABLE_BONJOUR)."
+  elif [[ -z "$OPENCLAW_DISABLE_BONJOUR" ]]; then
+    log_info "${GREEN}Bonjour/mDNS advertising:${END} ${WHITE}auto (disabled inside the Gateway container unless explicitly enabled)."
+  else
+    log_info "${GREEN}Bonjour/mDNS advertising:${END} ${WHITE}explicitly enabled (OPENCLAW_DISABLE_BONJOUR=$OPENCLAW_DISABLE_BONJOUR)."
+  fi
+  log_info "${GREEN}Gateway token:${END} ${WHITE}$OPENCLAW_GATEWAY_TOKEN"
+  log_info "${GREEN}Tailscale exposure:${END} ${WHITE}Off (use host-level tailnet/Tailscale setup separately)."
+  log_info "${GREEN}Install Gateway daemon:${END} ${WHITE}No (managed by Docker Compose)"
   log_info ""
   run_prestart_cli onboard --mode local --no-install-daemon
 }
 
 run_configuration() {
   [[ -z "$PERMISSIONS" ]] && \
-  fix_permissions
+  if ! fix_permissions; then
+    log_error "Could not fix permissions for run configuration."
+  fi
   log_info ""
   log_info "${BLUE}==>${END} ${GREEN}Docker gateway defaults"
   sync_gateway_config
+  completion='Success!'
 }
 
 run_gateway() {
   [[ -z "$PERMISSIONS" ]] && \
-  fix_permissions
+  if ! fix_permissions; then
+    log_error "Could not fix permissions for run gateway."
+  fi
   log_info ""
   log_info "${BLUE}==>${END} ${GREEN}Provider setup (optional)"
   log_info "${GREEN}WhatsApp (QR):"
@@ -654,17 +787,13 @@ run_gateway() {
   log_info "${GREEN}Discord (bot token):"
   log_info "  ${WHITE}${COMPOSE_HINT} run --rm openclaw-cli channels add --channel discord --token <token>"
   log_info "${GREEN}Docs:${END} ${WHITE}https://docs.openclaw.ai/channels"
-
   log_info ""
   log_info "${BLUE}==>${END} ${GREEN}Starting gateway"
-  [[ -n "$BUILD" ]] && \
-    COMPOSE_ARGS+=("--build")
   docker compose "${COMPOSE_ARGS[@]}" up -d openclaw-gateway
 
   if [[ -n "$SANDBOX_ENABLED" ]]; then
     enable_sandbox
   fi
-
   log_info ""
   log_info "${GREEN}Gateway running with host port mapping."
   log_info "${GREEN}Access from tailnet devices via the host's tailnet IP."
@@ -675,10 +804,11 @@ run_gateway() {
   log_info "${GREEN}Commands:"
   log_info "  ${WHITE}${COMPOSE_HINT} logs -f openclaw-gateway"
   log_info "  ${WHITE}${COMPOSE_HINT} exec openclaw-gateway node dist/index.js health --token \"$OPENCLAW_GATEWAY_TOKEN\""
+  completion='Success!'
 }
 
 ########################################
-# EXTRA COMPOSE BUILD
+# EXTRA COMPOSE
 ########################################
 
 write_extra_compose() {
@@ -887,15 +1017,17 @@ if [[ -z "${OPENCLAW_GATEWAY_TOKEN:-}" ]]; then
   EXISTING_CONFIG_TOKEN="$(read_config_gateway_token || true)"
   if [[ -n "$EXISTING_CONFIG_TOKEN" ]]; then
     OPENCLAW_GATEWAY_TOKEN="$EXISTING_CONFIG_TOKEN"
-    log_info "${GREEN}Reusing gateway token from $OPENCLAW_CONFIG_DIR/openclaw.json"
+    log_info "${BODY}Reusing gateway token from:${END} ${WHITE}$OPENCLAW_CONFIG_DIR/openclaw.json"
   else
     DOTENV_GATEWAY_TOKEN="$(read_env_gateway_token "$OPENCLAW_DIR/.env" || true)"
     if [[ -n "$DOTENV_GATEWAY_TOKEN" ]]; then
       OPENCLAW_GATEWAY_TOKEN="$DOTENV_GATEWAY_TOKEN"
-      log_info "${GREEN}Reusing gateway token from $OPENCLAW_DIR/.env"
+      log_info "${BODY}Reusing gateway token from:${END} ${WHITE}$OPENCLAW_DIR/.env"
     elif command -v openssl >/dev/null 2>&1; then
+      log_info "${BODY}Generating gateway token from:${END} ${WHITE}openssl rand -hex 32"
       OPENCLAW_GATEWAY_TOKEN="$(openssl rand -hex 32)"
     else
+      log_info "${BODY}Generating gateway token from:${END} ${WHITE}Python secrets.token_hex(32)"
       OPENCLAW_GATEWAY_TOKEN="$(python3 - <<'PY'
 import secrets
 print(secrets.token_hex(32))
@@ -930,10 +1062,10 @@ if [[ -n "$SANDBOX_ENABLED" ]]; then
 fi
 
 if is_env_mode; then
-  run_create_env
+  run_set_env
   exit 0
 else
-  log_info "${header}Execution Mode"
+  log_info "${HEADER}OpenClaw - Execution Mode"
   #-------------------------------------------
 fi
 
@@ -975,14 +1107,12 @@ mkdir -p "$OPENCLAW_CONFIG_DIR/agents/main/agent"
 mkdir -p "$OPENCLAW_CONFIG_DIR/agents/main/sessions"
 
 COMPOSE_FILES=("$COMPOSE_FILE")
-COMPOSE_ARGS=("-p" "ai-suite" "-f" "$COMPOSE_FILE")
-if [[ "$ENVIRONMENT" == "public" ]]; then
-  COMPOSE_ARGS+=("-f" "$PUBLIC_COMPOSE_FILE")
-  COMPOSE_FILES+=("$PUBLIC_COMPOSE_FILE")
-else
-  COMPOSE_ARGS+=("-f" "$PRIVATE_COMPOSE_FILE")
-  COMPOSE_FILES+=("$PRIVATE_COMPOSE_FILE")
-fi
+COMPOSE_ARGS=("-p" "ai-suite")
+# if [[ "$ENVIRONMENT" == "public" ]]; then
+#   COMPOSE_FILES+=("$PUBLIC_COMPOSE_FILE")
+# else
+#   COMPOSE_FILES+=("$PRIVATE_COMPOSE_FILE")
+# fi
 
 VALID_MOUNTS=()
 if [[ -n "$EXTRA_MOUNTS" ]]; then

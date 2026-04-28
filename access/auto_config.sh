@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update April, 09 2026
+# Last Update April, 28 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -1874,12 +1874,13 @@ if [[ -f "$openclaw_compose_path" ]]; then
     # Rebuild OpenClaw services
     # shellcheck disable=SC2016
     openclaw_service_yaml='
-    . as $root |
     {
-      "name": "openclaw",
-      "services": (
-        $root.services
-        | to_entries
+      "name": "openclaw"
+    }
+    +
+    (
+      .services |= (
+        to_entries
         | map(
             .value = (
               {
@@ -1897,7 +1898,7 @@ if [[ -f "$openclaw_compose_path" ]]; then
           )
         | from_entries
       )
-    }
+    )
     '
     update_yaml_file "$openclaw_service_yaml" "$openclaw_compose_path"
 fi

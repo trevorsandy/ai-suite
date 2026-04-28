@@ -21,6 +21,17 @@
             "args": []
         },
         {
+            "type": "bashdb",
+            "request": "launch",
+            "name": "Bash-Debug (openclaw_ctl)",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/openclaw_ctl",
+            "args": ["--gateway", "--sandbox"],
+			//"args": ["--configuration", "--sandbox"]
+			//"args": ["--onboarding", "--sandbox"]
+            //"args": ["--setenv", "--sandbox"]
+        },
+        {
             "name": "PowerShell Launch Current File",
             "type": "PowerShell",
             "request": "launch",
