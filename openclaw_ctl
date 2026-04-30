@@ -5,6 +5,7 @@
 #
 # Change Updates
 # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
+# 490e6d6 - 30/04/2026
 # 66f4b52 - 28/04/2026
 
 set -euo pipefail
@@ -311,7 +312,7 @@ ROOT_DIR="$(pwd)"
 OPENCLAW_DIR=""
 log_info "${BODY}ROOT_DIR:${END} ${WHITE}$ROOT_DIR"
 case "$(basename "$ROOT_DIR")" in
-  openclaw) 
+  openclaw)
     OPENCLAW_DIR="${ROOT_DIR}"
     ROOT_DIR="$(cd "$ROOT_DIR/../" && pwd)"
     ;;
@@ -335,7 +336,11 @@ EXTRA_MOUNTS="${OPENCLAW_EXTRA_MOUNTS:-}"
 HOME_VOLUME_NAME="${OPENCLAW_HOME_VOLUME:-}"
 DOCKER_SOCKET_PATH="${OPENCLAW_DOCKER_SOCKET:-}"
 ENV_FILE="$OPENCLAW_DIR/.env"
+RAW_SANDBOX_SETTING="${OPENCLAW_SANDBOX:-}"
+SANDBOX_ENABLED=""
 TIMEZONE="${OPENCLAW_TZ:-}"
+RAW_SKIP_ONBOARDING="${OPENCLAW_SKIP_ONBOARDING:-}"
+SKIP_ONBOARDING=""
 PERMISSIONS="${PERMISSIONS:-}"
 
 HOME_DIR="$HOME"
@@ -370,12 +375,11 @@ case "$PRIMARY_ARG" in
 esac
 
 # Parse remaining flags
-SANDBOX_ENABLED="${OPENCLAW_SANDBOX:-0}"
 ENVIRONMENT="${ENVIRONMENT:-private}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --debug) DEBUG_ON="true" ;;
-    --sandbox) OPENCLAW_SANDBOX="1" ;;
+    --sandbox) RAW_SANDBOX_SETTING="1" ;;
     # --environment)
     #   shift
     #   if [[ $# -eq 0 ]]; then
@@ -665,6 +669,7 @@ run_set_env() {
   export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-}"
   export OTEL_SEMCONV_STABILITY_OPT_IN="${OTEL_SEMCONV_STABILITY_OPT_IN:-}"
   export OPENCLAW_OTEL_PRELOADED="${OPENCLAW_OTEL_PRELOADED:-}"
+  export OPENCLAW_SKIP_ONBOARDING="$SKIP_ONBOARDING"
 
   upsert_env "$ENV_FILE" \
     OPENCLAW_CONFIG_DIR \
@@ -689,7 +694,8 @@ run_set_env() {
     OTEL_EXPORTER_OTLP_PROTOCOL \
     OTEL_SERVICE_NAME \
     OTEL_SEMCONV_STABILITY_OPT_IN \
-    OPENCLAW_OTEL_PRELOADED
+    OPENCLAW_OTEL_PRELOADED \
+    OPENCLAW_SKIP_ONBOARDING
     completion='Success!'
 }
 
@@ -740,6 +746,12 @@ run_runtime_cli() {
 }
 
 run_onboarding() {
+  if [[ -n "$SKIP_ONBOARDING" ]]; then
+    log_info ""
+    log_info "${BLUE}==>${END} ${GREEN}Skip onboarding (OPENCLAW_SKIP_ONBOARDING is set)"
+    return
+  fi
+
   if ! fix_permissions; then
     log_error "Could not fix permissions for run onboarding."
   fi
@@ -1044,8 +1056,12 @@ if [[ -z "$DOCKER_SOCKET_PATH" ]]; then
   DOCKER_SOCKET_PATH="/var/run/docker.sock"
 fi
 
-if is_truthy_value "$OPENCLAW_SANDBOX"; then
+if is_truthy_value "$RAW_SANDBOX_SETTING"; then
   SANDBOX_ENABLED="1"
+fi
+
+if is_truthy_value "$RAW_SKIP_ONBOARDING"; then
+  SKIP_ONBOARDING="1"
 fi
 
 # Detect Docker socket GID for sandbox group_add.
