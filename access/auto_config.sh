@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update April, 28 2026
+# Last Update May, 03 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -399,7 +399,7 @@ user_confirm='Default'
 config_mode="Interactive"
 up_ver="v1.1.0"
 up_bin='./access/url-parser'
-yq_ver="v4.45.4" # v4.52.4
+yq_ver="v4.53.2" # v4.45.4
 yq_bin='./access/yq'
 
 PLATFORM='unknown'
@@ -1871,7 +1871,8 @@ openclaw_compose_path="./openclaw/docker-compose.yml"
 if [[ -f "$openclaw_compose_path" ]]; then
     log_info "${HEADER}Rebuild OpenClaw Services"
     #-------------------------------------------
-    # Rebuild OpenClaw services
+    # Rebuild OpenClaw services with service name and container names
+    log_info "${BODY}Rebuild services with service name and container names"
     # shellcheck disable=SC2016
     openclaw_service_yaml='
     {
@@ -1901,6 +1902,44 @@ if [[ -f "$openclaw_compose_path" ]]; then
     )
     '
     update_yaml_file "$openclaw_service_yaml" "$openclaw_compose_path"
+
+    # Add openclaw-gateway build args and set pull_policy for locally built image
+    if [[ -n ${AC_OPENCLAW_SANDBOX+x} ]]; then
+        log_info "${BODY}Add openclaw-gateway build args and set image pull_policy"
+        openclaw_service_yaml='
+        .services."openclaw-gateway" |= (
+          . as $orig |
+          # Rebuild in desired order, then merge original
+          {
+            "image": "${OPENCLAW_IMAGE:-openclaw:local}",
+            "pull_policy": "never"
+          }
+          * $orig
+          # Normalize/enrich build
+          | .build |= (
+              (select(tag == "!!str") | {
+                "context": .,
+                "args": {
+                  "OPENCLAW_INSTALL_DOCKER_CLI": "${OPENCLAW_INSTALL_DOCKER_CLI:-}"
+                }
+              })
+              //
+              (. * {
+                "args": {
+                  "OPENCLAW_INSTALL_DOCKER_CLI": "${OPENCLAW_INSTALL_DOCKER_CLI:-}"
+                }
+              })
+            )
+        ) |
+        .services."openclaw-cli" |= (
+          {
+            "image": "openclaw:local",
+            "pull_policy": "never"
+          } * .
+        )
+        '
+        update_yaml_file "$openclaw_service_yaml" "$openclaw_compose_path"
+    fi
 fi
 
 log_info "${HEADER}Configure Proxy Service"
@@ -3127,8 +3166,8 @@ PSH
 
         echo "$ps_payload" > "$posix_script_path" && ps_payload=""
 
-        log_debug "Hosts edit script: $win_script_path"
-        cat "$posix_script_path"
+        #log_debug "Hosts edit script: $win_script_path"
+        #cat "$posix_script_path"
 
         #-----------------------------
         # Elevation and Restricted check before PowerShell invocation

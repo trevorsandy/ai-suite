@@ -23,13 +23,26 @@
         {
             "type": "bashdb",
             "request": "launch",
+            "name": "Bash-Debug (openclaw_setup)",
+            "cwd": "${workspaceFolder}/openclaw",
+            "program": "${workspaceFolder}/openclaw/scripts/docker/setup.sh",
+			"env": {
+                "OPENCLAW_SANDBOX": "1",
+				"OPENCLAW_SKIP_ONBOARDING": "1",
+                "OPENCLAW_CONFIG_DIR": "/mnt/c/Users/Trevor/.openclaw",
+                "OPENCLAW_WORKSPACE_DIR": "/mnt/c/Users/Trevor/.openclaw/workspace"
+            }
+        },
+        {
+            "type": "bashdb",
+            "request": "launch",
             "name": "Bash-Debug (openclaw_ctl)",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/openclaw_ctl",
-            "args": ["--gateway", "--sandbox"],
-			//"args": ["--configuration", "--sandbox"]
-			//"args": ["--onboarding", "--sandbox"]
-            //"args": ["--setenv", "--sandbox"]
+            //"args": ["--gateway", "--sandbox"],
+            "args": ["--configuration", "--sandbox"],
+            //"args": ["--onboarding", "--sandbox"],
+            //"args": ["--setenv", "--sandbox"],
         },
         {
             "name": "PowerShell Launch Current File",
