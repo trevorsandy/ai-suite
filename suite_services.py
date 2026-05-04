@@ -1557,39 +1557,70 @@ def check_llama_process(operation=None, env_vars=None):
                 log.critical(f"in the .env file and re-run {file} - exiting...")
                 sys.exit(1)
 
+def git(*args, cwd=None):
+    run_command(["git", "-c", "core.autocrlf=input", *args], cwd=cwd)
+
+def is_stable_tag(tag):
+    return not re.search(r"(alpha|beta|rc)", tag, re.IGNORECASE)
+
+def get_latest_tag(repo_path):
+    """Return the latest version tag sorted by semantic version."""
+    output = subprocess.check_output(
+        ["git", "tag", "--sort=-v:refname"],
+        cwd=repo_path
+    ).decode().strip()
+    tags = [t for t in output.splitlines() if t]
+    if not tags:
+        raise RuntimeError("No tags found in repository")
+    stable_tags = [t for t in tags if is_stable_tag(t)]
+    if not stable_tags:
+        raise RuntimeError("No stable tags found in repository")
+    return stable_tags[0]
+
 def clone_supabase_repo():
-    """Clone the Supabase repository using sparse checkout if not already present."""
-    if not os.path.exists("supabase"):
+    """Clone the Supabase repository using sparse checkout,
+    then checkout the latest tagged release."""
+    repo_path = pathlib.Path("supabase")
+    if not repo_path.exists():
         log.info("Cloning the Supabase repository...")
-        run_command([
-            "git", "-c", "core.autocrlf=input",
-            "clone", "--filter=blob:none", "--no-checkout",
+        git(
+            "clone",
+            "--filter=blob:none",
+            "--no-checkout",
             "https://github.com/supabase/supabase.git"
-        ])
-        os.chdir("supabase")
-        run_command(["git", "sparse-checkout", "init", "--cone"])
-        run_command(["git", "sparse-checkout", "set", "docker"])
-        run_command(["git", "-c", "core.autocrlf=input", "checkout", "master"])
-        os.chdir("..")
+        )
+        git("config", "advice.detachedHead", "false", cwd=repo_path)
+        git("sparse-checkout", "init", "--cone", cwd=repo_path)
+        git("sparse-checkout", "set", "docker", cwd=repo_path)
+        # Fetch tags to resolve latest release
+        git("fetch", "--tags", "origin", cwd=repo_path)
     else:
         log.info("Supabase repository already exists, updating...")
-        os.chdir("supabase")
-        run_command(["git", "-c", "core.autocrlf=input", "pull"])
-        os.chdir("..")
+        git("fetch", "--tags", "origin", cwd=repo_path)
+    # Ensure clean working tree before switching tags
+    git("reset", "--hard", cwd=repo_path)
+    git("clean", "-fd", cwd=repo_path)
+    # Checkout latest release tag
+    latest_tag = get_latest_tag(repo_path)
+    log.info(f"Checking out latest Supabase release tag: {latest_tag}", extra=log_bright)
+    git("checkout", latest_tag, cwd=repo_path)
 
 def clone_openclaw_repo():
-    """Clone or update the OpenClaw repository with sparse checkout, then clean and commit."""
-    def git(*args):
-        run_command(["git", "-c", "core.autocrlf=input", *args])
-
-    repo_dir = pathlib.Path("openclaw")
-    if not repo_dir.exists():
+    """Clone or update the OpenClaw repository with sparse checkout,
+    then checkout the latest tagged release."""
+    repo_path = pathlib.Path("openclaw")
+    if not repo_path.exists():
         log.info("Cloning the OpenClaw repository...")
-        git("clone", "--filter=blob:none", "--no-checkout",
-            "https://github.com/openclaw/openclaw.git")
-        os.chdir(repo_dir)
-        git("sparse-checkout", "init", "--cone")
-        git("sparse-checkout", "set",
+        git(
+            "clone",
+            "--filter=blob:none",
+            "--no-checkout",
+            "https://github.com/openclaw/openclaw.git"
+        )
+        git("config", "advice.detachedHead", "false", cwd=repo_path)
+        git("sparse-checkout", "init", "--cone", cwd=repo_path)
+        git(
+            "sparse-checkout", "set",
             "apps",
             "assets",
             "docs",
@@ -1602,14 +1633,21 @@ def clone_openclaw_repo():
             "skills",
             "src",
             "ui",
-            "vendor"
+            "vendor",
+            cwd=repo_path
         )
-        git("checkout", "main")
+        # Fetch tags to resolve latest release
+        git("fetch", "--tags", "origin", cwd=repo_path)
     else:
         log.info("OpenClaw repository already exists, updating...")
-        os.chdir(repo_dir)
-        git("pull")
-    os.chdir("..")
+        git("fetch", "--tags", "origin", cwd=repo_path)
+    # Ensure clean working tree before switching tags
+    git("reset", "--hard", cwd=repo_path)
+    git("clean", "-fd", cwd=repo_path)
+    # Checkout latest release tag
+    latest_tag = get_latest_tag(repo_path)
+    log.info(f"Checking out latest release tag: {latest_tag}", extra=log_bright)
+    git("checkout", latest_tag, cwd=repo_path)
 
 def clone_open_webui_tools_filesystem_repo():
     """Clone the Open WebUI Tools Filesystem repository using sparse checkout if
