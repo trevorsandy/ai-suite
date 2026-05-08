@@ -1991,6 +1991,7 @@ def prepare_openclaw_env(cwd, oc_store):
     log.debug(f"OPENAI_API_KEY={openapi_key}", extra=debug_style)
     log.info(f".env file created at {output_path}", extra=log_bright)
     _openclaw_compose_updates()
+    _openclaw_clawdoc_updates()
     _openclaw_env_vars_logging()
     # if sandbox:
     #     _openclaw_enable_sandbox()
@@ -2208,6 +2209,81 @@ def _openclaw_compose_updates(setup_path=None):
         log.info(f"Perform compose updates in {path}", extra=log_bright)
     except Exception as e:
         log.error(f"Exception: OpenClaw compose updates: {e}")
+
+def _openclaw_clawdoc_updates(clawdoc_path=None):
+    """
+    Set clawdock helpers home directory.
+    """
+    if clawdoc_path is None:
+        clawdoc_path = "./openclaw/scripts/clawdock/clawdock-helpers.sh"
+    path = pathlib.Path(clawdoc_path)
+    if not path.exists():
+        raise FileNotFoundError(f"{clawdoc_path} not found")
+    # Set clawdock home path and update to latest release
+    clawdock_update = False
+    clawdock_home = False
+    clawdock_home_comment = '# Set home directory for .clawdock'
+    clawdock_config = 'CLAWDOCK_CONFIG="${HOME}/.clawdock/config"'
+    clawdock_pull = 'git -C "${CLAWDOCK_DIR}" pull'
+    try:
+        home_dir = pathlib.Path.home()
+        if is_wsl2():
+            home_dir = pathlib.Path(to_wsl_path(home_dir))
+        updated_lines: list[str] = []
+        with open(path, "r", newline="\n", encoding="utf-8") as f:
+            lines = f.readlines()
+        for line in lines:
+            stripped = line.lstrip()
+            if stripped.startswith(clawdock_home_comment):
+                updated_lines = lines
+                clawdock_home = True
+                clawdock_update = True
+                break
+            if stripped.startswith(clawdock_config):
+                updated_lines.append('\n')
+                updated_lines.append(f'{clawdock_home_comment}\n')
+                updated_lines.append(f'CLAWDOCK_HOME="{home_dir}"\n')
+                updated_lines.append(line)
+                clawdock_home = True
+            elif stripped.startswith(clawdock_pull):
+                updated_lines.append(r'  git -C "${CLAWDOCK_DIR}" fetch --tags || { echo "❌ git fetch failed"; return 1; }' '\n')
+                updated_lines.append(r'  git -C "${CLAWDOCK_DIR}" reset --hard && git -C "${CLAWDOCK_DIR}" clean -fd || { echo "❌ Failed to clean working tree"; return 1; }' '\n')
+                updated_lines.append(r'  git -C "${CLAWDOCK_DIR}" checkout "$(git -C "${CLAWDOCK_DIR}" tag -l | grep -Eiv "(alpha|beta|rc)" | sort -V | tail -n1)" || { echo "❌ git checkout failed"; return 1; }' '\n')
+                clawdock_update = True
+            elif stripped.startswith('CLAWDOCK_COMMON_PATHS=('):
+                updated_lines.append(line)
+                openclaw_dir = pathlib.Path("./openclaw").resolve()
+                if is_wsl2():
+                    openclaw_dir = pathlib.Path(to_wsl_path(openclaw_dir))
+                openclaw_dir_str = str(openclaw_dir)
+                if openclaw_dir.is_relative_to(home_dir):
+                    relative = openclaw_dir.relative_to(home_dir)
+                    openclaw_dir_str = f'${{CLAWDOCK_HOME}}/{relative.as_posix()}'
+                updated_lines.append(f'  "{openclaw_dir_str}"\n')
+            else:
+                updated_lines.append(line)
+        if clawdock_home:
+            log.info(f"Add clawdock home in {path}", extra=log_bright)
+        else:
+            log.error(f"{clawdock_config} not found in {path}")
+        if clawdock_update:
+            log.info(f"Set clawdock update to latest release in {path}", extra=log_bright)
+        else:
+            log.error(f"{clawdock_pull}... not found in {path}")
+        with open(path, "w", newline="\n", encoding="utf-8") as f:
+            f.writelines(updated_lines)
+        # Update clawdock home directory
+        platform_home_dir = "${HOME}"
+        clawdock_home_dir = "${CLAWDOCK_HOME}"
+        with open(path, "r", newline="\n", encoding="utf-8") as f:
+            content = f.read()
+        if platform_home_dir in content:
+            updated_content = content.replace(platform_home_dir, clawdock_home_dir)
+            with open(clawdoc_path, 'w', newline='\n', encoding="utf-8") as f:
+                f.write(updated_content)
+        log.info(f"Perform clawdock updates in {path}", extra=log_bright)
+    except Exception as e:
+        log.error(f"Exception: OpenClaw clawdock updates: {e}")
 
 def _openclaw_env_vars_logging(setup_path=None):
     """
@@ -2524,6 +2600,51 @@ def operate_ai_suite(operation, profile, environment, env_vars):
         run_command(cmd)
     log.info("="*60, extra=LSHF.style(logging.INFO, LSHF.BLUE))
     log.info(f"{name} services image '{operation}' completed.", extra=log_bright)
+
+def operate_openclaw(operation, oc_store, oc_cwd=None):
+    """Execute OpenClaw commands using ClawDoc."""
+    if not operation:
+        log.error("A ClawDoc command was not specified!")
+        return
+    log.info(f"Running OpenClaw {operation}...")
+    oc_dir = "openclaw"
+    if not oc_cwd:
+        base_dir = pathlib.Path(__file__).parent
+        oc_cwd = os.path.join(base_dir, oc_dir)
+    oc_script = os.path.normpath("scripts/clawdock/clawdock-helpers.sh")
+    oc_path = os.path.normpath(os.path.join(oc_dir, oc_script))
+    if not os.path.exists(oc_path):
+        log.error(f"ClawDoc commands script not found at {oc_path}")
+        return
+    interactive_operations = {
+        "clawdock-cli": "Enter a CLI",
+        "clawdock-exec": "Enter a container",
+        "clawdock-approve": "Enter a device pairing",
+    }
+    if operation in interactive_operations:
+        prompt = interactive_operations[operation]
+        value = (
+            "request-id"
+            if operation == "clawdock-approve"
+            else "command"
+        )
+        response = input(f"{prompt} <{value}>: ").strip()
+        if not response:
+            log.error(f"{operation} requires a <{value}>.")
+            operation = "clawdock-help"
+        else:
+            operation = f"{operation} {response}"
+    if operation == "clawdock-update":
+        clone_openclaw_repo()
+        prepare_openclaw_env(oc_store, oc_cwd)
+    cmd = ["bash", "-c"]
+    if system == 'Windows':
+        cmd = ["wsl", "-e"] + cmd
+        convert_line_endings(oc_path)
+        oc_script = oc_script.replace("\\", "/")
+    cmd_str = f"source {oc_script} && {operation}"
+    oc_cmd = cmd + [cmd_str]
+    run_command(oc_cmd, cwd=oc_cwd)
 
 def start_built_container(compose_file=None, environment=None, build=False):
     """Start the locally built container services (using its compose file)."""
@@ -3554,9 +3675,11 @@ def setup_ai_suite_ac_auto_config(prompt_store, oc_store, env_vars=None):
         onboard = oc_store['onboard']
         response = input(f"Perform OpenClaw onboarding? y/n: (n)").strip()
         oc_store['onboard'] = True if (response and response.lower() == 'y') else onboard
+        env_vars["OPENCLAW_ONBOARDING"] = "1" if oc_store['onboard'] else "0"
         sandbox = oc_store['sandbox']
         response = input(f"Enable OpenClaw sandbox? y/n: (y)").strip()
         oc_store['sandbox'] = False if (response and response.lower() == 'n') else sandbox
+        env_vars["OPENCLAW_DEFAULT_SETUP"] = "0" if oc_store['sandbox'] else "1"
     response = None
     public = False
 
@@ -3793,7 +3916,17 @@ def main():
     data_operations = ['backup-data', 'restore-data']
     installation_operations = ['update', 'install']
     managemant_and_data_operations = managemant_operations + data_operations
-    operations = managemant_and_data_operations + installation_operations
+    clawdock_operations = ['clawdock-start', 'clawdock-stop', 'clawdock-restart',
+                           'clawdock-status', 'clawdock-logs']
+    clawdock_access = ['clawdock-shell', 'clawdock-cli', 'clawdock-exec']
+    clawdock_ui_devices = ['clawdock-dashboard', 'clawdock-devices', 'clawdock-approve']
+    clawdock_configuration = ['clawdock-fix-token']
+    clawdock_maintenance = ['clawdock-update', 'clawdock-rebuild', 'clawdock-clean']
+    clawdock_utilities = ['clawdock-token', 'clawdock-token', 'clawdock-cd', 'clawdock-config',
+                          'clawdock-show-config', 'clawdock-workspace', 'clawdock-help']
+    openclaw_operations = clawdock_operations + clawdock_access + clawdock_ui_devices + \
+                          clawdock_configuration + clawdock_maintenance + clawdock_utilities
+    operations = managemant_and_data_operations + installation_operations + openclaw_operations
     environments = ['private', 'public']
     log_levels = ['OFF', 'CRITICAL', 'ERROR', 'WARNING', 'NOTICE', 'INFO', 'DEBUG']
     parser = argparse.ArgumentParser(
@@ -3847,6 +3980,7 @@ def main():
               update install                                installation options
               stop stop-llama start pause unpause           operation options
               backup-data restore-data                      volume mount data options
+              clawdock-<commands>                           OpenClaw operations, access, maintenance and utilities
 
             log arguments:
               OFF CRITICAL ERROR WARNING NOTICE INFO DEBUG  console logging options
@@ -3900,6 +4034,10 @@ def main():
             - Perform (backup-data, restore-data) operation...
               ...to backup volume mount data to backup file:
               python {file} --operation backup-data
+
+            - Perform OpenClaw clawdock operation...
+              ...to show all available clawdock commands with examples
+              python {file} --operation clawdock-help
             '''),
         epilog=textwrap.dedent(f'''\
             - Title: {INFO.get("title")}
@@ -3918,8 +4056,8 @@ def main():
                         help='Environment arguments used by Docker Compose to expose '
                              'or restrict network communication ports (default: private)')
     parser.add_argument('-o', '--operation', type=str.lower, choices=operations,
-                        help='Docker container, volumes and image management arguments along '
-                              f'with argument to stop {llama} running on Host.')
+                        help='Docker container, volumes and image management arguments along with argument'
+                              f'to stop {llama} running on Host and OpenClaw clawdock arguments.')
     parser.add_argument('-l', '--log', type=str.upper, choices=log_levels, default='INFO',
                         help='Enable stream (console) logging and set log level. File logging is always '
                              'enabled at DEBUG and is not affected by this argument (default: INFO)')
@@ -4034,11 +4172,20 @@ def main():
         any(p for p in args.profile if p in ['openclaw', 'ai-all'])
     oc_cwd = None
     oc_store = {}
-    if openclaw and build:
-        clone_openclaw_repo()
+    if openclaw:
+        if build:
+            clone_openclaw_repo()
+        oc_env_vars = {
+            "OPENCLAW_ONBOARDING": "0",
+            "OPENCLAW_DEFAULT_SETUP": "0",
+        }
+        for key, var in oc_env_vars.items():
+            if key not in env_vars or env_vars[key] in (None, ""):
+                env_vars[key] = var
+                set_dotenv_var(env_file, key, var, None)
         oc_store = {
-            'onboard': int(env_vars.get("OPENCLAW_ONBOARDING", 0)) == 1,
-            'sandbox': int(env_vars.get("OPENCLAW_DEFAULT_SETUP", 0)) != 1
+            "onboard": env_vars["OPENCLAW_ONBOARDING"] == "1",
+            "sandbox": env_vars["OPENCLAW_DEFAULT_SETUP"] != "1",
         }
 
     # Setup Open WebUI Functions and Tools Filesystem repository
@@ -4304,7 +4451,10 @@ def main():
         elif args.operation == 'unpause' and not status == 'pause':
             log.info(f"{name} cannot unpause as it is not paused - exiting...")
             sys.exit(0)
-        elif args.operation in ['backup-data', 'restore-data']:
+        elif args.operation in openclaw_operations:
+            operate_openclaw(args.operation, oc_store, oc_cwd)
+            sys.exit(0)
+        elif args.operation in data_operations:
             docker_volume_data(args.operation)
             sys.exit(0)
         if default_profile:
