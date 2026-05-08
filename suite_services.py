@@ -2463,7 +2463,8 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     # WebUI built - nothing to pull, Supabase and OpenClaw pulled with suite via include.
     if operation != 'pull':
         supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
-        openclaw = any(p for p in profile if p in ['openclaw', 'ai-all'])
+        if operation != 'pause':
+            openclaw = any(p for p in profile if p in ['openclaw', 'ai-all'])
         open_webui = any(p for p in profile if p in open_webui_all_profiles)
     profile.remove('supabase') if 'supabase' in profile else None
     profile.remove('openclaw') if 'openclaw' in profile else None
@@ -2473,7 +2474,11 @@ def operate_ai_suite(operation, profile, environment, env_vars):
         if supabase:
             start_supabase(environment, False)
             log.info("Waiting for Supabase to initialize...", extra=log_bright)
-            wait_with_progress(10)
+            wait_with_progress(5)
+        if openclaw:
+            start_openclaw(oc_store=None, cwd=None, build=False)
+            log.info("Waiting for OpenClaw to initialize...", extra=log_bright)
+            wait_with_progress(5)
         if open_webui:
             start_open_webui_tools_filesystem(environment, False)
             log.info("Waiting for Open WebUI Tool Filesystem to initialize...",
@@ -2492,11 +2497,16 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     container = "images" if operation == 'pull' else "containers"
     log.info(f"{insert} '{name}' {container} for profile arguments: {profile}...")
     base = ["docker", "compose", "-p", "ai-suite"]
+    if openclaw:
+        compose_args = ["-f", "openclaw/docker-compose.yml"]
+        extra_compose = pathlib.Path("openclaw/docker-compose.extra.yml")
+        if extra_compose.is_file():
+            compose_args += ["-f", "openclaw/docker-compose.extra.yml"]
+        openclaw_operation = ["down"] if operation == 'stop' else []
+        cmd = base + compose_args + openclaw_operation
+        run_command(cmd)
     if supabase:
         cmd = base + ["-f", "supabase/docker/docker-compose.yml", operation]
-        run_command(cmd)
-    if openclaw:
-        cmd = base + ["-f", "openclaw/docker-compose.yml", operation]
         run_command(cmd)
     if open_webui:
         cmd = base + ["-f", "open-webui/tools/servers/filesystem/compose.yaml", operation]
@@ -2537,8 +2547,18 @@ def start_open_webui_tools_filesystem(environment=None, build=False):
     compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     start_built_container(compose_file, environment, build)
 
-def start_openclaw(onboard_store, build=False, cwd=None, oc_sandbox=None):
-    """Start the OpenClaw services (using its setup file)."""
+def start_openclaw(oc_store, cwd=None, build=False):
+    """Start the OpenClaw services."""
+    if not build:
+        base = ["docker", "compose", "-p", "ai-suite"]
+        start = ["up", "-d", "openclaw-gateway"]
+        compose_args = ["-f", "openclaw/docker-compose.yml"]
+        extra_compose = pathlib.Path("openclaw/docker-compose.extra.yml")
+        if extra_compose.is_file():
+            compose_args += ["-f", "openclaw/docker-compose.extra.yml"]
+        cmd = base + compose_args + start
+        run_command(cmd)
+        return
     log.info("Starting OpenClaw services...")
     oc_dir = "openclaw"
     oc_script = os.path.normpath("scripts/docker/setup.sh")
@@ -4381,7 +4401,7 @@ def main():
 
     # Start OpenClaw
     if openclaw:
-        start_openclaw(onboard_store, build, oc_cwd, oc_sandbox)
+        start_openclaw(oc_store, oc_cwd, build)
         # Give OpenClaw some time to initialize
         log.info("Waiting for OpenClaw to initialize...", extra=log_bright)
         wait_with_progress(5)
