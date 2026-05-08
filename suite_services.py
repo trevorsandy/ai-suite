@@ -1735,7 +1735,7 @@ def prepare_supabase_env(env_vars):
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
     write_dotenv_file(env_file, built_env_vars)
 
-def prepare_openclaw_env(cwd, sandbox=True):
+def prepare_openclaw_env(cwd, oc_store):
     """
     Creates a .env file from env.example with required values set.
     """
@@ -1760,6 +1760,8 @@ def prepare_openclaw_env(cwd, sandbox=True):
     openclaw_image_comment = "Use a remote image instead of building locally"
     openclaw_docker_cli = 0
     openclaw_sandbox = 0
+    skip_onboarding = False if oc_store['onboard'] else True
+    sandbox = oc_store['sandbox']
     if sandbox:
         openclaw_sandbox = 1
         openclaw_docker_cli = 1
@@ -1777,6 +1779,7 @@ def prepare_openclaw_env(cwd, sandbox=True):
     add_openclaw_image = True
     add_gateway_password = True
     add_openai_api_key = True
+    add_skip_onboarding = True
     add_sandbox = True
     add_docker_cli = True
     log.info(f"Writing .env file to {output_path}...")
@@ -1878,6 +1881,13 @@ def prepare_openclaw_env(cwd, sandbox=True):
                     modified_lines.append(f"OPENAI_API_KEY={openapi_key}\n")
                 else:
                     modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_SKIP_ONBOARDING="):
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and key_value[1]:
+                    add_skip_onboarding = False
+                    modified_lines.append(f"OPENCLAW_SKIP_ONBOARDING={skip_onboarding}\n")
+                else:
+                    modified_lines.append(line)
             else:
                 modified_lines.append(line)
         default_paths = add_config_dir or add_workspace_dir
@@ -1909,6 +1919,10 @@ def prepare_openclaw_env(cwd, sandbox=True):
                     if add_workspace_dir:
                         add_state_dir = False
                         modified_lines.append(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}\n")
+                elif add_gateway_token and modified_line.startswith("# OPENCLAW_GATEWAY_TOKEN="):
+                    add_gateway_token = False
+                    gateway_password = None
+                    modified_lines.append(f"OPENCLAW_GATEWAY_TOKEN={gateway_token}\n")
                 elif add_gateway_password and modified_line.startswith("# OPENCLAW_GATEWAY_PASSWORD="):
                     add_gateway_password = False
                     gateway_token = None
@@ -1944,9 +1958,8 @@ def prepare_openclaw_env(cwd, sandbox=True):
                         modified_lines.append(f"OPENCLAW_BRIDGE_PORT={bridge_port}\n")
                     if add_gateway_bind:
                         modified_lines.append(f"OPENCLAW_GATEWAY_BIND={gateway_bind}\n")
-                    if add_gateway_token:
-                        gateway_password = None
-                        modified_lines.append(f"OPENCLAW_GATEWAY_TOKEN={gateway_token}\n")
+                    if add_skip_onboarding:
+                        modified_lines.append(f"OPENCLAW_SKIP_ONBOARDING={skip_onboarding}\n")
                     modified_lines.append("\n")
                     modified_lines.append("# " + "-" * 77 + "\n")
                     modified_lines.append(line)
@@ -1974,15 +1987,16 @@ def prepare_openclaw_env(cwd, sandbox=True):
     log.debug(f"OPENCLAW_GATEWAY_PORT={gateway_port}", extra=debug_style)
     log.debug(f"OPENCLAW_BRIDGE_PORT={bridge_port}", extra=debug_style)
     log.debug(f"OPENCLAW_GATEWAY_BIND={gateway_bind}", extra=debug_style)
+    log.debug(f"OPENCLAW_SKIP_ONBOARDING={gateway_bind}", extra=debug_style)
     log.debug(f"OPENAI_API_KEY={openapi_key}", extra=debug_style)
     log.info(f".env file created at {output_path}", extra=log_bright)
-    _openclaw_add_compose_updates()
-    _openclaw_inject_env_vars_logging()
+    _openclaw_compose_updates()
+    _openclaw_env_vars_logging()
     # if sandbox:
     #     _openclaw_enable_sandbox()
     return True
 
-def prepare_openclaw_config(cwd, env_vars, onboard_store):
+def prepare_openclaw_config(oc_cwd, env_vars):
     log.info("Starting OpenClaw config preparation...")
     src_path = pathlib.Path("./.openclaw.example.json")
     dst_dir = pathlib.Path.home() / ".openclaw"
@@ -1992,10 +2006,9 @@ def prepare_openclaw_config(cwd, env_vars, onboard_store):
         raise FileNotFoundError(src_path)
     with open(src_path, "r", encoding="utf-8") as f:
         config = json.load(f)
-    cwd = "./openclaw" if not cwd else cwd
-    oc_env_file=os.path.join(cwd, ".env")
-    if not onboard_store['b']:
-        set_dotenv_var(oc_env_file, 'OPENCLAW_SKIP_ONBOARDING', '1', None)
+    if not oc_cwd:
+        oc_cwd = "./openclaw"
+    oc_env_file=os.path.join(oc_cwd, ".env")
     oc_env : dict[str, str] = get_dotenv_vars(oc_env_file)
     if not oc_env:
          log.error("No OpenClaw environment variables detected!")
@@ -2135,7 +2148,7 @@ def prepare_openclaw_config(cwd, env_vars, onboard_store):
         raise
     log.info("OpenClaw .json configuration complete")
 
-def _openclaw_add_compose_updates(setup_path=None):
+def _openclaw_compose_updates(setup_path=None):
     """
     Set compose project to ai-suite and update installed Docker CLI check.
     """
@@ -2145,7 +2158,7 @@ def _openclaw_add_compose_updates(setup_path=None):
     if not path.exists():
         raise FileNotFoundError(f"{setup_path} not found")
     try:
-        with open(path, "r", newline="\n") as f:
+        with open(path, "r", newline="\n", encoding="utf-8") as f:
             lines = f.readlines()
         updated_lines: list[str] = []
         # Set compose project argument
@@ -2190,13 +2203,13 @@ def _openclaw_add_compose_updates(setup_path=None):
             log.info(f"Update Docker CLI ckeck in {path}", extra=log_bright)
         else:
             log.error(f"Docker CLI ckeck not found in {path}")
-        with open(path, "w", newline="\n") as f:
+        with open(path, "w", newline="\n", encoding="utf-8") as f:
             f.writelines(updated_lines)
         log.info(f"Perform compose updates in {path}", extra=log_bright)
     except Exception as e:
         log.error(f"Exception: OpenClaw compose updates: {e}")
 
-def _openclaw_inject_env_vars_logging(setup_path=None):
+def _openclaw_env_vars_logging(setup_path=None):
     """
     Inject logging statements to display env vars.
     """
@@ -2547,15 +2560,16 @@ def start_openclaw(onboard_store, build=False, cwd=None, oc_sandbox=None):
         val = oc_env.get(key)
         if val is not None:
             env[key] = val
-    if oc_sandbox:
-        for key in ['OPENCLAW_SANDBOX', 'OPENCLAW_INSTALL_DOCKER_CLI']:
+    if oc_store['sandbox']:
+        for key in ['OPENCLAW_SANDBOX']:
             val = oc_env.get(key)
             if val is not None:
                 env[key] = val
-    if not onboard_store['b']:
-        val = oc_env.get('OPENCLAW_SKIP_ONBOARDING')
-        if val is not None:
-            env['OPENCLAW_SKIP_ONBOARDING'] = val
+    if not oc_store['onboard']:
+        for key in ['OPENCLAW_SKIP_ONBOARDING']:
+            val = oc_env.get(key)
+            if val is not None:
+                env[key] = val
     env_prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
     cmd_str = f"{env_prefix} {oc_script}" if env_prefix else oc_script
     oc_cmd = cmd + [cmd_str]
@@ -3495,7 +3509,7 @@ def display_ac_env_vars(ac_env_vars):
         log.info(raw_msg, extra=env_var_style)
     log.info("="*60, extra=line_style)
 
-def setup_ai_suite_ac_auto_config(prompt_store, onboard_store, env_vars=None):
+def setup_ai_suite_ac_auto_config(prompt_store, oc_store, env_vars=None):
     """Setup env_vars for self-hosted AI-Suite with Caddy/Nginx proxy and Authelia
        2FA identity and access management.
     """
@@ -3516,10 +3530,13 @@ def setup_ai_suite_ac_auto_config(prompt_store, onboard_store, env_vars=None):
         response = 'y'
     prompt = False if response.lower() == 'y' else prompt
     prompt_store['p'] = prompt
-    if prompt:
-        onboard = onboard_store['b']
+    if prompt and oc_store:
+        onboard = oc_store['onboard']
         response = input(f"Perform OpenClaw onboarding? y/n: (n)").strip()
-        onboard_store['b'] = True if response.lower() == 'y' else onboard
+        oc_store['onboard'] = True if (response and response.lower() == 'y') else onboard
+        sandbox = oc_store['sandbox']
+        response = input(f"Enable OpenClaw sandbox? y/n: (y)").strip()
+        oc_store['sandbox'] = False if (response and response.lower() == 'n') else sandbox
     response = None
     public = False
 
@@ -3996,16 +4013,13 @@ def main():
     openclaw = \
         any(p for p in args.profile if p in ['openclaw', 'ai-all'])
     oc_cwd = None
-    oc_sandbox = None
-    onboard_store = {'b':False}
-    base_dir = pathlib.Path(__file__).parent
-    if openclaw:
-        if build:
-            clone_openclaw_repo()
-        oc_cwd = os.path.join(base_dir, "openclaw")
-        env = os.getenv("OPENCLAW_SANDBOX")
-        oc_sandbox = True if env is None or int(env) == 1 else False
-        prepare_openclaw_env(oc_cwd, oc_sandbox)
+    oc_store = {}
+    if openclaw and build:
+        clone_openclaw_repo()
+        oc_store = {
+            'onboard': int(env_vars.get("OPENCLAW_ONBOARDING", 0)) == 1,
+            'sandbox': int(env_vars.get("OPENCLAW_DEFAULT_SETUP", 0)) != 1
+        }
 
     # Setup Open WebUI Functions and Tools Filesystem repository
     open_webui = \
@@ -4020,7 +4034,7 @@ def main():
         replay = False
         attempt = 1
         max_attempts = 3
-        ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, onboard_store, env_vars)
+        ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, oc_store, env_vars)
         if ac_env_vars:
             display_ac_env_vars(ac_env_vars)
         if prompt_store['p']:
@@ -4036,7 +4050,7 @@ def main():
                 if replay == 'y':
                     accepted = True
                     response = None
-                    ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, onboard_store, env_vars)
+                    ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, oc_store, env_vars)
                     if ac_env_vars:
                         display_ac_env_vars(ac_env_vars)
                     if prompt_store['p']:
@@ -4057,6 +4071,10 @@ def main():
                 log.info(msg, extra=info_style)
                 ac_env_vars = []
         ac_auto_config = True if ac_env_vars else False
+    base_dir = pathlib.Path(__file__).parent
+    if openclaw:
+        oc_cwd = os.path.join(base_dir, "openclaw")
+        prepare_openclaw_env(oc_cwd, oc_store)
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
         # AC_SUDO_PASSWORD - stdin
@@ -4102,7 +4120,7 @@ def main():
         if ac_subdomains:
             ac_env_vars.append(f'AC_SUBDOMAINS="{" ".join(ac_subdomains)}"')
         # OpenClaw sandbox
-        if oc_sandbox:
+        if openclaw and oc_store['sandbox']:
             ac_env_vars.append(f'AC_OPENCLAW_SANDBOX={str(True).lower()}')
         # Miscellaneous environment variables
         ac_env_vars.append(f'AC_LLAMA={str(False).lower()}')
@@ -4180,7 +4198,7 @@ def main():
                         f"profile argument - argument updated to '{llama.lower()}'...")
             args.profile.remove(llama_mismatch) if llama_mismatch in args.profile else None
             args.profile.extend([llama.lower()]) if llama_cpp else None
-         # Check if any llama CPU/GPU profile arguments specified and remove if found
+        # Check if any llama CPU/GPU profile arguments specified and remove if found
         for profile_arg in llama_docker_profiles:
             if any(p for p in args.profile if p == profile_arg):
                 conflicting_profile_arguments.append(profile_arg)
@@ -4330,7 +4348,7 @@ def main():
 
     # Setup OpenClaw configuration
     if openclaw:
-        prepare_openclaw_config(oc_cwd, env_vars, onboard_store)
+        prepare_openclaw_config(oc_cwd, env_vars)
 
     # Setup Open WebUI Functions and Tools Filesystem repos
     if open_webui:
