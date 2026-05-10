@@ -4191,7 +4191,7 @@ def main():
             clone_openclaw_repo()
         oc_env_vars = {
             "OPENCLAW_ONBOARDING": "0",
-            "OPENCLAW_DEFAULT_SETUP": "0",
+            "OPENCLAW_DEFAULT_SETUP": "0"
         }
         for key, var in oc_env_vars.items():
             if key not in env_vars or env_vars[key] in (None, ""):
@@ -4199,7 +4199,7 @@ def main():
                 set_dotenv_var(env_file, key, var, None)
         oc_store = {
             "onboard": env_vars["OPENCLAW_ONBOARDING"] == "1",
-            "sandbox": env_vars["OPENCLAW_DEFAULT_SETUP"] != "1",
+            "sandbox": env_vars["OPENCLAW_DEFAULT_SETUP"] != "1"
         }
 
     # Setup Open WebUI Functions and Tools Filesystem repository
