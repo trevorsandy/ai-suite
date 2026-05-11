@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 03, 2026
+Last Update May 11, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1557,25 +1557,60 @@ def check_llama_process(operation=None, env_vars=None):
                 log.critical(f"in the .env file and re-run {file} - exiting...")
                 sys.exit(1)
 
-def git(*args, cwd=None):
+def git(*args, cwd=None, capture_output=False):
+    """
+    Run a git command.
+    If capture_output=True, return decoded stdout.
+    """
+    if capture_output:
+        return subprocess.check_output(
+            ["git", "-c", "core.autocrlf=input", *args],
+            cwd=cwd
+        ).decode().strip()
+
     run_command(["git", "-c", "core.autocrlf=input", *args], cwd=cwd)
 
 def is_stable_tag(tag):
     return not re.search(r"(alpha|beta|rc)", tag, re.IGNORECASE)
 
-def get_latest_tag(repo_path):
-    """Return the latest version tag sorted by semantic version."""
-    output = subprocess.check_output(
-        ["git", "tag", "--sort=-v:refname"],
-        cwd=repo_path
-    ).decode().strip()
+def get_latest_tag(repo_path, oc_release=None):
+    """
+    Return the latest stable version tag sorted by semantic version.
+    Behaviour:
+      - If oc_release is None or "", return latest stable tag.
+      - If oc_release == "commit", return None.
+      - Otherwise validate and return the requested stable tag.
+    """
+    if oc_release == "commit":
+        return None
+    output = git( "tag", "--sort=-v:refname", cwd=repo_path, capture_output=True)
+    if output is None:
+        raise RuntimeError("Failed to retrieve git tags")    
     tags = [t for t in output.splitlines() if t]
     if not tags:
         raise RuntimeError("No tags found in repository")
     stable_tags = [t for t in tags if is_stable_tag(t)]
     if not stable_tags:
         raise RuntimeError("No stable tags found in repository")
+    # Explicit tagged release requested
+    if oc_release is not None and oc_release != "":
+        if oc_release not in stable_tags:
+            raise RuntimeError(
+                f"Requested OpenClaw release '{oc_release}' "
+                "was not found or is not a stable release"
+            )
+        return oc_release
+    # Default to latest stable release
     return stable_tags[0]
+
+def get_latest_commit(repo_path):
+    """
+    Return the latest commit SHA from origin/HEAD.
+    """
+    output = git("rev-parse", "origin/HEAD", cwd=repo_path, capture_output=True)
+    if output is None:
+        raise RuntimeError("Failed to retrieve latest commit SHA")
+    return output
 
 def clone_supabase_repo():
     """Clone the Supabase repository using sparse checkout,
@@ -1605,9 +1640,14 @@ def clone_supabase_repo():
     log.info(f"Checking out latest Supabase release tag: {latest_tag}", extra=log_bright)
     git("checkout", latest_tag, cwd=repo_path)
 
-def clone_openclaw_repo():
-    """Clone or update the OpenClaw repository with sparse checkout,
-    then checkout the latest tagged release."""
+def clone_openclaw_repo(oc_release=None):
+    """
+    Clone or update the OpenClaw repository with sparse checkout.
+    Checkout behaviour:
+      - latest stable release tag (default)
+      - requested stable release tag
+      - latest commit if oc_release == "commit"
+    """
     repo_path = pathlib.Path("openclaw")
     if not repo_path.exists():
         log.info("Cloning the OpenClaw repository...")
@@ -1636,18 +1676,27 @@ def clone_openclaw_repo():
             "vendor",
             cwd=repo_path
         )
-        # Fetch tags to resolve latest release
-        git("fetch", "--tags", "origin", cwd=repo_path)
     else:
         log.info("OpenClaw repository already exists, updating...")
-        git("fetch", "--tags", "origin", cwd=repo_path)
-    # Ensure clean working tree before switching tags
+    # Refresh refs/tags
+    git("fetch", "--tags", "origin", cwd=repo_path)
+    # Ensure clean working tree before switching refs
     git("reset", "--hard", cwd=repo_path)
     git("clean", "-fd", cwd=repo_path)
-    # Checkout latest release tag
-    latest_tag = get_latest_tag(repo_path)
-    log.info(f"Checking out latest release tag: {latest_tag}", extra=log_bright)
-    git("checkout", latest_tag, cwd=repo_path)
+    # Checkout latest commit
+    if oc_release == "commit":
+        commit_sha = get_latest_commit(repo_path)
+        log.info(f"Checking out latest commit: {commit_sha}", extra=log_bright)
+        git("checkout", commit_sha, cwd=repo_path)
+        return
+    # Checkout tag release
+    release_tag = get_latest_tag(repo_path, oc_release)
+    if oc_release is not None and oc_release != "":
+        release_desc = "release"
+    else:
+        release_desc = "latest release"
+    log.info(f"Checking out {release_desc} tag: {release_tag}", extra=log_bright)
+    git("checkout", release_tag, cwd=repo_path)
 
 def clone_open_webui_tools_filesystem_repo():
     """Clone the Open WebUI Tools Filesystem repository using sparse checkout if
@@ -2222,6 +2271,7 @@ def _openclaw_clawdoc_updates(clawdoc_path=None):
     clawdock_update = False
     clawdock_home = False
     clawdock_home_comment = '# Set home directory for .clawdock'
+    clawdock_title_comment = '# ClawDock - Docker helpers for OpenClaw'
     clawdock_config = 'CLAWDOCK_CONFIG="${HOME}/.clawdock/config"'
     clawdock_paths = 'CLAWDOCK_COMMON_PATHS=('
     clawdock_pull = 'git -C "${CLAWDOCK_DIR}" pull'
@@ -2243,8 +2293,11 @@ def _openclaw_clawdoc_updates(clawdoc_path=None):
                 clawdock_home = True
                 clawdock_update = True
                 break
+            # Update script title
+            if stripped.startswith(clawdock_title_comment):
+                updated_lines.append(f"# ClawDock (for {name}) - Docker helpers for OpenClaw\n")
             # Insert CLAWDOCK_HOME
-            if stripped.startswith(clawdock_config):
+            elif stripped.startswith(clawdock_config):
                 updated_lines.append("\n")
                 updated_lines.append(f"{clawdock_home_comment}\n")
                 updated_lines.append(f'CLAWDOCK_HOME="{home_dir}"\n')
@@ -4186,10 +4239,10 @@ def main():
         any(p for p in args.profile if p in ['openclaw', 'ai-all'])
     oc_cwd = None
     oc_store = {}
+    oc_release = None
     if openclaw:
-        if build:
-            clone_openclaw_repo()
         oc_env_vars = {
+            "OPENCLAW_RELEASE": "v2026.5.2",
             "OPENCLAW_ONBOARDING": "0",
             "OPENCLAW_DEFAULT_SETUP": "0"
         }
@@ -4201,6 +4254,9 @@ def main():
             "onboard": env_vars["OPENCLAW_ONBOARDING"] == "1",
             "sandbox": env_vars["OPENCLAW_DEFAULT_SETUP"] != "1"
         }
+        if build:
+            oc_release = env_vars["OPENCLAW_RELEASE"]
+            clone_openclaw_repo(oc_release)
 
     # Setup Open WebUI Functions and Tools Filesystem repository
     open_webui = \
