@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update May, 03 2026
+# Last Update May, 12 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-VERSION="0.3.0"
+VERSION="0.4.0"
 
 # If AC is unset we assume the script is being run manually
 # shellcheck disable=SC1091
@@ -318,6 +318,9 @@ Environment:
   AC_SEARXNG:false       Configure proxy for SearXNG domain name
   AC_LLAMA:false         Configure proxy for LLAMA (LLaMA.cpp/Ollama) domain name
   AC_LLAMACPP:false      Using LLaMA.cpp LLM (instead of Ollama)
+
+  AC_USE_SUDO:false        Using Sudo so read AC_SUDO_PASSWORD
+  AC_OPENCLAW_SANDBOX:None Configure Docker OpenClaw gateway sandbox
 
   1. Automatically adds your local domain name(s) to the hosts file to loop back to your
      machine like localhost - for example: 127.0.0.1   open-webui.local.pc.
@@ -1867,7 +1870,7 @@ uncomment_compose_vars
 
 generate_dot_env_file
 
-openclaw_compose_path="./openclaw/docker-compose.yml"
+openclaw_compose_path="./openclaw/$compose_path"
 if [[ -f "$openclaw_compose_path" ]]; then
     log_info "${HEADER}Rebuild OpenClaw Services"
     #-------------------------------------------

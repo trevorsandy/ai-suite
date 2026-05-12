@@ -3,6 +3,7 @@
     "allowed_elements": [ "details", "summary" ]
   },
   "line-length": {
+    "tables": false,
     "code_blocks": false
   }
 }

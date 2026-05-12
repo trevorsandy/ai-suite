@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 11, 2026
+Last Update May 12, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1585,7 +1585,7 @@ def get_latest_tag(repo_path, oc_release=None):
         return None
     output = git( "tag", "--sort=-v:refname", cwd=repo_path, capture_output=True)
     if output is None:
-        raise RuntimeError("Failed to retrieve git tags")    
+        raise RuntimeError("Failed to retrieve git tags")
     tags = [t for t in output.splitlines() if t]
     if not tags:
         raise RuntimeError("No tags found in repository")
@@ -3977,8 +3977,10 @@ def main():
     subdomain_profiles = n8n_profiles + open_webui_profiles + server_profiles + \
                          llama_host_profiles
     proxy_profiles = ['caddy', 'nginx']
+    auto_config_profiles = ['manual-configuration', 'no_auto_config']
     profiles = agent_all_profiles + open_webui_utils_profiles + server_profiles + \
-               llama_host_profiles + llama_docker_profiles + proxy_profiles
+               llama_host_profiles + llama_docker_profiles + proxy_profiles + \
+               auto_config_profiles
     managemant_operations = ['stop', 'stop-llama', 'start', 'pause', 'unpause']
     data_operations = ['backup-data', 'restore-data']
     installation_operations = ['update', 'install']
@@ -4040,6 +4042,9 @@ def main():
                 cpp-cpu cpp-gpu-nvidia cpp-gpu-amd          LLaMA.cpp CPU/GPU options rinning in Docker
                 ollama llama.cpp                            llama options running on the {name} Host
 
+              - Configuration:
+                manual-configuration no_auto_config         Override automatic configuration
+
             environment arguments:
               private public                                self-hosted network options
 
@@ -4047,7 +4052,7 @@ def main():
               update install                                installation options
               stop stop-llama start pause unpause           operation options
               backup-data restore-data                      volume mount data options
-              clawdock-<commands>                           OpenClaw operations, access, maintenance and utilities
+              clawdock-help clawdock-<command>              OpenClaw operations, access, maintenance and utilities
 
             log arguments:
               OFF CRITICAL ERROR WARNING NOTICE INFO DEBUG  console logging options
@@ -4123,8 +4128,8 @@ def main():
                         help='Environment arguments used by Docker Compose to expose '
                              'or restrict network communication ports (default: private)')
     parser.add_argument('-o', '--operation', type=str.lower, choices=operations,
-                        help='Docker container, volumes and image management arguments along with argument'
-                              f'to stop {llama} running on Host and OpenClaw clawdock arguments.')
+                        help='Docker container, volumes and image management arguments along with argument to stop'
+                              f'{llama} running on Host and OpenClaw clawdock arguments.')
     parser.add_argument('-l', '--log', type=str.upper, choices=log_levels, default='INFO',
                         help='Enable stream (console) logging and set log level. File logging is always '
                              'enabled at DEBUG and is not affected by this argument (default: INFO)')
@@ -4209,8 +4214,7 @@ def main():
 
     # Load working environment variables
     mod_env_vars = {}
-    ac_auto_config = \
-        any(p for p in args.profile if p not in managemant_and_data_operations)
+    ac_auto_config = not any(p for p in args.profile if p in auto_config_profiles)
     env_vars = get_dotenv_vars(auto_config=ac_auto_config, profile=args.profile)
     if not env_vars:
         log.critical("No environment variables detected")
