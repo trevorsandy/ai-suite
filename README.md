@@ -1,13 +1,13 @@
 # AI-Suite
 
 **AI-Suite** is intended to provide an **end-to-end path from zero to working
-AI workflows** for developers and those who want to enable a local, private
-**AI solution**.
+AI workflows and agents** for developers and those who want to enable a local,
+private **AI solution**.
 
 It provides an open, curated, pre-configured **Docker Compose** configuration
-file that bootstraps fully featured Local AI Agents and a Low/No Code environment
-on a self-hosted platform, enabling users to focus on building solutions
-that employ robust AI workflows.
+file that bootstraps fully featured Local AI Agents, personal AI Assistant and a
+Low/No Code environment on a self-hosted platform enabling users to focus on
+building solutions that employ robust AI workflows and agents.
 
 Portions of AI-Suite extends [Cole Medin's](https://github.com/coleam00)
 [Self-hosted AI Package](https://github.com/coleam00/local-ai-packaged)
@@ -116,7 +116,7 @@ Before you begin, make sure you have the following software installed:
 
 Also consider the following optional software:
 
-- [VSCode](https://code.visualstudio.com/download) - Python development.
+- [VSCode](https://code.visualstudio.com/download) - Python and Bash shell development.
 - [GitKraken](https://www.gitkraken.com/download-b) - Superior Git SCM platform
 
 ## Installation
@@ -153,10 +153,13 @@ Also consider the following optional software:
     </details>
 
     <details>
-    <summary>Credential environment variables</summary>
+    <summary>Credentials</summary>
 
-    If you install **Supabase**, setup the Supabase environment variables
-    using their [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
+    If you install **Supabase**, all credentials will be auto-generated. If you
+    prefer to manually setup the Supabase credentials, you may use the their
+    [self-hosting guide](https://supabase.com/docs/guides/self-hosting/docker#securing-your-services).
+
+    .env.example file
 
     ```ini
     # Change this file  name to .env after updating it if not using auto-configuration!
@@ -624,10 +627,11 @@ Also consider the following optional software:
 
 **AI-Suite** uses the `suite_services.py` script for the _installation_ command
 that handles the AI-Suite functional module selection, **LLAMA** (_Ollama_/_LLaMA.cpp_)
-CPU/GPU configuration, and starting Supabase and Open WebUI Filesystem when specified.
+CPU/GPU configuration, and starting Supabase, OpenClaw and Open WebUI Filesystem
+when specified.
 
 Additionally, this script is used to perform _operational_ actions such as stopping
-or pausing the running suite stack and updating its container images.
+or pausing the running suite stack, clawdock operations and updating container images.
 
 > [!NOTE]
 > The following example commands will use the `n8n` and `OpenCode` functional
@@ -993,7 +997,7 @@ Example command:
 python suite_services.py --profile n8n opencode cpp-cpu --operation update --log DEBUG
 ```
 
-#### Auto-config and HTTPS Reverse Proxy and Access Management
+#### Auto-configuration, HTTPS Reverse Proxy and Access Management
 
 By default, **AI-Suite** will automatically configure **Caddy** (Default) or
 **Nginx** HTTPS reverse proxy and **Authelia** 2FA (Two Factor Authentication)
