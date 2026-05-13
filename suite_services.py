@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 12, 2026
+Last Update May 14, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1627,11 +1627,10 @@ def clone_supabase_repo():
         git("config", "advice.detachedHead", "false", cwd=repo_path)
         git("sparse-checkout", "init", "--cone", cwd=repo_path)
         git("sparse-checkout", "set", "docker", cwd=repo_path)
-        # Fetch tags to resolve latest release
-        git("fetch", "--tags", "origin", cwd=repo_path)
     else:
         log.info("Supabase repository already exists, updating...")
-        git("fetch", "--tags", "origin", cwd=repo_path)
+    # Fetch tags to resolve latest release
+    git("fetch", "--prune", "--tags", "--force", "origin", cwd=repo_path)
     # Ensure clean working tree before switching tags
     git("reset", "--hard", cwd=repo_path)
     git("clean", "-fd", cwd=repo_path)
@@ -1678,8 +1677,11 @@ def clone_openclaw_repo(oc_release=None):
         )
     else:
         log.info("OpenClaw repository already exists, updating...")
-    # Refresh refs/tags
-    git("fetch", "--tags", "origin", cwd=repo_path)
+    # Refresh repository refs
+    if oc_release == "commit":
+        git("fetch", "origin", cwd=repo_path)
+    else:
+        git("fetch", "--prune", "--tags", "--force", "origin", cwd=repo_path)
     # Ensure clean working tree before switching refs
     git("reset", "--hard", cwd=repo_path)
     git("clean", "-fd", cwd=repo_path)
@@ -1788,14 +1790,24 @@ def prepare_openclaw_env(cwd, oc_store):
     """
     Creates a .env file from env.example with required values set.
     """
+    # OpencpClaw setup.sh changes (commits):
+    # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
+    # 13/05/2026 - 3cf2961 694ca50 f91de52
+    # 12/05/2026 - c3e3146
+    # 11/05/2026 - 4a00961
+    # 03/05/2026 - 02c2160
+    # 29/04/2026 - 490e6d6
+    # 28/04/2026 - 66f4b52
     modified_lines: list[str] = []
     home_dir = pathlib.Path.home()
     config_dir = home_dir / ".openclaw"
     workspace_dir = config_dir / "workspace"
+    auth_profile_secret_dir = home_dir / ".openclaw-auth-profile-secrets"
     if is_wsl2():
         home_dir = to_wsl_path(home_dir)
         config_dir = to_wsl_path(config_dir)
         workspace_dir = to_wsl_path(workspace_dir)
+        auth_profile_secret_dir = to_wsl_path(auth_profile_secret_dir)
     gateway_port = 18789
     bridge_port = 18790
     gateway_bind = "lan"
@@ -1820,6 +1832,7 @@ def prepare_openclaw_env(cwd, oc_store):
     add_config_dir = True
     add_config_path = True
     add_workspace_dir = True
+    add_auth_profile_secret_dir = True
     add_state_dir = True
     add_gateway_port = True
     add_bridge_port = True
@@ -1861,6 +1874,13 @@ def prepare_openclaw_env(cwd, oc_store):
                 if len(key_value) == 2 and not key_value[1]:
                     add_workspace_dir = False
                     modified_lines.append(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}\n")
+                else:
+                    modified_lines.append(line)
+            elif modified_line.startswith("OPENCLAW_AUTH_PROFILE_SECRET_DIR=\n"):
+                key_value = modified_line.split('=', 1)
+                if len(key_value) == 2 and not key_value[1]:
+                    add_auth_profile_secret_dir = False
+                    modified_lines.append(f"OPENCLAW_AUTH_PROFILE_SECRET_DIR={auth_profile_secret_dir}\n")
                 else:
                     modified_lines.append(line)
             elif modified_line.startswith("OPENCLAW_GATEWAY_PORT="):
@@ -1968,6 +1988,9 @@ def prepare_openclaw_env(cwd, oc_store):
                     if add_workspace_dir:
                         add_state_dir = False
                         modified_lines.append(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}\n")
+                    if add_workspace_dir:
+                        add_auth_profile_secret_dir = False
+                        modified_lines.append(f"OPENCLAW_AUTH_PROFILE_SECRET_DIR={auth_profile_secret_dir}\n")
                 elif add_gateway_token and modified_line.startswith("# OPENCLAW_GATEWAY_TOKEN="):
                     add_gateway_token = False
                     gateway_password = None
@@ -2033,6 +2056,7 @@ def prepare_openclaw_env(cwd, oc_store):
     log.debug(f"OPENCLAW_HOME={home_dir}", extra=debug_style)
     log.debug(f"OPENCLAW_CONFIG_DIR={config_dir}", extra=debug_style)
     log.debug(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}", extra=debug_style)
+    log.debug(f"OPENCLAW_AUTH_PROFILE_SECRET_DIR={auth_profile_secret_dir}", extra=debug_style)
     log.debug(f"OPENCLAW_GATEWAY_PORT={gateway_port}", extra=debug_style)
     log.debug(f"OPENCLAW_BRIDGE_PORT={bridge_port}", extra=debug_style)
     log.debug(f"OPENCLAW_GATEWAY_BIND={gateway_bind}", extra=debug_style)
@@ -2513,6 +2537,8 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
             f.write(textwrap.dedent("""\
                 services:
                   open-webui-filesystem:
+                    image: open-webui-filesystem:local
+                    pull_policy: never
                     container_name: open-webui-filesystem
                     restart: unless-stopped
                     build:
@@ -2764,7 +2790,13 @@ def start_openclaw(oc_store, cwd=None, build=False):
     if not oc_env:
         log.error(f"OpenClaw .env file not found at {oc_env_file}")
     env = {}
-    for key in ['OPENCLAW_IMAGE', 'OPENCLAW_CONFIG_DIR', 'OPENCLAW_WORKSPACE_DIR']:
+    oc_setup_vars = [
+        'OPENCLAW_IMAGE',
+        'OPENCLAW_CONFIG_DIR',
+        'OPENCLAW_WORKSPACE_DIR',
+        'OPENCLAW_AUTH_PROFILE_SECRET_DIR'
+    ]
+    for key in oc_setup_vars:
         val = oc_env.get(key)
         if val is not None:
             env[key] = val
@@ -4246,7 +4278,7 @@ def main():
     oc_release = None
     if openclaw:
         oc_env_vars = {
-            "OPENCLAW_RELEASE": "v2026.5.2",
+            "OPENCLAW_RELEASE": "commit",
             "OPENCLAW_ONBOARDING": "0",
             "OPENCLAW_DEFAULT_SETUP": "0"
         }
