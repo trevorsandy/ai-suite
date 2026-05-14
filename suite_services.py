@@ -4246,7 +4246,7 @@ def main():
     oc_release = None
     if openclaw:
         oc_env_vars = {
-            "OPENCLAW_RELEASE": "commit",
+            "OPENCLAW_RELEASE": "",
             "OPENCLAW_ONBOARDING": "0",
             "OPENCLAW_DOCKER_SANDBOX": "1"
         }
