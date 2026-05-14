@@ -2052,7 +2052,6 @@ def prepare_openclaw_env(cwd, oc_store):
         log.debug(f"OPENCLAW_GATEWAY_PASSWORD={elide(gateway_password)}", extra=debug_style)
     log.debug(f"OPENCLAW_SANDBOX={openclaw_sandbox}", extra=debug_style)
     log.debug(f"OPENCLAW_IMAGE={openclaw_image}", extra=debug_style)
-    log.debug(f"OPENCLAW_INSTALL_DOCKER_CLI={openclaw_docker_cli}", extra=debug_style)
     log.debug(f"OPENCLAW_HOME={home_dir}", extra=debug_style)
     log.debug(f"OPENCLAW_CONFIG_DIR={config_dir}", extra=debug_style)
     log.debug(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}", extra=debug_style)
@@ -2060,14 +2059,13 @@ def prepare_openclaw_env(cwd, oc_store):
     log.debug(f"OPENCLAW_GATEWAY_PORT={gateway_port}", extra=debug_style)
     log.debug(f"OPENCLAW_BRIDGE_PORT={bridge_port}", extra=debug_style)
     log.debug(f"OPENCLAW_GATEWAY_BIND={gateway_bind}", extra=debug_style)
+    log.debug(f"OPENCLAW_INSTALL_DOCKER_CLI={openclaw_docker_cli}", extra=debug_style)
     log.debug(f"OPENCLAW_SKIP_ONBOARDING={gateway_bind}", extra=debug_style)
     log.debug(f"OPENAI_API_KEY={openapi_key}", extra=debug_style)
     log.info(f".env file created at {output_path}", extra=log_bright)
     _openclaw_compose_updates()
     _openclaw_clawdoc_updates()
     _openclaw_env_vars_logging()
-    # if sandbox:
-    #     _openclaw_enable_sandbox()
     return True
 
 def prepare_openclaw_config(oc_cwd, env_vars):
@@ -2434,36 +2432,6 @@ def _openclaw_env_vars_logging(setup_path=None):
             log.warning(f"Function upsert_env not found - skip logging injection.")
     except Exception as e:
         log.error(f"Exception: OpenClaw env vars logging: {e}")
-
-def _openclaw_enable_sandbox(compose_path=None):
-    """
-    Enable OpenClaw sandbox-related settings in a docker-compose.yml file by
-    uncommenting the required lines.
-    """
-    if compose_path is None:
-        compose_path = "./openclaw/docker-compose.yml"
-    path = pathlib.Path(compose_path)
-    if not path.exists():
-        raise FileNotFoundError(f"{compose_path} not found")
-    try:
-        with open(path, "r", newline="\n") as f:
-            lines = f.readlines()
-        updated_lines: list[str] = []
-        for line in lines:
-            stripped = line.lstrip()
-            if stripped.startswith("# - /var/run/docker.sock:/var/run/docker.sock"):
-                updated_lines.append(line.replace("# ", "", 1))
-            elif stripped.startswith("# group_add:"):
-                updated_lines.append(line.replace("# ", "", 1))
-            elif stripped.startswith('#   - "${DOCKER_GID:-999}"'):
-                updated_lines.append(line.replace("# ", "", 1))
-            else:
-                updated_lines.append(line)
-        with open(path, "w", newline="\n") as f:
-            f.writelines(updated_lines)
-        log.info(f"Sandbox enabled in {path}", extra=log_bright)
-    except Exception as e:
-        log.error(f"Exception: OpenClaw enable sandbox: {e}")
 
 def _openclaw_normalize(name: str):
     if not isinstance(name, str):
@@ -3778,7 +3746,7 @@ def setup_ai_suite_ac_auto_config(prompt_store, oc_store, env_vars=None):
         sandbox = oc_store['sandbox']
         response = input(f"Enable OpenClaw sandbox? y/n: (y)").strip()
         oc_store['sandbox'] = False if (response and response.lower() == 'n') else sandbox
-        env_vars["OPENCLAW_DEFAULT_SETUP"] = "0" if oc_store['sandbox'] else "1"
+        env_vars["OPENCLAW_DOCKER_SANDBOX"] = "1" if oc_store['sandbox'] else "0"
     response = None
     public = False
 
@@ -4280,7 +4248,7 @@ def main():
         oc_env_vars = {
             "OPENCLAW_RELEASE": "commit",
             "OPENCLAW_ONBOARDING": "0",
-            "OPENCLAW_DEFAULT_SETUP": "0"
+            "OPENCLAW_DOCKER_SANDBOX": "1"
         }
         for key, var in oc_env_vars.items():
             if key not in env_vars or env_vars[key] in (None, ""):
@@ -4288,7 +4256,7 @@ def main():
                 set_dotenv_var(env_file, key, var, None)
         oc_store = {
             "onboard": env_vars["OPENCLAW_ONBOARDING"] == "1",
-            "sandbox": env_vars["OPENCLAW_DEFAULT_SETUP"] != "1"
+            "sandbox": env_vars["OPENCLAW_DOCKER_SANDBOX"] == "1"
         }
         if build:
             oc_release = env_vars["OPENCLAW_RELEASE"]
