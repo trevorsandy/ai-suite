@@ -5,9 +5,10 @@ AI workflows and agents** for developers and those who want to enable a local,
 private **AI solution**.
 
 It provides an open, curated, pre-configured **Docker Compose** configuration
-file that bootstraps fully featured Local AI Agents, personal AI Assistant and a
-Low/No Code environment on a self-hosted platform enabling users to focus on
-building solutions that employ robust AI workflows and agents.
+file along with **Python and Bash shell scripts** that bootstraps fully featured
+Local AI Agents, personal AI Assistant and a Low/No Code environment on a self-hosted
+platform enabling users to focus on building solutions that employ robust AI workflows
+and agents.
 
 Portions of AI-Suite extends [Cole Medin's](https://github.com/coleam00)
 [Self-hosted AI Package](https://github.com/coleam00/local-ai-packaged)
@@ -91,8 +92,8 @@ Before you begin, make sure you have the following software installed:
 - [Git](https://git-scm.com/install/) - For easy repository management.
 - [Python 3.10+](https://www.python.org/downloads/) - To run the setup script.
 - [Node 22.16+](https://nodejs.org/) - For auto-configuration and OpenClaw runtime.
-- [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) - Required
-  to setup and run all AI-Suite services.
+- [Docker 20.10+](https://www.docker.com/products/docker-desktop/) - Required to
+  setup and run all AI-Suite services.
 
    <details>
    <summary>Docker Compose commands</summary>
@@ -114,7 +115,7 @@ Before you begin, make sure you have the following software installed:
 
    </details>
 
-Also consider the following optional software:
+Developers may also consider the following optional software:
 
 - [VSCode](https://code.visualstudio.com/download) - Python and Bash shell development.
 - [GitKraken](https://www.gitkraken.com/download-b) - Superior Git SCM platform
@@ -132,13 +133,13 @@ Also consider the following optional software:
 
 2. AI-Suite will automatically configure the settings and environment variables
    including generation of secret passwords, tokens and keys needed to successfully
-   perform installation and startup operations.
+   perform _installation_ and _startup_ operations.
 
    However, it is good practice to review your `.env` environment variables before
-   running install or update taking into account your installation platform
+   running _install_ or _update_ taking into account your installation platform
    components, specifications and requirements. Particularly pay attention to the
    _Ollama_ or _LLaMA.cpp_ (depending on which LLM you are using) configuration
-   settings.
+   settings and Windows WSL (posix) versus native paths.
 
     <details>
     <summary>Environment variables</summary>
@@ -441,6 +442,28 @@ Also consider the following optional software:
     </details>
 
     <details>
+    <summary>OpenClaw setup .env configuration</summary>
+
+    ```ini
+    ############
+    # OpenClaw - Setup
+    ############
+
+    # Set to specific release tag, 'commit' for latest commit or empty for latest release
+    OPENCLAW_RELEASE=''
+    # Set to 1 to enable onboarding during setup
+    OPENCLAW_ONBOARDING=0
+    # Set to 0 for default Docker setup
+    OPENCLAW_DOCKER_SANDBOX=1
+    # Set to 0 for pre-built image download when sandbox is disabled
+    OPENCLAW_DOCKER_LOCAL_IMAGE=1
+    # Preserve locally updated files when performing clone operation
+    OPENCLAW_KEEP_LOCAL_UPDATES=0
+    ```
+
+    </details>
+
+    <details>
     <summary>Ollama .env configuration</summary>
 
     ```ini
@@ -623,7 +646,7 @@ Also consider the following optional software:
 
 ---
 
-### Step 2: Run the setup script
+### Step 2: Run suite_services.py
 
 **AI-Suite** uses the `suite_services.py` script for the _installation_ command
 that handles the AI-Suite functional module selection, **LLAMA** (_Ollama_/_LLaMA.cpp_)
@@ -631,7 +654,15 @@ CPU/GPU configuration, and starting Supabase, OpenClaw and Open WebUI Filesystem
 when specified.
 
 Additionally, this script is used to perform _operational_ actions such as stopping
-or pausing the running suite stack, clawdock operations and updating container images.
+or pausing the running suite stack, OpenClaw clawdock operations and updating container
+images.
+
+Command syntax:
+
+```powershell
+suite_services.py --profile <arguments> --environment <argument> --operation
+<argument> --log <argument>
+```
 
 > [!NOTE]
 > The following example commands will use the `n8n` and `OpenCode` functional
@@ -797,7 +828,7 @@ x-n8n: &service-n8n
 
 </details>
 
-The `suite_services.py` script will similiarly set the `OPENAI_API_BASE_URL`
+The `suite_services.py` script will similarly set the `OPENAI_API_BASE_URL`
 environment variable to use the _HOST_ and _PORT_ of the selected LLAMA LLM
 (_Ollama_/_LLaMA.cpp_). This option will enable n8n backend connections to
 **LLaMA.cpp**.
@@ -875,9 +906,14 @@ python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 
 **OpenClaw** operation commands are available using _clawdock_.
 
-`suite_services.py` ... `--operation` clawdock argument:
+`suite_services.py` `--operation` clawdock argument
 
--**Basic Operations**
+> [!NOTE]
+> Clawdoc commands that require an argument are executed in two parts. First,
+> the clawdock command: `suite_services.py --operation clawdock-approve`
+> will, second, generate an argument prompt: `Enter a device pairing: <id>`
+
+- **Basic Operations**
 
 | Argument           | Operation                       |
 | -----------------: | ------------------------------: |
@@ -887,7 +923,7 @@ python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 | `clawdock-status`  | Check container status          |
 | `clawdock-logs`    | View live logs (follows output) |
 
--**Container Access**
+- **Container Access**
 
 | Command                   | Description                                    |
 | ------------------------- | ---------------------------------------------- |
@@ -895,7 +931,7 @@ python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 | `clawdock-cli <command>`  | Run OpenClaw CLI commands                      |
 | `clawdock-exec <command>` | Execute arbitrary commands in the container    |
 
--**Web UI & Devices**
+- **Web UI & Devices**
 
 | Command                 | Description                                |
 | ----------------------- | ------------------------------------------ |
@@ -903,13 +939,13 @@ python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 | `clawdock-devices`      | List device pairing requests               |
 | `clawdock-approve <id>` | Approve a device pairing request           |
 
--**Setup & Configuration**
+- **Setup & Configuration**
 
 | Command              | Description                                       |
 | -------------------- | ------------------------------------------------- |
 | `clawdock-fix-token` | Configure gateway authentication token (run once) |
 
--**Maintenance**
+- **Maintenance**
 
 | Command            | Description                                           |
 | ------------------ | ----------------------------------------------------- |
@@ -917,7 +953,7 @@ python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 | `clawdock-rebuild` | Rebuild the Docker image only                         |
 | `clawdock-clean`   | Remove all containers and volumes (destructive!)      |
 
--**Utilities**
+- **Utilities**
 
 | Command                | Description                               |
 | ---------------------- | ----------------------------------------- |
@@ -934,6 +970,8 @@ Example command:
 ```powershell
 python suite_services.py --operation clawdock-status
 ```
+
+OpenClaw guide (auth, pairing, channels): [Getting started](https://docs.openclaw.ai/start/getting-started)
 
 ---
 
@@ -1110,8 +1148,8 @@ Use the following settings to confirm or upate **n8n Credentials**.
   | Service                 | Container                         | Docker connect                               | Host connect                      |
   | ----------------------: | --------------------------------: | -------------------------------------------: | --------------------------------: |
   | `n8n`                   | n8n:5678                          | <http://host.docker.internal:5678>           | <http://localhost:5678>           |
-  | `openclaw-gateway`      | openclaw-gateway:18789            | <http://host.docker.internal:18789>          | <http://localhost:18789>          |
-  | `openclaw-cli`          | openclaw-cli:18790                | <http://host.docker.internal:18790>          | <http://localhost:18790>          |
+  | `openclaw-gateway`      | openclaw-gateway:18789            |                                              | <http://localhost:18789>          |
+  | `openclaw-cli`          | openclaw-cli                      |                                              |                                   |
   | `Open WebUI`            | open-webui:8080/                  | <http://host.docker.internal:8080/>          | <http://localhost:8080/>          |
   | `Opencode`              | opencode                          |                                              | ./opencode/run_opencode_docker.py |
   | `Flowise`               | flowise:3001/                     | <http://host.docker.internal:3001/>          | <http://localhost:3001/>          |
@@ -1212,29 +1250,185 @@ Use the following settings to confirm or upate **n8n Credentials**.
 9. Toggle the function on and now it will be available in your model dropdown
    in the top left.
 
-To open **n8n**, visit <http://localhost:5678/> from your browser.
+To access **n8n**, visit <http://localhost:5678/> from your browser.
 
-To open **Open WebUI**, visit <http://localhost:3000/> from your browser.
+To access **OpenClaw**, run `suite_services.py --operation clawdock-status`
 
-To open **OpenCode** run `./opencode/run_opencode_docker.py` from a new terminal.
+To access **Open WebUI**, visit <http://localhost:3000/> from your browser.
+
+To access **OpenCode**, run `./opencode/run_opencode_docker.py` from a new terminal.
 
 ## Additional Configuration
 
-With **n8n**, you have access to over **400** integrations and a suite of basic
-and advanced AI nodes such as:
-[AI Agent](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.agent/),
-[Text classifier](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.text-classifier/),
-and [Information Extractor](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.information-extractor/)
-nodes.
+> [!NOTE]
+> AI-Suite is designed to help you get started with self-hosted AI
+> workflows and agents. While it is not fully optimized for production environments,
+> it combines robust components that work well together for personal porjects.
+> Of course, you can further customize it to meet your specific needs.
 
 To keep everything local, use the **Ollama**/**LLaMA.cpp** node for your language
 model and **Qdrant** as your vector store.
 
+### OpenClaw
+
+The **OpenClaw** Docker setup uses three config files on the host. The container
+never stores secrets — everything is bind-mounted from local files.
+
 > [!NOTE]
-> AI-Suite is designed to help you get started with self-hosted AI
-> workflows. While it is not fully optimized for production environments, it
-> combines robust components that work well together for personal porjects.
-> Of course, you can further customize it to meet your specific needs.
+> The OpenClaw `<project>` directory for AI-Suite is `./openclaw` while the
+> User home directory `~/` may be  `/mnt/c/Users/<You>/` on **Windows WSL**.
+
+#### OpenClaw Docker files
+
+| File                       | Purpose                                                                    |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `Dockerfile`               | Builds the `openclaw:local` image (Node 22, pnpm, non-root `node` user)    |
+| `docker-compose.yml`       | Defines `openclaw-gateway` and `openclaw-cli` services, bind-mounts, ports |
+| `scripts/docker/setup.sh`  | First-time setup — builds image, creates `.env` from `.env.example`        |
+| `.env.example`             | Template for `<project>/.env` with all supported vars and docs             |
+| `docker-compose.extra.yml` | Optional overrides — auto-loaded by ClawDock helpers if present            |
+
+#### OpenClaw Config files
+
+| File                        | Purpose                                          | Examples                                                                                                |
+| --------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `<project>/.env`            | **Docker infra** — image, ports, gateway token   | `OPENCLAW_GATEWAY_TOKEN`, `OPENCLAW_IMAGE`, `OPENCLAW_GATEWAY_PORT`, `OPENCLAW_AUTH_PROFILE_SECRET_DIR` |
+| `~/.openclaw/.env`          | **Secrets** — API keys and bot tokens            | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`                                             |
+| `~/.openclaw/openclaw.json` | **Behavior config** — models, channels, policies | Model selection, WhatsApp allowlists, agent settings                                                    |
+
+> [!CAUTION]
+> Do NOT put API keys or bot tokens in `openclaw.json`. Use `~/.openclaw/.env`
+> for all secrets.
+
+#### Initial OpenClaw setup
+
+`./scripts/docker/setup.sh` handles the first-time Docker configuration:
+
+- Builds the `openclaw:local` image from `Dockerfile`
+- Creates `<project>/.env` from `.env.example` with a generated gateway token
+- Creates the auth-profile secret key directory
+- Sets up `~/.openclaw` directories if they don't exist
+
+```bash
+./scripts/docker/setup.sh
+```
+
+After installation setup, you may add your API keys:
+
+```bash
+vim ~/.openclaw/.env
+```
+
+See `.env.example` for all supported keys.
+
+The `Dockerfile` supports two optional build args:
+
+- `OPENCLAW_DOCKER_APT_PACKAGES` — extra apt packages to install (e.g. `ffmpeg`)
+- `OPENCLAW_INSTALL_BROWSER=1` — pre-install Chromium for browser automation (adds
+  ~300MB, but skips the 60-90s Playwright install on each container start)
+
+#### How OpenClaw works in docker
+
+`docker-compose.yml` bind-mounts both config and workspace from the host:
+
+```yaml
+volumes:
+  - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
+  - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
+  - ${OPENCLAW_AUTH_PROFILE_SECRET_DIR}:/home/node/.config/openclaw
+```
+
+This means:
+
+- `~/.openclaw/.env` is available inside the container at `/home/node/.openclaw/.env`
+  — OpenClaw loads it automatically as the global env fallback
+- `~/.openclaw/openclaw.json` is available at `/home/node/.openclaw/openclaw.json`
+  — the gateway watches it and hot-reloads most changes
+- `~/.openclaw-auth-profile-secrets` is available at `/home/node/.config/openclaw`
+  — OpenClaw stores the auth-profile encryption key there
+- Downloadable plugin packages and install records live under the mounted OpenClaw
+  home
+- No need to add API keys to `docker-compose.yml` or configure anything inside the
+  container
+- Keys survive `clawdock-update`, `clawdock-rebuild`, and `clawdock-clean` because
+  they live on the host
+
+The project `.env` feeds Docker Compose directly (gateway token, image name, ports).
+The `~/.openclaw/.env` feeds the OpenClaw process inside the container.
+
+#### OpenClaw setup environment variables
+
+Optional _.env_ environment variables:
+
+| Variable                                   | Purpose                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| `OPENCLAW_IMAGE`                           | Use a remote image instead of building locally                        |
+| `OPENCLAW_IMAGE_APT_PACKAGES`              | Install extra apt packages during build (space-separated)             |
+| `OPENCLAW_IMAGE_PIP_PACKAGES`              | Install extra Python packages during build (space-separated)          |
+| `OPENCLAW_EXTENSIONS`                      | Pre-install plugin dependencies at build time (space-separated names) |
+| `OPENCLAW_EXTRA_MOUNTS`                    | Extra host bind mounts (comma-separated `source:target[:opts]`)       |
+| `OPENCLAW_HOME_VOLUME`                     | Persist `/home/node` in a named Docker volume                         |
+| `OPENCLAW_SANDBOX`                         | Opt in to sandbox bootstrap (`1`, `true`, `yes`, `on`)                |
+| `OPENCLAW_SKIP_ONBOARDING`                 | Skip the interactive onboarding step (`1`, `true`, `yes`, `on`)       |
+| `OPENCLAW_DOCKER_SOCKET`                   | Override Docker socket path                                           |
+| `OPENCLAW_DISABLE_BONJOUR`                 | Disable Bonjour/mDNS advertising (defaults to `1` for Docker)         |
+| `OPENCLAW_DISABLE_BUNDLED_SOURCE_OVERLAYS` | Disable bundled plugin source bind-mount overlays                     |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`              | Shared OTLP/HTTP collector endpoint for OpenTelemetry export          |
+| `OTEL_EXPORTER_OTLP_*_ENDPOINT`            | Signal-specific OTLP endpoints for traces, metrics, or logs           |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`              | OTLP protocol override. Only `http/protobuf` is supported today       |
+| `OTEL_SERVICE_NAME`                        | Service name used for OpenTelemetry resources                         |
+| `OTEL_SEMCONV_STABILITY_OPT_IN`            | Opt in to latest experimental GenAI semantic attributes               |
+| `OPENCLAW_OTEL_PRELOADED`                  | Skip starting a second OpenTelemetry SDK when one is preloaded        |
+
+#### OpenClaw dependencies
+
+For dependencies available from Debian packages, use
+`OPENCLAW_IMAGE_APT_PACKAGES` during image build. The legacy
+`OPENCLAW_DOCKER_APT_PACKAGES` name is still accepted.
+For Python dependencies, use `OPENCLAW_IMAGE_PIP_PACKAGES`. This runs
+`python3 -m pip install --break-system-packages` during the image build, so pin
+package versions and use only package indexes you trust.
+
+#### OpenClaw example `~/.openclaw/.env`
+
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_BOT_TOKEN=123456:ABCDEF...
+```
+
+#### OpenClaw example `<project>/.env`
+
+```bash
+OPENCLAW_CONFIG_DIR=/Users/you/.openclaw
+OPENCLAW_WORKSPACE_DIR=/Users/you/.openclaw/workspace
+OPENCLAW_GATEWAY_PORT=18789
+OPENCLAW_BRIDGE_PORT=18790
+OPENCLAW_GATEWAY_BIND=lan
+OPENCLAW_GATEWAY_TOKEN=<generated-by-docker-setup>
+OPENCLAW_AUTH_PROFILE_SECRET_DIR=/Users/you/.openclaw-auth-profile-secrets
+OPENCLAW_IMAGE=openclaw:local
+```
+
+#### OpenClaw env var precedence
+
+OpenClaw loads env vars in this order (highest wins, never overrides existing):
+
+1. **Process environment** — `docker-compose.yml` `environment:` block (gateway
+   token, session keys)
+2. **`.env` in CWD** — project root `.env` (Docker infra vars)
+3. **`~/.openclaw/.env`** — global secrets (API keys, bot tokens)
+4. **`openclaw.json` `env` block** — inline vars, applied only if still missing
+5. **Shell env import** — optional login-shell scrape (`OPENCLAW_LOAD_SHELL_ENV=1`)
+
+#### Update OpenClaw
+
+> [!IMPORTANT]
+> The `openclaw update` command does not work inside Docker.
+> The container runs as a non-root user with a source-built image, so `npm i -g`
+> will fail with an EACCES output message.
+> Use `suite_services.py --operation clawdock-update` instead — it pulls, rebuilds,
+> and restarts from the host.
 
 ### PROJECTS_PATH environment variable
 
@@ -1255,6 +1449,13 @@ modules described above:
 | Open WebUI Tool Filesystem | open-webui-filesystem | `/nonexistent/tmp`    |
 
 ### n8n
+
+With **n8n**, you have access to over **400** integrations and a suite of basic
+and advanced AI nodes such as:
+[AI Agent](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.agent/),
+[Text classifier](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.text-classifier/),
+and [Information Extractor](https://docs.n8n.io/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.information-extractor/)
+nodes.
 
 - **MCP Client**
   - Configure MCP Client credentials.
@@ -1684,6 +1885,19 @@ n8n-import:
    - ./n8n/data:/data
 ```
 
+**OpenClaw** OpenClaw configuration files.
+
+```yaml
+openclaw-gateway:
+  - $HOME/.openclaw:/home/node/.openclaw
+  - $HOME/.openclaw/workspace:/home/node/.openclaw/workspace
+  - $HOME/.openclaw-auth-profile-secrets:/home/node/.config/openclaw
+openclaw-cli:
+  - $HOME/.openclaw:/home/node/.openclaw
+  - $HOME/.openclaw/workspace:/home/node/.openclaw/workspace
+  - $HOME/.openclaw-auth-profile-secrets:/home/node/.config/openclaw
+```
+
 **Open WebUI MCPO** OpenAPI configuration file.
 
 ```yaml
@@ -1747,43 +1961,45 @@ caddy:
 
 ## Repository Structure
 
+Relevant AI-Suite repository folder and document resources
+
 ```bash
 .
-├── LICENSE
-├── README.md
+├── LICENSE                                  # AI-Suite license
+├── README.md                                # AI-Suite readme
 ├── access/
 │   ├── authelia/
 │   │   ├── db/
-│   │   │   └── schema-authelia.sh           # Authelia schema
+│   │   │   └── schema-authelia.sh           # Authelia schema template
 │   │   └── configuration.yml                # Authelia configuration
 │   ├── caddy/                               # Caddy proxy server
 │   │   ├── addons/
 │   │   │   └── cors.conf                    # Caddy cors configuration
 │   │   └── Caddyfile                        # Caddy configuration
-│   ├── nginx/
-│   │   └── addons/                          # Nginx configuration
-│   │       ├── authelia-authrequest.conf
-│   │       ├── authelia-location.conf
-│   │       ├── common_proxy_headers.conf
+│   ├── nginx/                               # Nginx configuration
+│   │   └── addons/
+│   │       ├── authelia-authrequest.conf    # Nginx Authelia auth request configuration
+│   │       ├── authelia-location.conf       # Nginx Authelia location configuration
+│   │       ├── common_proxy_headers.conf    # Nginx proxy headers configuration
 │   │       ├── cors.conf                    # Nginx cors configuration
 │   │       └── proxy.conf                   # Nginx proxy configuration
 │   └── auto_config.sh                       # Proxy setup and access management script
 ├── assets/                                  # README.md gif image
 ├── flowise/                                 # Ready-to-import Flowise workflows
 │   └── uploads/
-├── langfuse/
+├── langfuse/                                # Langfuse resources
 │   └── clickhouse/
 │       └── logs/                            # Clickhouse logs
 ├── llama.cpp/                               # LLM inference engine (if running LLaMA.cpp from host)
-├── n8n/
+├── n8n/                                     # N8N resources
 │   ├── data/
 │   │   ├── credentials/                     # Ready-to-import n8n credentials
 │   │   └── workflows/                       # Ready-to-import n8n workflows
 │   └── local-files/
-├── neo4j/
+├── neo4j/                                   # Neo4j resources
 │   ├── logs/
 │   └── plugins/
-├── open-webui/
+├── open-webui/                              # Open WebUI resources
 │   ├── functions/
 │   │   ├── open-webui/
 │   │   │   └── functions/                   # Open WebUI functions
@@ -1791,44 +2007,45 @@ caddy:
 │   │       ├── docs/
 │   │       ├── filters                      # Open WebUI filters
 │   │       └── pipelines/                   # Open WebUI pipes
-│   ├── mcpo/
+│   ├── mcpo/                                # Open WebUI MCPO
 │   │   └── config.json                      # Open WebUI MCPO configuration
 │   ├── piplines/                            # Open WebUI pipelines
 │   └── tools/                               # Open WebUI tools
 │       └── servers/                         # Open WebUI tool servers
 │           └── filesystem/                  # Open WebUI filesystem tool
-├── openclaw/
+├── openclaw/                                # OpenClaw resources
 │   ├── scripts/
 │   │   ├── clawdock/
-│   │   │   └── clawdock-helpers.sh
+│   │   │   └── clawdock-helpers.sh          # OpenClaw clawdock commands setup script
 │   │   └── docker/
 │   │       ├── sandbox/
-│   │       │   ├── Dockerfile
-│   │       │   ├── Dockerfile.browser
-│   │       │   └── Dockerfile.common
-│   │       └── setup.sh
+│   │       │   ├── Dockerfile               # OpenClaw sandbox Docker configuration
+│   │       │   ├── Dockerfile.browser       # OpenClaw sandbox Docker browser configuration
+│   │       │   └── Dockerfile.common        # OpenClaw sandbox Docker common configuration
+│   │       └── setup.sh                     # OpenClaw Docker setup and install script
 │   ├── .env.example
-│   ├── docker-compose.sandbox.yml
-│   ├── docker-compose.yml
-│   └── Dockerfile
+│   ├── docker-compose.sandbox.yml           # OpenClaw Docker Compose sandbox configuration
+│   ├── docker-compose.yml                   # OpenClaw Docker Compose configuration
+│   └── Dockerfile                           # OpenClaw Docker configuration
 ├── opencode/
 │   ├── opencode.jsonc                       # OpenCode configuration
 │   └── run_opencode_docker.py               # OpenCode launch script
 ├── searxng/
 │   └── settings-base.yml                    # SearXNG configuration
-├── state/
-├── supabase/
+├── state/                                   # AI-Suite state
+├── supabase/                                # Supabase resources
 │   └── docker/
-│       ├── dev/
-│       ├── utils/
 │       ├── volumes/
-│       └── docker-compose.yml               # Docker Compose Supabase configuration
-├── .env.example                             # Template for environment variables
-├── .openclaw.example.json                   # Template for OpenClaw configuration
-├── docker-compose.override.private.yml      # Docker Compose local configuration
-├── docker-compose.override.public.yml       # Docker Compose production configuration
-├── docker-compose.yml                       # Docker Compose AI-Suite configuration
-└── suite_services.py                        # Installation and service management script
+│       │   └── db/
+│       │       └── schema-authelia.sh       # Supabase Authelia schema install
+│       ├── env.example                      # Supabase template for environment variables
+│       └── docker-compose.yml               # Supabase Docker Compose configuration
+├── .env.example                             # AI-Suite environment variables template
+├── .openclaw.example.json                   # AI-Suite OpenClaw configuration template
+├── docker-compose.override.private.yml      # AI-Suite Docker Compose local configuration
+├── docker-compose.override.public.yml       # AI-Suite Docker Compose production configuration
+├── docker-compose.yml                       # AI-Suite Docker Compose configuration
+└── suite_services.py                        # AI-Suite Installation and service management script
 ```
 
 ## Troubleshooting
@@ -1885,12 +2102,37 @@ your local n8n instance.
 
 ## 👓 Recommended reading
 
-Useful content for deeper understanding AI concepts.
+Useful content for deeper understanding.
+
+### AI concepts
 
 - [AI agents for developers: from theory to practice with n8n](https://blog.n8n.io/ai-agents/)
 - [Tutorial: Build an AI workflow in n8n](https://docs.n8n.io/advanced-ai/intro-tutorial/)
 - [Langchain Concepts in n8n](https://docs.n8n.io/advanced-ai/langchain/langchain-n8n/)
 - [Demonstration of key differences between agents and chains](https://docs.n8n.io/advanced-ai/examples/agent-chain-comparison/)
+
+### OpenClaw Highlights
+
+- **[Local-first Gateway](https://docs.openclaw.ai/gateway)** — single control plane
+  for sessions, channels, tools, and events.
+- **[Multi-channel inbox](https://docs.openclaw.ai/channels)** — WhatsApp, Telegram,
+  Slack, Discord, Google Chat, Signal, iMessage, IRC, Microsoft Teams, Matrix, Feishu,
+  LINE, Mattermost, Nextcloud Talk, Nostr, Synology Chat, Tlon, Twitch, Zalo, Zalo
+  Personal, WeChat, QQ, WebChat, macOS, iOS/Android.
+- **[Multi-agent routing](https://docs.openclaw.ai/gateway/configuration)** — route
+  inbound channels/accounts/peers to isolated agents (workspaces + per-agent sessions).
+- **[Voice Wake](https://docs.openclaw.ai/nodes/voicewake) +
+  [Talk Mode](https://docs.openclaw.ai/nodes/talk)** — wake words on macOS/iOS and
+  continuous voice on Android (ElevenLabs + system TTS fallback).
+- **[Live Canvas](https://docs.openclaw.ai/platforms/mac/canvas)** — agent-driven
+  visual workspace with [A2UI](https://docs.openclaw.ai/platforms/mac/canvas#canvas-a2ui).
+- **[First-class tools](https://docs.openclaw.ai/tools)** — browser, canvas, nodes,
+  cron, sessions, and Discord/Slack actions.
+- **[Companion apps](https://docs.openclaw.ai/platforms/macos)** — macOS menu bar
+  app + iOS/Android [nodes](https://docs.openclaw.ai/nodes).
+- **[Onboarding](https://docs.openclaw.ai/start/wizard) +
+  [skills](https://docs.openclaw.ai/tools/skills)** — onboarding-driven setup with
+  bundled/managed/workspace skills.
 
 ## 📜 License
 
