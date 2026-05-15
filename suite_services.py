@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 14, 2026
+Last Update May 15, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1565,9 +1565,9 @@ def git(*args, cwd=None, capture_output=False):
     if capture_output:
         return subprocess.check_output(
             ["git", "-c", "core.autocrlf=input", *args],
-            cwd=cwd
+            cwd=cwd,
+            stderr=subprocess.STDOUT
         ).decode().strip()
-
     run_command(["git", "-c", "core.autocrlf=input", *args], cwd=cwd)
 
 def is_stable_tag(tag):
@@ -1577,13 +1577,14 @@ def get_latest_tag(repo_path, oc_release=None):
     """
     Return the latest stable version tag sorted by semantic version.
     Behaviour:
-      - If oc_release is None or "", return latest stable tag.
-      - If oc_release == "commit", return None.
+      - If oc_release["release"] is None or "", return latest stable tag.
+      - If oc_release["release"] == "commit", return None.
       - Otherwise validate and return the requested stable tag.
     """
-    if oc_release == "commit":
+    release = None if oc_release is None else oc_release["release"]
+    if release == "commit":
         return None
-    output = git( "tag", "--sort=-v:refname", cwd=repo_path, capture_output=True)
+    output = git("tag", "--sort=-v:refname", cwd=repo_path, capture_output=True)
     if output is None:
         raise RuntimeError("Failed to retrieve git tags")
     tags = [t for t in output.splitlines() if t]
@@ -1593,13 +1594,13 @@ def get_latest_tag(repo_path, oc_release=None):
     if not stable_tags:
         raise RuntimeError("No stable tags found in repository")
     # Explicit tagged release requested
-    if oc_release is not None and oc_release != "":
-        if oc_release not in stable_tags:
+    if release is not None and release != "":
+        if release not in stable_tags:
             raise RuntimeError(
-                f"Requested OpenClaw release '{oc_release}' "
+                f"Requested OpenClaw release '{release}' "
                 "was not found or is not a stable release"
             )
-        return oc_release
+        return release
     # Default to latest stable release
     return stable_tags[0]
 
@@ -1612,7 +1613,63 @@ def get_latest_commit(repo_path):
         raise RuntimeError("Failed to retrieve latest commit SHA")
     return output
 
-def clone_supabase_repo():
+def get_local_update_files(repo_path):
+    """
+    Return a sorted list of locally modified/untracked files.
+    """
+    output = git("status", "--porcelain", cwd=repo_path, capture_output=True)
+    if not output:
+        return []
+    files = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        # porcelain format:
+        # XY <path>
+        path = line[3:].strip()
+        # handle rename syntax:
+        # old -> new
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        files.append(path)
+    return sorted(set(files))
+
+def format_local_update_error(target_desc, target_ref, files):
+    """
+    Build a user-friendly local update conflict error message.
+    """
+    file_list = "\n".join(f"  - {f}" for f in files)
+    return (
+        "Preserving local OpenClaw updates enabled.\n\n"
+        f"Unable to checkout OpenClaw {target_desc} '{target_ref}' "
+        "because the following local files would be overwritten:\n\n"
+        f"{file_list}\n\n"
+        "Commit, stash, or discard local changes and retry.\n\n"
+        "To force a clean checkout:\n"
+        "  OPENCLAW_KEEP_LOCAL_UPDATES=0"
+    )
+
+def checkout_openclaw_ref(repo_path, target_ref, target_desc, preserve=False):
+    """
+    Checkout a repository ref safely.
+    If preserve=True, preserve local modifications and
+    fail with a clear error if checkout would overwrite files.
+    """
+    try:
+        git("checkout", target_ref, cwd=repo_path)
+    except subprocess.CalledProcessError as exc:
+        if not preserve:
+            raise
+        files = get_local_update_files(repo_path)
+        raise RuntimeError(
+            format_local_update_error(
+                target_desc,
+                target_ref,
+                files
+            )
+        ) from exc
+
+def clone_supabase_repo(preserve=False):
     """Clone the Supabase repository using sparse checkout,
     then checkout the latest tagged release."""
     repo_path = pathlib.Path("supabase")
@@ -1637,7 +1694,7 @@ def clone_supabase_repo():
     # Checkout latest release tag
     latest_tag = get_latest_tag(repo_path)
     log.info(f"Checking out latest Supabase release tag: {latest_tag}", extra=log_bright)
-    git("checkout", latest_tag, cwd=repo_path)
+    checkout_openclaw_ref(repo_path, latest_tag, "tag", preserve=preserve)
 
 def clone_openclaw_repo(oc_release=None):
     """
@@ -1645,8 +1702,20 @@ def clone_openclaw_repo(oc_release=None):
     Checkout behaviour:
       - latest stable release tag (default)
       - requested stable release tag
-      - latest commit if oc_release == "commit"
+      - latest commit if oc_release["release"] == "commit"
+    Local update behaviour:
+      - preserve=False:
+          reset/clean repository before checkout
+      - preserve=True:
+          preserve modified/untracked local files
     """
+    if oc_release is None:
+        oc_release = {
+            "release": "",
+            "preserve": False
+        }
+    release = oc_release["release"]
+    preserve = oc_release["preserve"]
     repo_path = pathlib.Path("openclaw")
     if not repo_path.exists():
         log.info("Cloning the OpenClaw repository...")
@@ -1659,7 +1728,8 @@ def clone_openclaw_repo(oc_release=None):
         git("config", "advice.detachedHead", "false", cwd=repo_path)
         git("sparse-checkout", "init", "--cone", cwd=repo_path)
         git(
-            "sparse-checkout", "set",
+            "sparse-checkout",
+            "set",
             "apps",
             "assets",
             "docs",
@@ -1678,27 +1748,32 @@ def clone_openclaw_repo(oc_release=None):
     else:
         log.info("OpenClaw repository already exists, updating...")
     # Refresh repository refs
-    if oc_release == "commit":
+    if release == "commit":
         git("fetch", "origin", cwd=repo_path)
     else:
         git("fetch", "--prune", "--tags", "--force", "origin", cwd=repo_path)
-    # Ensure clean working tree before switching refs
-    git("reset", "--hard", cwd=repo_path)
-    git("clean", "-fd", cwd=repo_path)
+    if preserve:
+        files = get_local_update_files(repo_path)
+        if files:
+            log.info("Preserving local OpenClaw repository updates", extra=log_bright)
+    else:
+        # Ensure clean working tree before switching refs
+        git("reset", "--hard", cwd=repo_path)
+        git("clean", "-fd", cwd=repo_path)
     # Checkout latest commit
-    if oc_release == "commit":
+    if release == "commit":
         commit_sha = get_latest_commit(repo_path)
         log.info(f"Checking out latest commit: {commit_sha}", extra=log_bright)
-        git("checkout", commit_sha, cwd=repo_path)
+        checkout_openclaw_ref(repo_path, commit_sha, "commit", preserve=preserve)
         return
     # Checkout tag release
     release_tag = get_latest_tag(repo_path, oc_release)
-    if oc_release is not None and oc_release != "":
+    if release is not None and release != "":
         release_desc = "release"
     else:
         release_desc = "latest release"
     log.info(f"Checking out {release_desc} tag: {release_tag}", extra=log_bright)
-    git("checkout", release_tag, cwd=repo_path)
+    checkout_openclaw_ref(repo_path, release_tag, "tag", preserve=preserve)
 
 def clone_open_webui_tools_filesystem_repo():
     """Clone the Open WebUI Tools Filesystem repository using sparse checkout if
@@ -4248,7 +4323,8 @@ def main():
         oc_env_vars = {
             "OPENCLAW_RELEASE": "",
             "OPENCLAW_ONBOARDING": "0",
-            "OPENCLAW_DOCKER_SANDBOX": "1"
+            "OPENCLAW_DOCKER_SANDBOX": "1",
+            "OPENCLAW_KEEP_LOCAL_UPDATES": "1"
         }
         for key, var in oc_env_vars.items():
             if key not in env_vars or env_vars[key] in (None, ""):
@@ -4258,8 +4334,11 @@ def main():
             "onboard": env_vars["OPENCLAW_ONBOARDING"] == "1",
             "sandbox": env_vars["OPENCLAW_DOCKER_SANDBOX"] == "1"
         }
+        oc_release = {
+            "release": env_vars["OPENCLAW_RELEASE"],
+            "preserve": env_vars["OPENCLAW_KEEP_LOCAL_UPDATES"] == "1"
+        }
         if build:
-            oc_release = env_vars["OPENCLAW_RELEASE"]
             clone_openclaw_repo(oc_release)
 
     # Setup Open WebUI Functions and Tools Filesystem repository
