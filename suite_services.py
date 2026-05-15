@@ -3577,8 +3577,8 @@ def display_service_endpoints(profile, supabase, openclaw, env_vars=None):
             ('open-webui-mcpo',     'Open WebUI MCPO', '8090/')
         ],
         'openclaw': [
-            ('openclaw-gateway',    'OpenClaw Gateway','18789/'),
-            ('openclaw-cli',        'OpenClaw CLI',    '18790/')
+            ('openclaw-gateway',    'OpenClaw Control UI', '18789/'),
+            ('openclaw-cli',        'OpenClaw CLI',        'openclaw-cli')
         ],
         'flowise': [
             ('flowise',             'Flowise',         '3001/')
@@ -3727,10 +3727,11 @@ def display_service_endpoints(profile, supabase, openclaw, env_vars=None):
     log.info(f"Projects Path: {projects_path}", extra=info_style)
     log.info("")
     log.info("Access Points:", extra=info_style)
+    cli_containers = ['opencode', 'openclaw-cli']
     for container, module_name, endpoint in module_list:
         if not endpoint:
             continue
-        emoji = '🚀' if module_name.lower() == 'opencode' else '🔗'
+        emoji = '🚀' if container in cli_containers else '🔗'
         module_prefix = LSHF.prefix(LSHF.GREEN)
         apoint_prefix = LSHF.prefix(LSHF.BLUE)
         url = endpoint_url(container, endpoint)
@@ -4321,7 +4322,7 @@ def main():
     oc_release = None
     if openclaw:
         oc_env_vars = {
-            "OPENCLAW_RELEASE": "",
+            "OPENCLAW_RELEASE": "commit",
             "OPENCLAW_ONBOARDING": "0",
             "OPENCLAW_DOCKER_SANDBOX": "1",
             "OPENCLAW_KEEP_LOCAL_UPDATES": "1"
