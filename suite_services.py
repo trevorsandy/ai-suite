@@ -2688,7 +2688,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
             log.info("Waiting for Supabase to initialize...", extra=log_bright)
             wait_with_progress(5)
         if openclaw:
-            start_openclaw(oc_store=None, cwd=None, build=False)
+            start_openclaw(build=False, oc_cwd=None)
             log.info("Waiting for OpenClaw to initialize...", extra=log_bright)
             wait_with_progress(5)
         if open_webui:
@@ -2804,7 +2804,7 @@ def start_open_webui_tools_filesystem(environment=None, build=False):
     compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     start_built_container(compose_file, environment, build)
 
-def start_openclaw(oc_store, cwd=None, build=False):
+def start_openclaw(build=False, oc_cwd=None):
     """Start the OpenClaw services."""
     if not build:
         base = ["docker", "compose", "-p", "ai-suite"]
@@ -2833,30 +2833,13 @@ def start_openclaw(oc_store, cwd=None, build=False):
     if not oc_env:
         log.error(f"OpenClaw .env file not found at {oc_env_file}")
     env = {}
-    oc_setup_vars = [
-        'OPENCLAW_IMAGE',
-        'OPENCLAW_CONFIG_DIR',
-        'OPENCLAW_WORKSPACE_DIR',
-        'OPENCLAW_AUTH_PROFILE_SECRET_DIR'
-    ]
-    for key in oc_setup_vars:
-        val = oc_env.get(key)
+    for key, val in oc_env.items():
         if val is not None:
             env[key] = val
-    if oc_store['sandbox']:
-        for key in ['OPENCLAW_SANDBOX']:
-            val = oc_env.get(key)
-            if val is not None:
-                env[key] = val
-    if not oc_store['onboard']:
-        for key in ['OPENCLAW_SKIP_ONBOARDING']:
-            val = oc_env.get(key)
-            if val is not None:
-                env[key] = val
     env_prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
     cmd_str = f"{env_prefix} {oc_script}" if env_prefix else oc_script
     oc_cmd = cmd + [cmd_str]
-    run_command(oc_cmd, cwd=cwd)
+    run_command(oc_cmd, cwd=oc_cwd)
 
 def start_ai_suite(profile=None, environment=None, build=False):
     """Start the AI-Suite services (using its compose file) for the specified
@@ -4705,7 +4688,7 @@ def main():
 
     # Start OpenClaw
     if openclaw:
-        start_openclaw(oc_store, oc_cwd, build)
+        start_openclaw(build, oc_cwd)
         # Give OpenClaw some time to initialize
         log.info("Waiting for OpenClaw to initialize...", extra=log_bright)
         wait_with_progress(5)
