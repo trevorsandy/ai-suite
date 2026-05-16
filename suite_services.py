@@ -1863,9 +1863,10 @@ def prepare_supabase_env(env_vars):
 
 def prepare_openclaw_env(environment, oc_store, cwd):
     """
-    Creates a .env file from env.example with required values set.
+    Creates a .env file from .env.example with required values set while
+    preserving comments and layout from the template.
     """
-    # OpencpClaw setup.sh changes (commits):
+    # OpenClaw setup.sh changes (commits):
     # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
     # 13/05/2026 - 3cf2961 694ca50 f91de52
     # 12/05/2026 - c3e3146
@@ -1873,7 +1874,9 @@ def prepare_openclaw_env(environment, oc_store, cwd):
     # 03/05/2026 - 02c2160
     # 29/04/2026 - 490e6d6
     # 28/04/2026 - 66f4b52
-    modified_lines: list[str] = []
+    cwd = cwd or "./openclaw"
+    example_path = os.path.join(cwd, ".env.example")
+    output_path = os.path.join(cwd, ".env")
     home_dir = pathlib.Path.home()
     config_dir = home_dir / ".openclaw"
     workspace_dir = config_dir / "workspace"
@@ -1883,261 +1886,138 @@ def prepare_openclaw_env(environment, oc_store, cwd):
         config_dir = to_wsl_path(config_dir)
         workspace_dir = to_wsl_path(workspace_dir)
         auth_profile_secret_dir = to_wsl_path(auth_profile_secret_dir)
-    gateway_port = 18789
-    bridge_port = 18790
-    gateway_bind = "lan"
-    gateway_token = secrets.token_hex(32)     # 32 bytes -> 64 hex chars
-    gateway_password = secrets.token_hex(16)  # 16 bytes -> 32 hex chars
-    openapi_key = "llamacpp-local" if llama_cpp else "ollama-local"
-    cwd = "./openclaw" if not cwd else cwd
-    example_path = os.path.join(cwd, ".env.example")
-    output_path=os.path.join(cwd, ".env")
-    openclaw_image = "ghcr.io/openclaw/openclaw:latest"
-    openclaw_image_comment = "Use a remote image instead of building locally"
-    openclaw_docker_cli = 0
-    openclaw_sandbox = 0
-    skip_onboarding = False if oc_store['onboard'] else True
-    sandbox = oc_store['sandbox']
-    if sandbox:
-        openclaw_sandbox = 1
-        openclaw_docker_cli = 1
-        openclaw_image = "openclaw:local"
-        openclaw_image_comment = "Build image locally for sandbox"
-    add_home_dir = True
-    add_config_dir = True
-    add_config_path = True
-    add_workspace_dir = True
-    add_auth_profile_secret_dir = True
-    add_state_dir = True
-    add_gateway_port = True
-    add_bridge_port = True
-    add_gateway_bind = True
-    add_gateway_token = True
-    add_openclaw_image = True
-    add_gateway_password = True
-    add_openai_api_key = True
-    add_skip_onboarding = True
-    add_sandbox = True
-    add_docker_cli = True
+    sandbox = bool(oc_store["sandbox"])
+    gateway_token = secrets.token_hex(32)
+    gateway_password = secrets.token_hex(16)
+    env_vars: dict[str, str | int | bool | None] = {
+        "OPENCLAW_HOME": str(home_dir),
+        "OPENCLAW_CONFIG_DIR": str(config_dir),
+        "OPENCLAW_CONFIG_PATH": str(config_dir),
+        "OPENCLAW_WORKSPACE_DIR": str(workspace_dir),
+        "OPENCLAW_STATE_DIR": str(workspace_dir),
+        "OPENCLAW_AUTH_PROFILE_SECRET_DIR": str(auth_profile_secret_dir),
+        "OPENCLAW_GATEWAY_PORT": 18789,
+        "OPENCLAW_BRIDGE_PORT": 18790,
+        "OPENCLAW_GATEWAY_BIND": "lan",
+        "OPENCLAW_GATEWAY_TOKEN": gateway_token,
+        "OPENCLAW_GATEWAY_PASSWORD": gateway_password,
+        "OPENCLAW_IMAGE": (
+            "openclaw:local"
+            if sandbox
+            else "ghcr.io/openclaw/openclaw:latest"
+        ),
+        "OPENCLAW_SANDBOX": int(sandbox),
+        "OPENCLAW_EXTENSIONS": "",
+        "OPENCLAW_DOCKER_APT_PACKAGES": "",
+        "OPENCLAW_INSTALL_DOCKER_CLI": int(sandbox),
+        "OPENCLAW_INSTALL_BROWSER": 0,
+        "OPENCLAW_SKIP_ONBOARDING": not oc_store["onboard"],
+        "OPENAI_API_KEY": (
+            "llamacpp-local"
+            if llama_cpp
+            else "ollama-local"
+        ),
+        "COMPOSE_IGNORE_ORPHANS": "true"
+    }
+    overwrite_if_populated = {
+        "OPENCLAW_SANDBOX",
+        "OPENCLAW_SKIP_ONBOARDING"
+    }
+    dotenv_exists = os.path.exists(output_path)
+    control_env_path = output_path if dotenv_exists else example_path
+    template_env = get_dotenv_vars(control_env_path)
+    for key, value in template_env.items():
+        if (
+            key in env_vars
+            and key not in overwrite_if_populated
+            and value not in (None, "")
+        ):
+            env_vars[key] = value
+    if template_env.get("OPENCLAW_GATEWAY_TOKEN") not in (None, ""):
+        env_vars["OPENCLAW_GATEWAY_PASSWORD"] = None
+    if template_env.get("OPENCLAW_GATEWAY_PASSWORD") not in (None, ""):
+        env_vars["OPENCLAW_GATEWAY_TOKEN"] = None
     log.info(f"Writing .env file to {output_path}...")
-    debug_style = LSHF.style(logging.WARNING)
+    def render_var(key, value):
+        return f"{key}={value}\n"
+    def should_replace(key, existing):
+        if key not in env_vars:
+            return False
+        if key in overwrite_if_populated:
+            return True
+        return existing in ("", None)
     try:
         with open(example_path, "r", newline="\n") as f:
             lines = f.readlines()
+        output: list[str] = []
+        written: set[str] = set()
         for line in lines:
-            modified_line = line.strip()
-            if modified_line.startswith("# OpenClaw .env example"):
-                modified_lines.append("# OpenClaw .env (from .env.example)\n")
-            elif modified_line.startswith("# 1) Copy this file to `.env`"):
-                modified_lines.append("# 1) Copied to `./openclaw/.env` (for local runs from repo)\n")
-            elif modified_line.startswith("OPENCLAW_HOME="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_home_dir = False
-                    modified_lines.append(f"OPENCLAW_HOME={home_dir}\n")
+            stripped = line.strip()
+            # Cosmetic replacements
+            if stripped.startswith("# OpenClaw .env example"):
+                output.append("# OpenClaw .env (from .env.example)\n")
+                continue
+            if stripped.startswith("# 1) Copy this file to `.env`"):
+                output.append(
+                    "# 1) Copied to `./openclaw/.env` (for local runs from repo)\n"
+                )
+                continue
+            # Handle active env vars
+            if "=" in stripped and not stripped.startswith("#"):
+                key, current = stripped.split("=", 1)
+                if should_replace(key, current):
+                    value = env_vars.get(key)
+                    if value is not None:
+                        output.append(render_var(key, value))
+                    written.add(key)
                 else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_CONFIG_DIR="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_config_dir = False
-                    modified_lines.append(f"OPENCLAW_CONFIG_DIR={config_dir}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_WORKSPACE_DIR=\n"):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_workspace_dir = False
-                    modified_lines.append(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_AUTH_PROFILE_SECRET_DIR=\n"):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_auth_profile_secret_dir = False
-                    modified_lines.append(f"OPENCLAW_AUTH_PROFILE_SECRET_DIR={auth_profile_secret_dir}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_GATEWAY_PORT="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_gateway_port = False
-                    modified_lines.append(f"OPENCLAW_GATEWAY_PORT={gateway_port}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_BRIDGE_PORT="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_bridge_port = False
-                    modified_lines.append(f"OPENCLAW_BRIDGE_PORT={bridge_port}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_GATEWAY_BIND="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_gateway_bind = False
-                    modified_lines.append(f"OPENCLAW_GATEWAY_BIND={gateway_bind}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_GATEWAY_TOKEN="):
-                add_gateway_password = False
-                gateway_password = None
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_gateway_token = False
-                    modified_lines.append(f"OPENCLAW_GATEWAY_TOKEN={gateway_token}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_SANDBOX="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and key_value[1]:
-                    add_sandbox = False
-                    modified_lines.append(f"OPENCLAW_SANDBOX={openclaw_sandbox}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_INSTALL_DOCKER_CLI="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and key_value[1]:
-                    add_docker_cli = False
-                    modified_lines.append(f"OPENCLAW_INSTALL_DOCKER_CLI={openclaw_docker_cli}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_IMAGE="):
-                add_openclaw_image = False
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    modified_lines.append(f"OPENCLAW_IMAGE={openclaw_image}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_GATEWAY_PASSWORD="):
-                add_gateway_token = False
-                gateway_token = None
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_gateway_password = False
-                    modified_lines.append(f"OPENCLAW_GATEWAY_PASSWORD={gateway_password}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENAI_API_KEY="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and not key_value[1]:
-                    add_openai_api_key = False
-                    modified_lines.append(f"OPENAI_API_KEY={openapi_key}\n")
-                else:
-                    modified_lines.append(line)
-            elif modified_line.startswith("OPENCLAW_SKIP_ONBOARDING="):
-                key_value = modified_line.split('=', 1)
-                if len(key_value) == 2 and key_value[1]:
-                    add_skip_onboarding = False
-                    modified_lines.append(f"OPENCLAW_SKIP_ONBOARDING={skip_onboarding}\n")
-                else:
-                    modified_lines.append(line)
-            else:
-                modified_lines.append(line)
-        default_paths = add_config_dir or add_workspace_dir
-        if add_openclaw_image or default_paths:
-            lines = modified_lines
-            modified_lines = []
-            section_header = False
-            for line in lines:
-                modified_line = line.strip()
-                if modified_line.startswith("# ----------------------------"):
-                    section_header = True
-                default_path_insert = modified_line.startswith("# Optional path overrides ")
-                auto_configure_settings = modified_line.startswith("# Model provider API keys ")
-                if section_header and add_openclaw_image:
-                    section_header = False
-                    add_openclaw_image = False
-                    modified_lines.append("# " + "-" * 77 + "\n")
-                    modified_lines.append("# OpenClaw Image\n")
-                    modified_lines.append("# " + "-" * 77 + "\n")
-                    modified_lines.append(f"# {openclaw_image_comment}.\n")
-                    modified_lines.append(f"OPENCLAW_IMAGE={openclaw_image}\n")
-                    modified_lines.append("\n")
-                    modified_lines.append(line)
-                elif default_paths and default_path_insert:
-                    modified_lines.append("# Default mount paths.\n")
-                    if add_config_dir:
-                        add_config_path = False
-                        modified_lines.append(f"OPENCLAW_CONFIG_DIR={config_dir}\n")
-                    if add_workspace_dir:
-                        add_state_dir = False
-                        modified_lines.append(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}\n")
-                    if add_workspace_dir:
-                        add_auth_profile_secret_dir = False
-                        modified_lines.append(f"OPENCLAW_AUTH_PROFILE_SECRET_DIR={auth_profile_secret_dir}\n")
-                elif add_gateway_token and modified_line.startswith("# OPENCLAW_GATEWAY_TOKEN="):
-                    add_gateway_token = False
-                    gateway_password = None
-                    modified_lines.append(f"OPENCLAW_GATEWAY_TOKEN={gateway_token}\n")
-                elif add_gateway_password and modified_line.startswith("# OPENCLAW_GATEWAY_PASSWORD="):
-                    add_gateway_password = False
-                    gateway_token = None
-                    modified_lines.append(f"OPENCLAW_GATEWAY_PASSWORD={gateway_password}\n")
-                elif add_openai_api_key and modified_line.startswith("# OPENAI_API_KEY="):
-                    add_openai_api_key = False
-                    modified_lines.append(f"OPENAI_API_KEY={openapi_key}\n")
-                elif modified_line.startswith("# OPENCLAW_STATE_DIR="):
-                    if add_state_dir:
-                        modified_lines.append(f"OPENCLAW_STATE_DIR={workspace_dir}\n")
-                    else:
+                    output.append(line)
+                    written.add(key)
+                continue
+            # Inject commented defaults
+            if stripped.startswith("# "):
+                commented = stripped[2:]
+                if "=" in commented:
+                    key, _ = commented.split("=", 1)
+                    if (
+                        key in env_vars
+                        and key not in written
+                        and env_vars[key] is not None
+                    ):
+                        output.append(render_var(key, env_vars[key]))
+                        written.add(key)
                         continue
-                elif modified_line.startswith("# OPENCLAW_CONFIG_PATH="):
-                    if add_config_path:
-                        modified_lines.append(f"OPENCLAW_CONFIG_PATH={config_dir}\n")
-                    else:
-                        continue
-                elif add_home_dir and modified_line.startswith("# OPENCLAW_HOME="):
-                    add_home_dir = False
-                    modified_lines.append(f"OPENCLAW_HOME={home_dir}\n")
-                elif section_header and auto_configure_settings:
-                    section_header = False
-                    modified_lines.append("# Auto-configure settings\n")
-                    modified_lines.append("# " + "-" * 77 + "\n")
-                    modified_lines.append("COMPOSE_IGNORE_ORPHANS=true\n")
-                    if add_sandbox and sandbox:
-                        modified_lines.append(f"OPENCLAW_SANDBOX={openclaw_sandbox}\n")
-                    if add_docker_cli and sandbox:
-                        modified_lines.append(f"OPENCLAW_INSTALL_DOCKER_CLI={openclaw_docker_cli}\n")
-                    if add_gateway_port:
-                        modified_lines.append(f"OPENCLAW_GATEWAY_PORT={gateway_port}\n")
-                    if add_bridge_port:
-                        modified_lines.append(f"OPENCLAW_BRIDGE_PORT={bridge_port}\n")
-                    if add_gateway_bind:
-                        modified_lines.append(f"OPENCLAW_GATEWAY_BIND={gateway_bind}\n")
-                    if add_skip_onboarding:
-                        modified_lines.append(f"OPENCLAW_SKIP_ONBOARDING={skip_onboarding}\n")
-                    modified_lines.append("\n")
-                    modified_lines.append("# " + "-" * 77 + "\n")
-                    modified_lines.append(line)
-                else:
-                    modified_lines.append(line)
-            modified_lines.append("\n")
-            modified_lines.append("# " + "-" * 77 + "\n")
-            modified_lines.append("# Additional settings\n")
-            modified_lines.append("# " + "-" * 77 + "\n")
+            output.append(line)
+        # Append remaining vars not represented upstream
+        remaining = {
+            k: v
+            for k, v in env_vars.items()
+            if k not in written and v is not None
+        }
+        if remaining:
+            output.extend([
+                "\n",
+                "# " + "-" * 77 + "\n",
+                "# Additional settings\n",
+                "# " + "-" * 77 + "\n"
+            ])
+            for key, value in remaining.items():
+                output.append(render_var(key, value))
         with open(output_path, "w", newline="\n") as f:
-            f.writelines(modified_lines)
+            f.writelines(output)
     except Exception as e:
         log.error(f"Exception: OpenClaw Setup: {e}")
         return False
-    if gateway_token:
-        log.debug(f"OPENCLAW_GATEWAY_TOKEN={elide(gateway_token)}", extra=debug_style)
-    if gateway_password:
-        log.debug(f"OPENCLAW_GATEWAY_PASSWORD={elide(gateway_password)}", extra=debug_style)
-    log.debug(f"OPENCLAW_SANDBOX={openclaw_sandbox}", extra=debug_style)
-    log.debug(f"OPENCLAW_IMAGE={openclaw_image}", extra=debug_style)
-    log.debug(f"OPENCLAW_HOME={home_dir}", extra=debug_style)
-    log.debug(f"OPENCLAW_CONFIG_DIR={config_dir}", extra=debug_style)
-    log.debug(f"OPENCLAW_WORKSPACE_DIR={workspace_dir}", extra=debug_style)
-    log.debug(f"OPENCLAW_AUTH_PROFILE_SECRET_DIR={auth_profile_secret_dir}", extra=debug_style)
-    log.debug(f"OPENCLAW_GATEWAY_PORT={gateway_port}", extra=debug_style)
-    log.debug(f"OPENCLAW_BRIDGE_PORT={bridge_port}", extra=debug_style)
-    log.debug(f"OPENCLAW_GATEWAY_BIND={gateway_bind}", extra=debug_style)
-    log.debug(f"OPENCLAW_INSTALL_DOCKER_CLI={openclaw_docker_cli}", extra=debug_style)
-    log.debug(f"OPENCLAW_SKIP_ONBOARDING={gateway_bind}", extra=debug_style)
-    log.debug(f"OPENAI_API_KEY={openapi_key}", extra=debug_style)
-    log.info(f".env file created at {output_path}", extra=log_bright)
+    debug_style = LSHF.style(logging.WARNING)
+    for key, value in env_vars.items():
+        if value is None:
+            continue
+        if "TOKEN" in key or "PASSWORD" in key:
+            log.debug(f"{key}={elide(str(value))}", extra=debug_style)
+        else:
+            log.debug(f"{key}={value}", extra=debug_style)
+    insert = 'updated' if dotenv_exists else 'created'
+    log.info(f".env file {insert} at {output_path}", extra=log_bright)
     if environment == "public":
         _openclaw_compose_override()
     _openclaw_compose_updates()
