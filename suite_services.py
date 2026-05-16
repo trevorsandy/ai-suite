@@ -1861,7 +1861,7 @@ def prepare_supabase_env(env_vars):
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
     write_dotenv_file(env_file, built_env_vars)
 
-def prepare_openclaw_env(cwd, oc_store):
+def prepare_openclaw_env(environment, oc_store, cwd):
     """
     Creates a .env file from env.example with required values set.
     """
@@ -2138,6 +2138,8 @@ def prepare_openclaw_env(cwd, oc_store):
     log.debug(f"OPENCLAW_SKIP_ONBOARDING={gateway_bind}", extra=debug_style)
     log.debug(f"OPENAI_API_KEY={openapi_key}", extra=debug_style)
     log.info(f".env file created at {output_path}", extra=log_bright)
+    if environment == "public":
+        _openclaw_compose_override()
     _openclaw_compose_updates()
     _openclaw_clawdoc_updates()
     _openclaw_env_vars_logging()
@@ -2355,6 +2357,54 @@ def _openclaw_compose_updates(setup_path=None):
         log.info(f"Perform compose updates in {path}", extra=log_bright)
     except Exception as e:
         log.error(f"Exception: OpenClaw compose updates: {e}")
+
+def _openclaw_compose_override(setup_path=None):
+    """
+    Enable docker compose public override for OpenClaw setup.
+    """
+    if setup_path is None:
+        setup_path = "./openclaw/scripts/docker/setup.sh"
+    path = pathlib.Path(setup_path)
+    if not path.exists():
+        raise FileNotFoundError(f"{setup_path} not found")
+    try:
+        with open(path, "r", newline="\n", encoding="utf-8") as f:
+            lines = f.readlines()
+        updated_lines: list[str] = []
+        compose_public = False
+        compose_public_add = False
+        compose_public_file = 'COMPOSE_FILES=("$COMPOSE_FILE")'
+        compose_public_found = 'AI_SUITE_DIR="$(cd "$ROOT_DIR/.." && pwd)"'
+        compose_public_start = 'EXTRA_COMPOSE_FILE="$ROOT_DIR/docker-compose.extra.yml"'
+        for line in lines:
+            stripped = line.lstrip()
+            if stripped.startswith(compose_public_found):
+                updated_lines = lines
+                compose_public = True
+                compose_public_add = True
+                break
+            if stripped.startswith(compose_public_start):
+                updated_lines.append(line)
+                updated_lines.append(f'{compose_public_found}\n')
+                updated_lines.append('PUBLIC_COMPOSE_FILE="$AI_SUITE_DIR/docker-compose.override.public.yml"\n')
+                updated_lines.append('ENVIRONMENT="${ENVIRONMENT:-public}"\n')
+                compose_public = True
+            elif stripped.startswith(compose_public_file):
+                updated_lines.append(line)
+                updated_lines.append('if [[ "$ENVIRONMENT" == "public" ]]; then\n')
+                updated_lines.append('  COMPOSE_FILES+=("$PUBLIC_COMPOSE_FILE")\nfi\n')
+                compose_public_add = True
+            else:
+                updated_lines.append(line)
+        if not compose_public:
+            log.error(f"{compose_public_start} not found in {path}")
+        if not compose_public_add:
+            log.error(f"{compose_public_file} not found in {path}")
+        with open(path, "w", newline="\n") as f:
+            f.writelines(updated_lines)
+        log.info(f"Compose public override added in {path}", extra=log_bright)
+    except Exception as e:
+        log.error(f"Exception: OpenClaw add public override: {e}")
 
 def _openclaw_clawdoc_updates(clawdoc_path=None):
     """
@@ -2688,7 +2738,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
             log.info("Waiting for Supabase to initialize...", extra=log_bright)
             wait_with_progress(5)
         if openclaw:
-            start_openclaw(build=False, oc_cwd=None)
+            start_openclaw(environment, build=False, oc_cwd=None)
             log.info("Waiting for OpenClaw to initialize...", extra=log_bright)
             wait_with_progress(5)
         if open_webui:
@@ -2737,7 +2787,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     log.info("="*60, extra=LSHF.style(logging.INFO, LSHF.BLUE))
     log.info(f"{name} services image '{operation}' completed.", extra=log_bright)
 
-def operate_openclaw(operation, oc_store, oc_cwd=None):
+def operate_openclaw(operation, environment, oc_store, oc_cwd=None):
     """Execute OpenClaw commands using ClawDoc."""
     if not operation:
         log.error("A ClawDoc command was not specified!")
@@ -2772,7 +2822,7 @@ def operate_openclaw(operation, oc_store, oc_cwd=None):
             operation = f"{operation} {response}"
     if operation == "clawdock-update":
         clone_openclaw_repo()
-        prepare_openclaw_env(oc_store, oc_cwd)
+        prepare_openclaw_env(environment, oc_store, oc_cwd)
     cmd = ["bash", "-c"]
     if system == 'Windows':
         cmd = ["wsl", "-e"] + cmd
@@ -2804,7 +2854,7 @@ def start_open_webui_tools_filesystem(environment=None, build=False):
     compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     start_built_container(compose_file, environment, build)
 
-def start_openclaw(build=False, oc_cwd=None):
+def start_openclaw(environment=None, build=False, oc_cwd=None):
     """Start the OpenClaw services."""
     if not build:
         base = ["docker", "compose", "-p", "ai-suite"]
@@ -2813,6 +2863,8 @@ def start_openclaw(build=False, oc_cwd=None):
         extra_compose = pathlib.Path("openclaw/docker-compose.extra.yml")
         if extra_compose.is_file():
             compose_args += ["-f", "openclaw/docker-compose.extra.yml"]
+        if environment == "public":
+            compose_args += ["-f", "docker-compose.override.public.yml"]
         cmd = base + compose_args + start
         run_command(cmd)
         return
@@ -4378,7 +4430,7 @@ def main():
     base_dir = pathlib.Path(__file__).parent
     if openclaw:
         oc_cwd = os.path.join(base_dir, "openclaw")
-        prepare_openclaw_env(oc_cwd, oc_store)
+        prepare_openclaw_env(args.environment, oc_store, oc_cwd)
     if ac_auto_config:
         log.info("Configure proxy, identity and access management...")
         # AC_SUDO_PASSWORD - stdin
@@ -4589,7 +4641,7 @@ def main():
             log.info(f"{name} cannot unpause as it is not paused - exiting...")
             sys.exit(0)
         elif args.operation in openclaw_operations:
-            operate_openclaw(args.operation, oc_store, oc_cwd)
+            operate_openclaw(args.operation, args.environment, oc_store, oc_cwd)
             sys.exit(0)
         elif args.operation in data_operations:
             docker_volume_data(args.operation)
@@ -4688,7 +4740,7 @@ def main():
 
     # Start OpenClaw
     if openclaw:
-        start_openclaw(build, oc_cwd)
+        start_openclaw(args.environment, build, oc_cwd)
         # Give OpenClaw some time to initialize
         log.info("Waiting for OpenClaw to initialize...", extra=log_bright)
         wait_with_progress(5)
