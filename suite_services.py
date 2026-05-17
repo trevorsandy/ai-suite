@@ -4240,7 +4240,7 @@ def main():
             "OPENCLAW_RELEASE": "commit",
             "OPENCLAW_ONBOARDING": "0",
             "OPENCLAW_DOCKER_SANDBOX": "1",
-            "OPENCLAW_KEEP_LOCAL_UPDATES": "1"
+            "OPENCLAW_KEEP_LOCAL_UPDATES": "0"
         }
         for key, var in oc_env_vars.items():
             if key not in env_vars or env_vars[key] in (None, ""):
