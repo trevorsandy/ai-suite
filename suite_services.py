@@ -1861,7 +1861,7 @@ def prepare_supabase_env(env_vars):
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
     write_dotenv_file(env_file, built_env_vars)
 
-def prepare_openclaw_env(environment, oc_store, cwd):
+def prepare_openclaw_env(environment, oc_store, oc_cwd):
     """
     Creates a .env file from .env.example with required values set while
     preserving comments and layout from the template.
@@ -1874,7 +1874,7 @@ def prepare_openclaw_env(environment, oc_store, cwd):
     # 03/05/2026 - 02c2160
     # 29/04/2026 - 490e6d6
     # 28/04/2026 - 66f4b52
-    cwd = cwd or "./openclaw"
+    cwd = oc_cwd or "./openclaw"
     example_path = os.path.join(cwd, ".env.example")
     output_path = os.path.join(cwd, ".env")
     home_dir = pathlib.Path.home()
@@ -1911,12 +1911,17 @@ def prepare_openclaw_env(environment, oc_store, cwd):
         "OPENCLAW_DOCKER_APT_PACKAGES": "",
         "OPENCLAW_INSTALL_DOCKER_CLI": int(sandbox),
         "OPENCLAW_INSTALL_BROWSER": 0,
-        "OPENCLAW_SKIP_ONBOARDING": not oc_store["onboard"],
+        "OPENCLAW_SKIP_ONBOARDING": (
+            "false"
+            if oc_store["onboard"]
+            else "true"
+        ),
         "OPENAI_API_KEY": (
             "llamacpp-local"
             if llama_cpp
             else "ollama-local"
         ),
+        "DOCKER_GID": 999,
         "COMPOSE_IGNORE_ORPHANS": "true"
     }
     overwrite_if_populated = {
@@ -1994,6 +1999,23 @@ def prepare_openclaw_env(environment, oc_store, cwd):
             for k, v in env_vars.items()
             if k not in written and v is not None
         }
+        docker_settings = {
+            key: remaining.pop(key)
+            for key in (
+                "DOCKER_GID",
+                "COMPOSE_IGNORE_ORPHANS"
+            )
+            if key in remaining
+        }
+        if docker_settings:
+            output.extend([
+                "\n",
+                "# " + "-" * 77 + "\n",
+                "# Docker settings\n",
+                "# " + "-" * 77 + "\n"
+            ])
+            for key, value in docker_settings.items():
+                output.append(render_var(key, value))
         if remaining:
             output.extend([
                 "\n",
@@ -2006,7 +2028,7 @@ def prepare_openclaw_env(environment, oc_store, cwd):
         with open(output_path, "w", newline="\n") as f:
             f.writelines(output)
     except Exception as e:
-        log.error(f"Exception: OpenClaw Setup: {e}")
+        log.error(f"Exception: OpenClaw setup env vars: {e}")
         return False
     debug_style = LSHF.style(logging.WARNING)
     for key, value in env_vars.items():
