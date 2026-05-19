@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update May, 12 2026
+# Last Update May, 19 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -1596,6 +1596,29 @@ generate_dot_env_file() {
         done
     }
 
+    ensure_projects_path() {
+        if [[ -z "${ENV[PROJECTS_PATH]-}" ]]; then
+            local projects_path="~/projects"
+            if is_wsl; then
+                local win_home
+                if [[ -n "${USERPROFILE:-}" ]]; then
+                    win_home="$USERPROFILE"
+                elif command -v cmd.exe >/dev/null 2>&1; then
+                    win_home="$(cmd.exe /c "echo %USERPROFILE%" 2>/dev/null | tr -d '\r')"
+                else
+                    win_home="${HOME}"
+                fi
+                projects_path="${win_home%[\\/]}\\projects"
+            fi
+            ENV["PROJECTS_PATH"]="$projects_path"
+            if [[ -z ${TEMPLATE[PROJECTS_PATH]+x} ]]; then
+                TEMPLATE_KEYS+=("PROJECTS_PATH")
+            fi
+            TEMPLATE["PROJECTS_PATH"]="$projects_path"
+            log_info "${BODY}  PROJECTS_PATH${MAGENTA}=${WHITE}${projects_path} ${CYAN}(auto)"
+        fi
+    }
+
     resolve_dot_env_vars() {
         log_info "${BODY}Resolve variables from $template_path"
         for var in "${TEMPLATE_KEYS[@]}"; do
@@ -1726,6 +1749,7 @@ generate_dot_env_file() {
     load_dot_env_vars "$dot_env_path"
     load_compose_vars "$compose_path"
     load_compose_vars "supabase/docker/docker-compose.yml"
+    ensure_projects_path
     resolve_dot_env_vars
     write_dot_env
     summarize_results
@@ -1909,6 +1933,7 @@ if [[ -f "$openclaw_compose_path" ]]; then
     # Add openclaw-gateway build args and set pull_policy for locally built image
     if [[ -n ${AC_OPENCLAW_SANDBOX+x} ]]; then
         log_info "${BODY}Add openclaw-gateway build args and set image pull_policy"
+        # shellcheck disable=SC2016
         openclaw_service_yaml='
         .services."openclaw-gateway" |= (
           . as $orig |

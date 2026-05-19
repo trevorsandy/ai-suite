@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 15, 2026
+Last Update May 19, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -3093,13 +3093,17 @@ def docker_compose_include(supabase, openclaw, filesystem, verbose):
 
 def normalize_path(path):
     """Normalize path for current platform"""
-    if path:
-        if path.startswith('~'):
-            path = os.path.expanduser(path)
-        elif path.strip() == '.':
-            path = os.getcwd()
-        path = os.path.abspath(path)
-    return path
+    if not path:
+        log.error("Cannot normalize path - path is empty.")
+        return path
+
+    if path.startswith('~'):
+        path = os.path.expanduser(path)
+    elif path.strip() == '.':
+        path = os.getcwd()
+    if os.name == 'nt' and path.startswith('/'):
+        return path
+    return os.path.abspath(path)
 
 def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None):
     """Load environment variables from .env file"""
