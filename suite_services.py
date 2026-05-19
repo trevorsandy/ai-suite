@@ -1868,11 +1868,9 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     """
     # OpenClaw setup.sh changes (commits):
     # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
-    # 13/05/2026 - 3cf2961 694ca50 f91de52
-    # 12/05/2026 - c3e3146
-    # 11/05/2026 - 4a00961
-    # 03/05/2026 - 02c2160
-    # 29/04/2026 - 490e6d6
+    # 19/05/2026 - ff4bf0c
+    # 18/05/2026 - 47b8e56
+    # ...
     # 28/04/2026 - 66f4b52
     cwd = oc_cwd or "./openclaw"
     example_path = os.path.join(cwd, ".env.example")
@@ -1908,7 +1906,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         ),
         "OPENCLAW_SANDBOX": int(sandbox),
         "OPENCLAW_EXTENSIONS": "",
-        "OPENCLAW_DOCKER_APT_PACKAGES": "",
+        "OPENCLAW_IMAGE_APT_PACKAGES": "",
+        "OPENCLAW_IMAGE_PIP_PACKAGES": "",
         "OPENCLAW_INSTALL_DOCKER_CLI": int(sandbox),
         "OPENCLAW_INSTALL_BROWSER": 0,
         "OPENCLAW_SKIP_ONBOARDING": (
