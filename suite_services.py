@@ -3466,7 +3466,10 @@ def display_service_endpoints(profile, supabase, openclaw, env_vars=None):
     host = "localhost" if debug else env_vars.get('AC_DOMAIN', 'undefined')
     private = str(env_vars.get('AC_LOCAL')).lower()
     protocol = 'http' if private else 'https'
+    cli_containers = ['opencode', 'openclaw-cli']
     def endpoint_url(container, endpoint):
+        if container in cli_containers:
+            return f'{endpoint}'
         return f'{protocol}://{container}.{host}:{endpoint}'
 
     # This dictionary holds a list of touples (container, Module Name, Endpoint)
@@ -3664,7 +3667,6 @@ def display_service_endpoints(profile, supabase, openclaw, env_vars=None):
     log.info(f"Projects Path: {projects_path}", extra=info_style)
     log.info("")
     log.info("Access Points:", extra=info_style)
-    cli_containers = ['opencode', 'openclaw-cli']
     for container, module_name, endpoint in module_list:
         if not endpoint:
             continue
