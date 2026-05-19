@@ -1877,11 +1877,13 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     output_path = os.path.join(cwd, ".env")
     home_dir = pathlib.Path.home()
     config_dir = home_dir / ".openclaw"
+    config_path = config_dir / "openclaw.json"
     workspace_dir = config_dir / "workspace"
     auth_profile_secret_dir = home_dir / ".openclaw-auth-profile-secrets"
     if is_wsl2():
         home_dir = to_wsl_path(home_dir)
         config_dir = to_wsl_path(config_dir)
+        config_path = to_wsl_path(config_path)
         workspace_dir = to_wsl_path(workspace_dir)
         auth_profile_secret_dir = to_wsl_path(auth_profile_secret_dir)
     sandbox = bool(oc_store["sandbox"])
@@ -1889,10 +1891,10 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     gateway_password = secrets.token_hex(16)
     env_vars: dict[str, str | int | bool | None] = {
         "OPENCLAW_HOME": str(home_dir),
+        "OPENCLAW_STATE_DIR": str(config_dir),
         "OPENCLAW_CONFIG_DIR": str(config_dir),
-        "OPENCLAW_CONFIG_PATH": str(config_dir),
+        "OPENCLAW_CONFIG_PATH": str(config_path),
         "OPENCLAW_WORKSPACE_DIR": str(workspace_dir),
-        "OPENCLAW_STATE_DIR": str(workspace_dir),
         "OPENCLAW_AUTH_PROFILE_SECRET_DIR": str(auth_profile_secret_dir),
         "OPENCLAW_GATEWAY_PORT": 18789,
         "OPENCLAW_BRIDGE_PORT": 18790,
