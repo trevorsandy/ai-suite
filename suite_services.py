@@ -2090,6 +2090,7 @@ def prepare_openclaw_config(oc_cwd, env_vars):
         service_ok = _openclaw_check_service(base_url)
         available = _openclaw_fetch_available_models(base_url) if service_ok else set()
         matches = {_openclaw_normalize(a): a for a in available}
+        base_url = f"http://host.docker.internal:{port}/v1"
         valid_models = []
         for m in models_env:
             if available:
@@ -2139,6 +2140,7 @@ def prepare_openclaw_config(oc_cwd, env_vars):
         service_ok = _openclaw_check_service(base_url)
         available = _openclaw_fetch_available_models(base_url) if service_ok else set()
         matches = {_openclaw_normalize(a): a for a in available}
+        base_url = f"http://host.docker.internal:{port}/v1"
         valid_models = []
         for m in models_env:
             if available:
