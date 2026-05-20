@@ -1926,8 +1926,10 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         "COMPOSE_IGNORE_ORPHANS": "true"
     }
     overwrite_if_populated = {
+        "OPENCLAW_IMAGE",
         "OPENCLAW_SANDBOX",
-        "OPENCLAW_SKIP_ONBOARDING"
+        "OPENCLAW_SKIP_ONBOARDING",
+        "OPENAI_API_KEY"
     }
     dotenv_exists = os.path.exists(output_path)
     control_env_path = output_path if dotenv_exists else example_path
