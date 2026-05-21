@@ -1922,7 +1922,7 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
             if llama_cpp
             else "ollama-local"
         ),
-        "DOCKER_GID": 999,
+        "DOCKER_GID": "",
         "COMPOSE_IGNORE_ORPHANS": "true"
     }
     overwrite_if_populated = {
@@ -1967,7 +1967,7 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
                 continue
             if stripped.startswith("# 1) Copy this file to `.env`"):
                 output.append(
-                    "# 1) Copied to `./openclaw/.env` (for local runs from repo)\n"
+                    "# 1) Copied to `./openclaw/.env`\n"
                 )
                 continue
             # Handle active env vars
@@ -2023,7 +2023,7 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
             output.extend([
                 "\n",
                 "# " + "-" * 77 + "\n",
-                "# Additional settings\n",
+                "# Docker setup variables\n",
                 "# " + "-" * 77 + "\n"
             ])
             for key, value in remaining.items():
@@ -2065,7 +2065,7 @@ def prepare_openclaw_config(oc_cwd, env_vars):
     oc_env_file=os.path.join(oc_cwd, ".env")
     oc_env : dict[str, str] = get_dotenv_vars(oc_env_file)
     if not oc_env:
-         log.error("No OpenClaw environment variables detected!")
+         log.error("No OpenClaw setup environment variables detected!")
          return
     if env_vars is None:
         log.error("The env_vars dictionary is empty!")
@@ -2431,11 +2431,18 @@ def _openclaw_env_vars_logging(setup_path=None):
                 inject_env_logging = True
                 updated_lines.append(line)
                 continue
+            elif stripped.startswith('echo "==> Building Docker image: $IMAGE_NAME"'):
+                updated_lines.append('  echo "==> Building Docker image: $IMAGE_NAME, please wait..."\n')
+                continue
+            elif stripped.startswith('echo "==> Pulling Docker image: $IMAGE_NAME"'):
+                updated_lines.append('  echo "==> Pulling Docker image: $IMAGE_NAME..."\n')
+                continue
+            # echo "==> Pulling Docker image: $IMAGE_NAME"
             if inject_env_logging:
                 if stripped.startswith('tmp="$(mktemp)"'):
                     updated_lines.append(line)
                     updated_lines.append("  # Injected environment variable logging.\n")
-                    updated_lines.append('  echo "==> OpenClaw environment variables:"\n')
+                    updated_lines.append('  echo "==> OpenClaw setup environment variables:"\n')
                     updated_lines.append('  echo "  - ROOT_DIR: ${ROOT_DIR:-}"\n')
                     updated_lines.append('  echo "  - COMPOSE_FILE: ${COMPOSE_FILE:-}"\n')
                     updated_lines.append('  echo "  - EXTRA_COMPOSE_FILE: ${EXTRA_COMPOSE_FILE:-}"\n')
@@ -4277,7 +4284,7 @@ def main():
             "OPENCLAW_RELEASE": "commit",
             "OPENCLAW_ONBOARDING": "0",
             "OPENCLAW_DOCKER_SANDBOX": "1",
-            "OPENCLAW_DOCKER_LOCAL_IMAGE": "0",
+            "OPENCLAW_DOCKER_LOCAL_IMAGE": "1",
             "OPENCLAW_KEEP_LOCAL_UPDATES": "0"
         }
         for key, var in oc_env_vars.items():
