@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 19, 2026
+Last Update May 21, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1903,7 +1903,7 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         "OPENCLAW_GATEWAY_PASSWORD": gateway_password,
         "OPENCLAW_IMAGE": (
             "openclaw:local"
-            if sandbox
+            if (sandbox or oc_store["local-image"])
             else "ghcr.io/openclaw/openclaw:latest"
         ),
         "OPENCLAW_SANDBOX": int(sandbox),
@@ -3771,6 +3771,10 @@ def setup_ai_suite_ac_auto_config(prompt_store, oc_store, env_vars=None):
         response = input(f"Enable OpenClaw sandbox? y/n: (y)").strip()
         oc_store['sandbox'] = False if (response and response.lower() == 'n') else sandbox
         env_vars["OPENCLAW_DOCKER_SANDBOX"] = "1" if oc_store['sandbox'] else "0"
+        local_image = oc_store['local-image']
+        response = input(f"Enable OpenClaw build local image? y/n: (y)").strip()
+        oc_store['local-image'] = False if (response and response.lower() == 'n') else local_image
+        env_vars["OPENCLAW_DOCKER_LOCAL_IMAGE"] = "1" if oc_store['local-image'] else "0"
     response = None
     public = False
 
@@ -4273,6 +4277,7 @@ def main():
             "OPENCLAW_RELEASE": "commit",
             "OPENCLAW_ONBOARDING": "0",
             "OPENCLAW_DOCKER_SANDBOX": "1",
+            "OPENCLAW_DOCKER_LOCAL_IMAGE": "0",
             "OPENCLAW_KEEP_LOCAL_UPDATES": "0"
         }
         for key, var in oc_env_vars.items():
@@ -4281,7 +4286,8 @@ def main():
                 set_dotenv_var(env_file, key, var, None)
         oc_store = {
             "onboard": env_vars["OPENCLAW_ONBOARDING"] == "1",
-            "sandbox": env_vars["OPENCLAW_DOCKER_SANDBOX"] == "1"
+            "sandbox": env_vars["OPENCLAW_DOCKER_SANDBOX"] == "1",
+            "local-image": env_vars["OPENCLAW_DOCKER_LOCAL_IMAGE"] == "1"
         }
         oc_release = {
             "release": env_vars["OPENCLAW_RELEASE"],
@@ -4388,9 +4394,9 @@ def main():
                     ac_subdomains.append(profile)
         if ac_subdomains:
             ac_env_vars.append(f'AC_SUBDOMAINS="{" ".join(ac_subdomains)}"')
-        # OpenClaw sandbox
-        if openclaw and oc_store['sandbox']:
-            ac_env_vars.append(f'AC_OPENCLAW_SANDBOX={str(True).lower()}')
+        # OpenClaw sandbox and build local image
+        if openclaw and (oc_store['sandbox'] or oc_store['local-image']):
+            ac_env_vars.append(f'AC_OPENCLAW_LOCAL_IMAGE={str(True).lower()}')
         # Miscellaneous environment variables
         ac_env_vars.append(f'AC_LLAMA={str(False).lower()}')
         ac_env_vars.append(f'AC_LLAMACPP={str(llama_cpp).lower()}')

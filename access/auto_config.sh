@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update May, 19 2026
+# Last Update May, 21 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -320,7 +320,7 @@ Environment:
   AC_LLAMACPP:false      Using LLaMA.cpp LLM (instead of Ollama)
 
   AC_USE_SUDO:false        Using Sudo so read AC_SUDO_PASSWORD
-  AC_OPENCLAW_SANDBOX:None Configure Docker OpenClaw gateway sandbox
+  AC_OPENCLAW_LOCAL_IMAGE:None Build local Docker OpenClaw image
 
   1. Automatically adds your local domain name(s) to the hosts file to loop back to your
      machine like localhost - for example: 127.0.0.1   open-webui.local.pc.
@@ -1930,9 +1930,9 @@ if [[ -f "$openclaw_compose_path" ]]; then
     '
     update_yaml_file "$openclaw_service_yaml" "$openclaw_compose_path"
 
-    # Add openclaw-gateway build args and set pull_policy for locally built image
-    if [[ -n ${AC_OPENCLAW_SANDBOX+x} ]]; then
-        log_info "${BODY}Add openclaw-gateway build args and set image pull_policy"
+    # Add openclaw-gateway set build args and pull_policy for locally built image
+    if [[ -n ${AC_OPENCLAW_LOCAL_IMAGE+x} ]]; then
+        log_info "${BODY}Add openclaw-gateway set build args and image pull_policy"
         # shellcheck disable=SC2016
         openclaw_service_yaml='
         .services."openclaw-gateway" |= (
@@ -1948,13 +1948,21 @@ if [[ -f "$openclaw_compose_path" ]]; then
               (select(tag == "!!str") | {
                 "context": .,
                 "args": {
-                  "OPENCLAW_INSTALL_DOCKER_CLI": "${OPENCLAW_INSTALL_DOCKER_CLI:-}"
+                   "OPENCLAW_INSTALL_DOCKER_CLI": "${OPENCLAW_INSTALL_DOCKER_CLI:-}",
+                   "OPENCLAW_IMAGE_APT_PACKAGES": "${OPENCLAW_IMAGE_APT_PACKAGES:-}",
+                   "OPENCLAW_IMAGE_PIP_PACKAGES": "${OPENCLAW_IMAGE_PIP_PACKAGES:-}",
+                   "OPENCLAW_EXTENSIONS": "${OPENCLAW_EXTENSIONS:-}",
+                   "OPENCLAW_INSTALL_BROWSER": "${OPENCLAW_INSTALL_BROWSER:-}"
                 }
               })
               //
               (. * {
                 "args": {
-                  "OPENCLAW_INSTALL_DOCKER_CLI": "${OPENCLAW_INSTALL_DOCKER_CLI:-}"
+                   "OPENCLAW_INSTALL_DOCKER_CLI": "${OPENCLAW_INSTALL_DOCKER_CLI:-}",
+                   "OPENCLAW_IMAGE_APT_PACKAGES": "${OPENCLAW_IMAGE_APT_PACKAGES:-}",
+                   "OPENCLAW_IMAGE_PIP_PACKAGES": "${OPENCLAW_IMAGE_PIP_PACKAGES:-}",
+                   "OPENCLAW_EXTENSIONS": "${OPENCLAW_EXTENSIONS:-}",
+                   "OPENCLAW_INSTALL_BROWSER": "${OPENCLAW_INSTALL_BROWSER:-}"
                 }
               })
             )
