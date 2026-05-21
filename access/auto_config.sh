@@ -2198,7 +2198,7 @@ write_dot_env_vars "${dot_env_vars[@]}"
 # | Ex | In | Service                 | Container - Docker internal       | Domain - Docker external |
 # | -: | -: | ----------------------: | --------------------------------: | -----------------------: |
 # | ++ |    | `n8n`                   | n8n:5678/                         | localhost:5678/          |
-# | ++ |    | `OpenClaw`              | openclaw-gateway:18789/           | localhost:18789/          |
+# | ++ |    | `OpenClaw ControlUI`    | openclaw-gateway:18789/           | localhost:18789/          |
 # | ++ |    | `Open WebUI`            | open-webui:8080/                  | localhost:8080/          |
 # | ++ | ++ | `Flowise`               | flowise:3001/                     | localhost:3001/          |
 # |    | ++ | `Open webUI MCPO`       | open-webui-mcpo:8090/             | localhost:8090/          |
@@ -2232,10 +2232,12 @@ if [[ "$proxy" == "caddy" ]]; then
     mkdir -p "$caddy_local_volume"
     # https://stackoverflow.com/a/3953712/18954618
     echo "
-import /etc/caddy/addons/cors.conf {
+{
     # Global options - works for both environments
     email {\$LETSENCRYPT_EMAIL}
 }
+
+import /etc/caddy/addons/cors.conf
 
 (configuration) {
     $([[ "$CI" == true || "$AC_LOCAL" == true ]] && echo "tls internal")
