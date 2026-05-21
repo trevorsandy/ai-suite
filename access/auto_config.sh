@@ -1608,7 +1608,14 @@ generate_dot_env_file() {
                 else
                     win_home="${HOME}"
                 fi
-                projects_path="${win_home%[\\/]}\\projects"
+                # Convert forward slashes to backslashes only for real Windows paths.
+                # Keep Linux-style HOME paths unchanged.
+                if [[ "$win_home" != "${HOME}" ]]; then
+                    win_home="${win_home//\//\\}"
+                    projects_path="${win_home%[\\/]}\\projects"
+                else
+                    projects_path="${win_home%/}/projects"
+                fi
             fi
             ENV["PROJECTS_PATH"]="$projects_path"
             if [[ -z ${TEMPLATE[PROJECTS_PATH]+x} ]]; then
@@ -1617,6 +1624,36 @@ generate_dot_env_file() {
             TEMPLATE["PROJECTS_PATH"]="$projects_path"
             log_info "${BODY}  PROJECTS_PATH${MAGENTA}=${WHITE}${projects_path} ${CYAN}(auto)"
         fi
+        local documents_folder
+        local documents_kv_cache_dir
+        local documents_chunks_dir
+        if [[ "${ENV[PROJECTS_PATH]}" == *\\* ]]; then
+            documents_folder="${ENV[PROJECTS_PATH]}\\ai_documents"
+            documents_kv_cache_dir="${documents_folder}\\kv_caches"
+            documents_chunks_dir="${documents_folder}\\temp_chunks"
+        else
+            documents_folder="${ENV[PROJECTS_PATH]}/ai_documents"
+            documents_kv_cache_dir="${documents_folder}/kv_caches"
+            documents_chunks_dir="${documents_folder}/temp_chunks"
+        fi
+        ENV["DOCUMENTS_FOLDER"]="$documents_folder"
+        ENV["DOCUMENTS_KV_CACHE_DIR"]="$documents_kv_cache_dir"
+        ENV["DOCUMENTS_CHUNKS_DIR"]="$documents_chunks_dir"
+        if [[ -z ${TEMPLATE[DOCUMENTS_FOLDER]+x} ]]; then
+            TEMPLATE_KEYS+=("DOCUMENTS_FOLDER")
+        fi
+        TEMPLATE["DOCUMENTS_FOLDER"]="$documents_folder"
+        if [[ -z ${TEMPLATE[DOCUMENTS_KV_CACHE_DIR]+x} ]]; then
+            TEMPLATE_KEYS+=("DOCUMENTS_KV_CACHE_DIR")
+        fi
+        TEMPLATE["DOCUMENTS_KV_CACHE_DIR"]="$documents_kv_cache_dir"
+        if [[ -z ${TEMPLATE[DOCUMENTS_CHUNKS_DIR]+x} ]]; then
+            TEMPLATE_KEYS+=("DOCUMENTS_CHUNKS_DIR")
+        fi
+        TEMPLATE["DOCUMENTS_CHUNKS_DIR"]="$documents_chunks_dir"
+        log_info "${BODY}  DOCUMENTS_FOLDER${MAGENTA}=${WHITE}${documents_folder} ${CYAN}(auto)"
+        log_info "${BODY}  DOCUMENTS_KV_CACHE_DIR${MAGENTA}=${WHITE}${documents_kv_cache_dir} ${CYAN}(auto)"
+        log_info "${BODY}  DOCUMENTS_CHUNKS_DIR${MAGENTA}=${WHITE}${documents_chunks_dir} ${CYAN}(auto)"
     }
 
     resolve_dot_env_vars() {
