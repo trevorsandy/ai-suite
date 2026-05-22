@@ -2218,20 +2218,23 @@ def _openclaw_compose_updates(setup_path=None):
             lines = f.readlines()
         updated_lines: list[str] = []
         # Set compose project argument
-        compose_args = False
-        compose_project = 'COMPOSE_ARGS=("-p" "ai-suite")'
+        compose_args = 'COMPOSE_ARGS=("-p" "ai-suite")'
+        compose_hint = 'COMPOSE_HINT="docker compose -p ai-suite"'
+        compose_project = False
         for line in lines:
             stripped = line.lstrip()
-            if stripped.startswith(compose_project):
+            if stripped.startswith(compose_args):
                 updated_lines = lines
-                compose_args = True
+                compose_project = True
                 break
             if stripped.startswith('COMPOSE_ARGS=()'):
-                updated_lines.append(f'{compose_project}\n')
-                compose_args = True
+                updated_lines.append(f'{compose_args}\n')
+                compose_project = True
+            elif stripped.startswith('COMPOSE_HINT="docker compose"'):
+                updated_lines.append(f'{compose_hint}\n')
             else:
                 updated_lines.append(line)
-        if compose_args:
+        if compose_project:
             log.info(f"Add compose project in {path}", extra=log_bright)
         else:
             log.error(f"COMPOSE_ARGS=() not found in {path}", extra=log_bright)
