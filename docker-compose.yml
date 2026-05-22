@@ -416,6 +416,7 @@ services:
       - caddy_config_data:/config:rw
     environment:
       - N8N_HOSTNAME=${N8N_HOSTNAME:-":8001"}
+      - OPENCLAW_HOSTNAME=${OPENCLAW_HOSTNAME:-":8010"}
       - WEBUI_HOSTNAME=${WEBUI_HOSTNAME:-":8002"}
       - FLOWISE_HOSTNAME=${FLOWISE_HOSTNAME:-":8003"}
       - OLLAMA_HOSTNAME=${OLLAMA_HOSTNAME:-":8004"}

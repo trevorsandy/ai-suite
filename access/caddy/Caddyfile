@@ -1,8 +1,9 @@
-
-import /etc/caddy/addons/cors.conf {
+{
     # Global options - works for both environments
     email {$LETSENCRYPT_EMAIL}
 }
+
+import /etc/caddy/addons/cors.conf
 
 (configuration) {
     tls internal
@@ -146,6 +147,3 @@ import /etc/caddy/addons/cors.conf {
         header_up Connection "close"
     }
 }
-
-
-
