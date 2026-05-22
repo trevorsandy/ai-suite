@@ -3347,23 +3347,6 @@ def configure_n8n_database_settings(supabase):
     except Exception as e:
         log.error(f"Exception: Update n8n database settings in {compose_file}: {e}")
 
-def docker_container_is_running(container):
-    """:return: True if container name found in output check, else False."""
-    cmd = " ".join(['docker', 'ps', '--format', '"{{.Names}}"', '--filter',
-                   f'name=^/{container}$'])
-    try:
-        bytes = subprocess.check_output(cmd, shell=True)
-        running = bytes.find(container.encode()) != -1
-        if log.root.level == logging.DEBUG:
-            color = LSHF.WHITE if running else LSHF.RED
-            style = LSHF.style(logging.INFO, color)
-            insert = ('is', 'running.') if running else ('not', 'running!')
-            raw_msg = " ".join([container, insert[0], insert[1]])
-            log.debug("Container {}".format(raw_msg), extra=style)
-        return running
-    except subprocess.CalledProcessError:
-        return False
-
 def docker_object_exists(object, name):
     """Confirm Docker volume or container exist"""
     if object not in ['container', 'volume']:
