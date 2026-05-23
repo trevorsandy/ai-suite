@@ -1037,14 +1037,15 @@ python suite_services.py --profile n8n opencode cpp-cpu --operation update --log
 
 #### Auto-configuration, HTTPS Reverse Proxy and Access Management
 
-By default, **AI-Suite** will automatically configure **Caddy** (Default) or
+By default, _auto-configure_ will generate secrets, the .env file and  Docker
+compose file updates for **AI-Suite modules**, including **Supabase** and **OpenClaw**.
+Additionally,  **AI-Suite** will automatically configure **Caddy** (Default) or
 **Nginx** HTTPS reverse proxy and **Authelia** 2FA (Two Factor Authentication)
-IAM (Identity and Access Management) on install or update.
-Additionally, auto_configure will generate secrets, the .env file and  Docker compose
-file updates for **AI-Suite modules**, including **Supabase** and **OpenClaw**.
+IAM (Identity and Access Management) on install or update. There is no `--profile`
+argument to enable automatic configuration as is the default behaviour.
 
-You can disable this behaviour using
-the `no-auto-config` or `manual-configuration` profile arguments.
+However, you can disable automatic configuration using `--profile` argument
+`no-auto-config` or `manual-configuration`.
 
 `suite_services.py` `--profile` No auto-configure or manual configuration argument:
 

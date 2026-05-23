@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 21, 2026
+Last Update May 23, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -31,6 +31,12 @@ Multiple profile arguments (functional modules) are supported.
 
 The --environment command allows the installation to be defined as private (default)
 or public. A public install restricts the communication ports exposed to the network.
+
+By default, _auto-configure_ will generate secrets, the .env file and  Docker
+compose file updates for AI-Suite modules, including Supabase and OpenClaw.
+Additionally,  AI-Suite will automatically configure Caddy (Default) or Nginx
+HTTPS reverse proxy and Authelia 2FA (Two Factor Authentication) IAM (Identity and
+Access Management) on install or update.
 
 For full installation and operation details, see the AI-Suite repository README.md
 
