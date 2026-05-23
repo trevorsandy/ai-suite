@@ -1598,6 +1598,7 @@ generate_dot_env_file() {
 
     ensure_projects_path() {
         if [[ -z "${ENV[PROJECTS_PATH]-}" ]]; then
+            # shellcheck disable=SC2088
             local projects_path="~/projects"
             if is_wsl; then
                 local win_home
@@ -2280,12 +2281,12 @@ import /etc/caddy/addons/cors.conf
 
 (configuration) {
     $([[ "$CI" == true || "$AC_LOCAL" == true ]] && cat <<'TLS_INTERNAL'
-    tls internal
+tls internal
 TLS_INTERNAL
     )
 
     $([[ "$with_authelia" == true ]] && cat <<'AUTHELIA_HANDLE'
-    @authelia path /authenticate /authenticate/*
+@authelia path /authenticate /authenticate/*
     handle @authelia {
         reverse_proxy authelia:9091
     }
@@ -2302,7 +2303,7 @@ AUTHELIA_HANDLE
 BASIC_AUTH
     else
         cat <<'FORWARD_AUTH'
-        forward_auth authelia:9091 {
+    forward_auth authelia:9091 {
             uri /api/authz/forward-auth
             copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
         }
@@ -2448,7 +2449,6 @@ SEARXNG_DISABLED
         header_up Connection "close"
     }
 }
-
     $(
     if [[ $AC_LLAMA == true ]]; then
         if [[ $AC_LLAMACPP == false ]]; then
@@ -2610,14 +2610,14 @@ SEARXNG_LOCATION
     $(if [[ $AC_LLAMA == true ]]; then
         if [[ $AC_LLAMACPP == false ]]; then
             cat <<'OLLAMA_LOCATION'
-    # Ollama
+# Ollama
     location / {
         proxy_pass http://ollama_upstream;
     }
 OLLAMA_LOCATION
         else
             cat <<'LLAMACPP_LOCATION'
-    # LLaMA.cpp
+# LLaMA.cpp
     location /llamacpp {
         proxy_pass http://llamacpp_upstream;
     }
@@ -2689,12 +2689,12 @@ EOF_AUTHELIA
     $(
     if [[ $with_authelia == false ]]; then
         cat <<EOF_BASIC
-        auth_basic "Admin";
+    auth_basic "Admin";
         auth_basic_user_file $nginx_pass_file;
 EOF_BASIC
     else
         cat <<EOF_AUTH
-        include $nginx_addons_path/proxy.conf;
+    include $nginx_addons_path/proxy.conf;
         include $nginx_addons_path/authelia-authrequest.conf;
 EOF_AUTH
     fi
