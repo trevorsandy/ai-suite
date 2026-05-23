@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update May, 21 2026
+# Last Update May, 23 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -2266,9 +2266,11 @@ if [[ "$proxy" == "caddy" ]]; then
     log_info "${HEADER}Write Caddyfile"
     #-------------------------------------------
     log_info "${BODY}caddyfile_local: $caddyfile_local"
+
     mkdir -p "$caddy_local_volume"
+
     # https://stackoverflow.com/a/3953712/18954618
-    echo "
+    cat >"$caddyfile_local" <<EOF
 {
     # Global options - works for both environments
     email {\$LETSENCRYPT_EMAIL}
@@ -2277,20 +2279,36 @@ if [[ "$proxy" == "caddy" ]]; then
 import /etc/caddy/addons/cors.conf
 
 (configuration) {
-    $([[ "$CI" == true || "$AC_LOCAL" == true ]] && echo "tls internal")
+    $([[ "$CI" == true || "$AC_LOCAL" == true ]] && cat <<'TLS_INTERNAL'
+    tls internal
+TLS_INTERNAL
+    )
 
-    $([[ "$with_authelia" == true ]] && echo "@authelia path /authenticate /authenticate/*
+    $([[ "$with_authelia" == true ]] && cat <<'AUTHELIA_HANDLE'
+    @authelia path /authenticate /authenticate/*
     handle @authelia {
         reverse_proxy authelia:9091
-    }")
+    }
+AUTHELIA_HANDLE
+    )
 
     handle {
-        $([[ "$with_authelia" == false ]] && echo "basic_auth {
-            {\$PROXY_AUTH_USERNAME} {\$PROXY_AUTH_PASSWORD}
-        }" || echo "forward_auth authelia:9091 {
+    $(
+    if [[ "$with_authelia" == false ]]; then
+        cat <<'BASIC_AUTH'
+        basic_auth {
+            {$PROXY_AUTH_USERNAME} {$PROXY_AUTH_PASSWORD}
+        }
+BASIC_AUTH
+    else
+        cat <<'FORWARD_AUTH'
+        forward_auth authelia:9091 {
             uri /api/authz/forward-auth
             copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
-        }")
+        }
+FORWARD_AUTH
+    fi
+    )
     }
 }
 
@@ -2362,9 +2380,17 @@ import /etc/caddy/addons/cors.conf
 }
 
 # SearXNG
-$([[ $AC_SEARXNG == true ]] && echo "\
-{\$SEARXNG_HOSTNAME} {" || echo "\
-{DISABLED_SEARXNG} {")
+    $(
+    if [[ $AC_SEARXNG == true ]]; then
+        cat <<'SEARXNG_ENABLED'
+{\$SEARXNG_HOSTNAME} {
+SEARXNG_ENABLED
+    else
+        cat <<'SEARXNG_DISABLED'
+{DISABLED_SEARXNG} {
+SEARXNG_DISABLED
+    fi
+    )
     import configuration
     encode zstd gzip
 
@@ -2386,32 +2412,32 @@ $([[ $AC_SEARXNG == true ]] && echo "\
 
     header {
         # CSP (https://content-security-policy.com)
-        Content-Security-Policy \"upgrade-insecure-requests; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self' https://github.com/searxng/searxng/issues/new; font-src 'self'; frame-ancestors 'self'; base-uri 'self'; connect-src 'self' https://overpass-api.de; img-src * data:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.dailymotion.com https://www.deezer.com https://www.mixcloud.com https://w.soundcloud.com https://embed.spotify.com;\"
+        Content-Security-Policy "upgrade-insecure-requests; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self' https://github.com/searxng/searxng/issues/new; font-src 'self'; frame-ancestors 'self'; base-uri 'self'; connect-src 'self' https://overpass-api.de; img-src * data:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.dailymotion.com https://www.deezer.com https://www.mixcloud.com https://w.soundcloud.com https://embed.spotify.com;"
         # Disable some browser features
-        Permissions-Policy \"accelerometer=(),camera=(),geolocation=(),gyroscope=(),magnetometer=(),microphone=(),payment=(),usb=()\"
+        Permissions-Policy "accelerometer=(),camera=(),geolocation=(),gyroscope=(),magnetometer=(),microphone=(),payment=(),usb=()"
         # Set referrer policy
-        Referrer-Policy \"no-referrer\"
+        Referrer-Policy "no-referrer"
         # Force clients to use HTTPS
-        Strict-Transport-Security \"max-age=31536000\"
+        Strict-Transport-Security "max-age=31536000"
         # Prevent MIME type sniffing from the declared Content-Type
-        X-Content-Type-Options \"nosniff\"
+        X-Content-Type-Options "nosniff"
         # X-Robots-Tag (comment to allow site indexing)
-        X-Robots-Tag \"noindex, noarchive, nofollow\"
-        # Remove \"Server\" header
+        X-Robots-Tag "noindex, noarchive, nofollow"
+        # Remove "Server" header
         -Server
     }
 
     header @api {
-        Access-Control-Allow-Methods \"GET, OPTIONS\"
-        Access-Control-Allow-Origin \"*\"
+        Access-Control-Allow-Methods "GET, OPTIONS"
+        Access-Control-Allow-Origin "*"
     }
 
     route {
         # Cache policy
-        header Cache-Control \"max-age=0, no-store\"
-        header @search Cache-Control \"max-age=5, private\"
-        header @imageproxy Cache-Control \"max-age=604800, public\"
-        header @static Cache-Control \"max-age=31536000, public, immutable\"
+        header Cache-Control "max-age=0, no-store"
+        header @search Cache-Control "max-age=5, private"
+        header @imageproxy Cache-Control "max-age=604800, public"
+        header @static Cache-Control "max-age=31536000, public, immutable"
     }
 
     # SearXNG (uWSGI)
@@ -2419,22 +2445,32 @@ $([[ $AC_SEARXNG == true ]] && echo "\
         header_up X-Forwarded-Port {http.request.port}
         header_up X-Real-IP {http.request.remote.host}
         # https://github.com/searx/searx-docker/issues/24
-        header_up Connection \"close\"
+        header_up Connection "close"
     }
 }
 
-$(if [[ $AC_LLAMA == true ]]; then \
-  [[ $AC_LLAMACPP == false ]] && echo "\
+    $(
+    if [[ $AC_LLAMA == true ]]; then
+        if [[ $AC_LLAMACPP == false ]]; then
+            cat <<'OLLAMA_BLOCK'
 # Ollama API
 {\$OLLAMA_HOSTNAME} {
     reverse_proxy ollama:11434
-}" || echo "\
+}
+OLLAMA_BLOCK
+        else
+            cat <<'LLAMACPP_BLOCK'
 # LLaMA.cpp API
 {\$LLAMACPP_HOSTNAME} {
     import configuration
     reverse_proxy llamacpp:8040
-}"; fi)
-" >"$caddyfile_local"
+}
+LLAMACPP_BLOCK
+        fi
+    fi
+    )
+EOF
+
 # WRITE LOCAL nginx.template
 else
     log_info "${HEADER}Write Nginx Template"
@@ -2446,10 +2482,11 @@ else
     # mounted local ./nginx/addons to this path inside container
     nginx_addons_path="/etc/nginx/user_conf.d/addons"
 
-    # cert path inside container https://github.com/JonasAlfredsson/docker-nginx-certbot/blob/master/docs/good_to_know.md#how-the-script-add-domain-names-to-certificate-requests
+    # cert path inside container
+    # https://github.com/JonasAlfredsson/docker-nginx-certbot/blob/master/docs/good_to_know.md#how-the-script-add-domain-names-to-certificate-requests
     cert_path="/etc/letsencrypt/live/automated-self-host"
 
-    echo "
+    cat >"$nginx_local_template_file" <<EOF
 upstream n8n_upstream {
     server n8n:5678;
     keepalive 2;
@@ -2490,22 +2527,31 @@ upstream langfuse_upstream {
     keepalive 2;
 }
 
-$([[ $AC_SEARXNG == true ]] && echo "\
+    $([[ $AC_SEARXNG == true ]] && cat <<'SEARXNG_UPSTREAM'
 upstream searxng_upstream {
     server searxng:8081;
     keepalive 2;
-}")
+}
+SEARXNG_UPSTREAM
+    )
 
-$(if [[ $AC_LLAMA == true ]]; then \
-  [[ $AC_LLAMACPP == false ]] && echo "\
+    $(if [[ $AC_LLAMA == true ]]; then
+        if [[ $AC_LLAMACPP == false ]]; then
+            cat <<'OLLAMA_UPSTREAM'
 upstream ollama_upstream {
     server ollama:11434;
     keepalive 2;
-}" || echo "\
+}
+OLLAMA_UPSTREAM
+        else
+            cat <<'LLAMACPP_UPSTREAM'
 upstream llamacpp_upstream {
     server llamacpp:8040;
     keepalive 2;
-}"; fi)
+}
+LLAMACPP_UPSTREAM
+        fi
+    fi)
 
 server {
     listen 443 ssl;
@@ -2525,56 +2571,65 @@ server {
 
     # n8n
     location /n8n {
-        proxy_pass http://n8n_upstream
+        proxy_pass http://n8n_upstream;
     }
 
     # OpenClaw
     location /openclaw {
-        proxy_pass http://openclaw_upstream
+        proxy_pass http://openclaw_upstream;
     }
 
     # Open-webui
     location /open-webui {
-        proxy_pass http://open-webui_upstream
+        proxy_pass http://open-webui_upstream;
     }
 
     # Flowise
     location /flowise {
-        proxy_pass http://flowise_upstream
+        proxy_pass http://flowise_upstream;
     }
 
     # Neo4j
     location /neo4j {
-        proxy_pass http://neo4j_upstream
+        proxy_pass http://neo4j_upstream;
     }
 
     # Langfuse
     location /langfuse {
-        proxy_pass http://langfuse_upstream
+        proxy_pass http://langfuse_upstream;
     }
 
-    $([[ $AC_SEARXNG == true ]] && echo "\
+    $([[ $AC_SEARXNG == true ]] && cat <<'SEARXNG_LOCATION'
     # SearXNG
     location /searxng {
-        proxy_pass http://searxng_upstream
-    }")
+        proxy_pass http://searxng_upstream;
+    }
+SEARXNG_LOCATION
+    )
 
-    $(if [[ $AC_LLAMA == true ]]; then \
-      [[ $AC_LLAMACPP == false ]] && echo "\
+    $(if [[ $AC_LLAMA == true ]]; then
+        if [[ $AC_LLAMACPP == false ]]; then
+            cat <<'OLLAMA_LOCATION'
     # Ollama
     location / {
-        proxy_pass http://ollama_upstream
-    }" || echo "\
+        proxy_pass http://ollama_upstream;
+    }
+OLLAMA_LOCATION
+        else
+            cat <<'LLAMACPP_LOCATION'
     # LLaMA.cpp
     location /llamacpp {
-        proxy_pass http://llamacpp_upstream
-    }"; fi)
+        proxy_pass http://llamacpp_upstream;
+    }
+LLAMACPP_LOCATION
+        fi
+    fi)
 
     # Supabase
     location /supabase/realtime {
         proxy_pass http://kong_upstream;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \"upgrade\";
+        proxy_set_header Connection "upgrade";
         proxy_read_timeout 3600s;
     }
 
@@ -2587,7 +2642,7 @@ server {
     }
 
     location /supabase/logflare {
-        proxy_pass http://logflare_upstream
+        proxy_pass http://logflare_upstream;
     }
 
     location /supabase/goapi/ {
@@ -2618,24 +2673,32 @@ server {
         proxy_pass http://studio:3000;
     }
 
-    $([[ $with_authelia == true ]] && echo "
+    $([[ $with_authelia == true ]] && cat <<EOF_AUTHELIA
+
     include $nginx_addons_path/authelia-location.conf;
 
     location /authenticate {
         include $nginx_addons_path/common_proxy_headers.conf;
         include $nginx_addons_path/proxy.conf;
         proxy_pass http://authelia:9091;
-    }")
+    }
+EOF_AUTHELIA
+    )
 
     location / {
-        $(
-        [[ $with_authelia == false ]] && echo "auth_basic \"Admin\";
+    $(
+    if [[ $with_authelia == false ]]; then
+        cat <<EOF_BASIC
+        auth_basic "Admin";
         auth_basic_user_file $nginx_pass_file;
-        " || echo "
+EOF_BASIC
+    else
+        cat <<EOF_AUTH
         include $nginx_addons_path/proxy.conf;
         include $nginx_addons_path/authelia-authrequest.conf;
-        "
-        )
+EOF_AUTH
+    fi
+    )
     }
 }
 
@@ -2645,7 +2708,7 @@ server {
     server_name \${NGINX_SERVER_NAME};
     return 301 https://\$server_name\$request_uri;
 }
-" >"$nginx_local_template_file"
+EOF
 fi
 
 if [[ "$using_sudo_user" == true ]]; then
