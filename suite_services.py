@@ -1728,29 +1728,9 @@ def clone_openclaw_repo(oc_release=None):
         git(
             "clone",
             "--filter=blob:none",
-            "--no-checkout",
             "https://github.com/openclaw/openclaw.git"
         )
         git("config", "advice.detachedHead", "false", cwd=repo_path)
-        git("sparse-checkout", "init", "--cone", cwd=repo_path)
-        git(
-            "sparse-checkout",
-            "set",
-            "apps",
-            "assets",
-            "docs",
-            "extensions",
-            "packages",
-            "patches",
-            "qa",
-            "scripts",
-            "security",
-            "skills",
-            "src",
-            "ui",
-            "vendor",
-            cwd=repo_path
-        )
     else:
         log.info("OpenClaw repository already exists, updating...")
     # Refresh repository refs
