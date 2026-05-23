@@ -2324,7 +2324,7 @@ def _openclaw_compose_override(setup_path=None):
 
 def _openclaw_clawdoc_updates(clawdoc_path=None):
     """
-    Set clawdock helpers home directory, OpenClaw path and comment update pull.
+    Set ClawDock helpers home directory, OpenClaw path and comment update pull.
     """
     if clawdoc_path is None:
         clawdoc_path = "./openclaw/scripts/clawdock/clawdock-helpers.sh"
@@ -2340,9 +2340,25 @@ def _openclaw_clawdoc_updates(clawdoc_path=None):
     clawdock_pull = 'git -C "${CLAWDOCK_DIR}" pull'
     clawdock_pull_echo = 'echo "📥 Pulling latest source..."'
     try:
+        # Resolve paths using native pathlib semantics
         home_dir = pathlib.Path.home()
+        openclaw_dir = pathlib.Path("./openclaw").resolve()
+        # Set paths to string
         if is_wsl2():
-            home_dir = pathlib.Path(to_wsl_path(home_dir))
+            home_dir_str = to_wsl_path(home_dir)
+            openclaw_dir_str = to_wsl_path(openclaw_dir)
+        else:
+            home_dir_str = str(home_dir)
+            openclaw_dir_str = str(openclaw_dir)
+        relative_openclaw = None
+        try:
+            relative_openclaw = openclaw_dir.relative_to(home_dir)
+        except ValueError:
+            pass
+        # Prefer CLAWDOCK_HOME-relative path when possible
+        if relative_openclaw is not None:
+            openclaw_dir_str = (f"${{CLAWDOCK_HOME}}/{relative_openclaw.as_posix()}")
+        # Read clawdock-helpers.sh
         with open(path, "r", newline="\n", encoding="utf-8") as f:
             lines = f.readlines()
         updated_lines: list[str] = []
@@ -2363,7 +2379,7 @@ def _openclaw_clawdoc_updates(clawdoc_path=None):
             elif stripped.startswith(clawdock_config):
                 updated_lines.append("\n")
                 updated_lines.append(f"{clawdock_home_comment}\n")
-                updated_lines.append(f'CLAWDOCK_HOME="{home_dir}"\n')
+                updated_lines.append(f'CLAWDOCK_HOME="{home_dir_str}"\n')
                 updated_lines.append(line)
                 clawdock_home = True
             # Comment pull section
@@ -2381,39 +2397,38 @@ def _openclaw_clawdoc_updates(clawdoc_path=None):
             # Add OpenClaw path
             elif stripped.startswith(clawdock_paths):
                 updated_lines.append(line)
-                openclaw_dir = pathlib.Path("./openclaw").resolve()
-                if is_wsl2():
-                    openclaw_dir = pathlib.Path(to_wsl_path(openclaw_dir))
-                openclaw_dir_str = str(openclaw_dir)
-                if openclaw_dir.is_relative_to(home_dir):
-                    relative = openclaw_dir.relative_to(home_dir)
-                    openclaw_dir_str = (f"${{CLAWDOCK_HOME}}/{relative.as_posix()}")
                 updated_lines.append(f'  "{openclaw_dir_str}"\n')
             else:
                 updated_lines.append(line)
             i += 1
-        if clawdock_home:
-            log.info(f"Add clawdock home in {path}", extra=log_bright)
-        else:
-            log.error(f"{clawdock_config} not found in {path}")
-        if clawdock_update:
-            log.info(f"Comment clawdock latest release pull in {path}", extra=log_bright)
-        else:
-            log.error(f"{clawdock_pull}... not found in {path}")
         with open(path, "w", newline="\n", encoding="utf-8") as f:
             f.writelines(updated_lines)
-        # Update clawdock home directory
+        # Replace home with clawdock_home
+        clawdock_replace_home = False
         platform_home_dir = "${HOME}"
         clawdock_home_dir = "${CLAWDOCK_HOME}"
         with open(path, "r", newline="\n", encoding="utf-8") as f:
             content = f.read()
         if platform_home_dir in content:
-            updated_content = content.replace( platform_home_dir, clawdock_home_dir)
+            updated_content = content.replace(platform_home_dir, clawdock_home_dir)
             with open(path, "w", newline="\n", encoding="utf-8") as f:
                 f.write(updated_content)
-        log.info(f"Perform clawdock updates in {path}", extra=log_bright)
+            clawdock_replace_home = True
+        # Logging
+        if clawdock_home:
+            log.info(f"Add ClawDock home in {path}", extra=log_bright)
+        else:
+            log.error(f"{clawdock_config} not found in {path}")
+        if clawdock_update:
+            log.info(f"Comment ClawDock latest release pull in {path}", extra=log_bright)
+        else:
+            log.error(f"{clawdock_pull}... not found in {path}")
+        if clawdock_replace_home:
+            log.info(f"Replace ${{HOME}} with ${{CLAWDOCK_HOME}} in {path}", extra=log_bright)
+        else:
+            log.error(f"{clawdock_home_dir} not found in {path}")
     except Exception as e:
-        log.error(f"Exception: OpenClaw clawdock updates: {e}")
+        log.error(f"Exception: OpenClaw ClawDock updates: {e}")
 
 def _openclaw_env_vars_logging(setup_path=None):
     """
