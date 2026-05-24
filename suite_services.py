@@ -2026,8 +2026,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         if "TOKEN" in key or "PASSWORD" in key:
             value = f"stored in {output_path} (not printed)"
         log.debug(f"{key}={value}", extra=debug_style)
-    insert = 'updated' if dotenv_exists else 'created'
-    log.info(f".env file {insert} at {output_path}", extra=log_bright)
+    insert = 'Update' if dotenv_exists else 'Create'
+    log.info(f"{insert} dotenv file at {output_path}", extra=log_bright)
     if environment == "public":
         _openclaw_compose_override()
     _openclaw_compose_updates()
@@ -2197,7 +2197,7 @@ def prepare_openclaw_config(oc_cwd, env_vars):
 
 def _openclaw_compose_updates(setup_path=None):
     """
-    Set compose project to ai-suite and update installed Docker CLI check.
+    Set compose project to ai-suite and update installed openclaw-gateway check.
     """
     if setup_path is None:
         setup_path = "./openclaw/scripts/docker/setup.sh"
@@ -2229,30 +2229,30 @@ def _openclaw_compose_updates(setup_path=None):
             log.info(f"Add compose project in {path}", extra=log_bright)
         else:
             log.error(f"COMPOSE_ARGS=() not found in {path}", extra=log_bright)
-        # Update installed Docker CLI check
+        # Update installed openclaw-gateway check
         lines = updated_lines
         updated_lines = []
-        check_cli = False
-        cli_check = 'if ! docker compose "${COMPOSE_ARGS[@]}" run --rm --entrypoint docker openclaw-gateway --version'
-        cli_check_update = 'elif ! docker compose "${COMPOSE_ARGS[@]}" exec -T openclaw-gateway docker --version'
+        gateway_check = False
+        gateway_version = 'if ! docker compose "${COMPOSE_ARGS[@]}" run --rm --entrypoint docker openclaw-gateway --version'
+        gateway_update = 'elif ! docker compose "${COMPOSE_ARGS[@]}" exec -T openclaw-gateway docker --version'
         for line in lines:
             stripped = line.lstrip()
-            if stripped.startswith(cli_check_update):
+            if stripped.startswith(gateway_update):
                 updated_lines = lines
-                check_cli = True
+                gateway_check = True
                 break
-            if stripped.startswith(cli_check):
-                check_cli = True
+            if stripped.startswith(gateway_version):
+                gateway_check = True
                 updated_lines.append('  if ! docker compose "${COMPOSE_ARGS[@]}" ps --status running | grep -q openclaw-gateway; then\n')
                 updated_lines.append('    echo "WARNING: openclaw-gateway is not running. Skipping sandbox setup." >&2\n')
                 updated_lines.append('    SANDBOX_ENABLED=""\n')
-                updated_lines.append(f'  {cli_check_update} >/dev/null 2>&1; then\n')
+                updated_lines.append(f'  {gateway_update} >/dev/null 2>&1; then\n')
             else:
                 updated_lines.append(line)
-        if check_cli:
-            log.info(f"Update Docker CLI ckeck in {path}", extra=log_bright)
+        if gateway_check:
+            log.info(f"Update openclaw-gateway ckeck in {path}", extra=log_bright)
         else:
-            log.error(f"Docker CLI ckeck not found in {path}")
+            log.error(f"Check openclaw-gateway not found in {path}")
         with open(path, "w", newline="\n", encoding="utf-8") as f:
             f.writelines(updated_lines)
         log.info(f"Perform compose updates in {path}", extra=log_bright)
