@@ -2031,7 +2031,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     if environment == "public":
         _openclaw_compose_override()
     _openclaw_compose_updates()
-    _openclaw_env_vars_logging()
+    if log_level == logging.DEBUG:
+        _openclaw_env_vars_logging()
     _openclaw_clawdoc_updates()
     return True
 
