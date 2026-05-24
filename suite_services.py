@@ -2559,13 +2559,25 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
                     build:
                       context: .
                     ports:
-                      - 8091:8091
+                      - 8091:8000
                     extra_hosts:
                       - host.docker.internal:host-gateway
                     volumes:
                       - ${PROJECTS_PATH:-../shared}:/nonexistent/tmp
                     environment:
                       - PROJECTS_PATH
+                    healthcheck:
+                      test:
+                        [
+                          "CMD",
+                          "python",
+                          "-c",
+                          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs')"
+                        ]
+                      interval: 10s
+                      timeout: 5s
+                      retries: 5
+                      start_period: 10s
                 """))
     except FileNotFoundError:
         log.error(f"Exception: File '{docker_compose_path}' not found.")
@@ -2761,7 +2773,7 @@ def start_built_container(compose_file=None, environment=None, build=False):
         cmd.extend(["-f", "docker-compose.override.public.yml"])
     cmd.extend(["up", "-d"])
     if build:
-        cmd.extend(["--build"])
+        cmd.extend(["--build", "--quiet-build", "--wait"])
     run_command(cmd)
 
 def start_supabase(environment=None, build=False):
