@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 23, 2026
+Last Update May 24, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1863,15 +1863,15 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     output_path = os.path.join(cwd, ".env")
     home_dir = pathlib.Path.home()
     config_dir = home_dir / ".openclaw"
-    config_path = config_dir / "openclaw.json"
-    workspace_dir = config_dir / "workspace"
-    auth_profile_secret_dir = home_dir / ".openclaw-auth-profile-secrets"
+    config_file = config_dir / "openclaw.json"
+    config_workspace_dir = config_dir / "workspace"
+    config_secrets_dir = home_dir / ".openclaw-auth-profile-secrets"
     if is_wsl2():
         home_dir = to_wsl_path(home_dir)
         config_dir = to_wsl_path(config_dir)
-        config_path = to_wsl_path(config_path)
-        workspace_dir = to_wsl_path(workspace_dir)
-        auth_profile_secret_dir = to_wsl_path(auth_profile_secret_dir)
+        config_file = to_wsl_path(config_file)
+        config_workspace_dir = to_wsl_path(config_workspace_dir)
+        config_secrets_dir = to_wsl_path(config_secrets_dir)
     sandbox = bool(oc_store["sandbox"])
     gateway_token = secrets.token_hex(32)
     gateway_password = secrets.token_hex(16)
@@ -1879,9 +1879,9 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         "OPENCLAW_HOME": str(home_dir),
         "OPENCLAW_STATE_DIR": str(config_dir),
         "OPENCLAW_CONFIG_DIR": str(config_dir),
-        "OPENCLAW_CONFIG_PATH": str(config_path),
-        "OPENCLAW_WORKSPACE_DIR": str(workspace_dir),
-        "OPENCLAW_AUTH_PROFILE_SECRET_DIR": str(auth_profile_secret_dir),
+        "OPENCLAW_CONFIG_PATH": str(config_file),
+        "OPENCLAW_WORKSPACE_DIR": str(config_workspace_dir),
+        "OPENCLAW_AUTH_PROFILE_SECRET_DIR": str(config_secrets_dir),
         "OPENCLAW_GATEWAY_PORT": 18789,
         "OPENCLAW_BRIDGE_PORT": 18790,
         "OPENCLAW_GATEWAY_BIND": "lan",
@@ -2038,13 +2038,15 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
 
 def prepare_openclaw_config(oc_cwd, env_vars):
     log.info("Starting OpenClaw config preparation...")
-    src_path = pathlib.Path("./.openclaw.example.json")
-    dst_dir = pathlib.Path.home() / ".openclaw"
-    dst_path = dst_dir / "openclaw.json"
-    if not src_path.exists():
-        log.error(f"Template not found: {src_path}")
-        raise FileNotFoundError(src_path)
-    with open(src_path, "r", encoding="utf-8") as f:
+    config_dir = pathlib.Path.home() / ".openclaw"
+    config_file = config_dir / "openclaw.json"
+    config_workspace_dir = config_dir / "workspace"
+    config_secrets_dir = pathlib.Path.home() / ".openclaw-auth-profile-secrets"
+    config_src_file = pathlib.Path("./.openclaw.example.json")
+    if not config_src_file.exists():
+        log.error(f"Template not found: {config_src_file}")
+        raise FileNotFoundError(config_src_file)
+    with open(config_src_file, "r", encoding="utf-8") as f:
         config = json.load(f)
     if not oc_cwd:
         oc_cwd = "./openclaw"
@@ -2166,29 +2168,32 @@ def prepare_openclaw_config(oc_cwd, env_vars):
     now = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
     config["meta"]["lastTouchedAt"] = now
     config["wizard"]["lastRunAt"] = now
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    backup_path = None
-    if dst_path.exists():
+    for config_dir in [config_dir, config_workspace_dir, config_secrets_dir]:
+        try:
+            config_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            log.error(f"Permission denied creating {config_dir}: {e}")
+        except OSError as e:
+            log.error(f"OS error while creating {config_dir}: {e}")
+    config_backup_file = None
+    if config_file.exists():
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
-        backup_path = dst_path.with_name(f"openclaw.json.bak.{timestamp}")
-        log.info(f"Creating backup: {backup_path}")
-        shutil.copy(dst_path, backup_path)
-    dst_dir = pathlib.Path.home() / ".openclaw" / "workspace"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-
+        config_backup_file = config_file.with_name(f"openclaw.json.bak.{timestamp}")
+        log.info(f"Creating backup: {config_backup_file}")
+        shutil.copy(config_file, config_backup_file)
     try:
-        log.info(f"Writing config to {dst_path}")
-        with open(dst_path, "w", encoding="utf-8", newline='\n') as f:
+        log.info(f"Writing config to {config_file}")
+        with open(config_file, "w", encoding="utf-8", newline='\n') as f:
             json.dump(config, f, indent=2)
-        log.info("Configuration written successfully")
+        log.info("OpenClaw .json configuration file written successfully")
     except Exception as e:
         log.error(f"Failed to write config: {e}")
-        if backup_path and backup_path.exists():
+        if config_backup_file and config_backup_file.exists():
             log.warning("Restoring from backup")
-            shutil.copy(backup_path, dst_path)
-            log.info("Rollback complete")
+            shutil.copy(config_backup_file, config_file)
+            log.info("Rollback completed")
         raise
-    log.info("OpenClaw .json configuration complete")
+    log.info("OpenClaw configuration setup completed")
 
 def _openclaw_compose_updates(setup_path=None):
     """
