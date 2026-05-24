@@ -1854,8 +1854,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     """
     # OpenClaw setup.sh changes (commits):
     # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
+    # 23/05/2026 - 5db773f
     # 19/05/2026 - ff4bf0c
-    # 18/05/2026 - 47b8e56
     # ...
     # 28/04/2026 - 66f4b52
     cwd = oc_cwd or "./openclaw"
@@ -2024,9 +2024,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         if value is None:
             continue
         if "TOKEN" in key or "PASSWORD" in key:
-            log.debug(f"{key}={elide(str(value))}", extra=debug_style)
-        else:
-            log.debug(f"{key}={value}", extra=debug_style)
+            value = f"stored in {output_path} (not printed)"
+        log.debug(f"{key}={value}", extra=debug_style)
     insert = 'updated' if dotenv_exists else 'created'
     log.info(f".env file {insert} at {output_path}", extra=log_bright)
     if environment == "public":
@@ -2430,6 +2429,9 @@ def _openclaw_env_vars_logging(setup_path=None):
         updated_lines: list[str] = []
         inject_env_logging = False
         performed_injection = False
+        env_key = 'if [[ "$key" == "$k" ]]; then'
+        new_env_key = 'if [[ "$seen" != *" $k "* ]]; then'
+        env_key_val = 'v=$([[ "$k" == *TOKEN* ]] && echo "$secret" || echo "${!k-}")'
         for line in lines:
             stripped = line.lstrip()
             if stripped.startswith('# Injected environment variable logging.'):
@@ -2446,7 +2448,6 @@ def _openclaw_env_vars_logging(setup_path=None):
             elif stripped.startswith('echo "==> Pulling Docker image: $IMAGE_NAME"'):
                 updated_lines.append('  echo "==> Pulling Docker image: $IMAGE_NAME..."\n')
                 continue
-            # echo "==> Pulling Docker image: $IMAGE_NAME"
             if inject_env_logging:
                 if stripped.startswith('tmp="$(mktemp)"'):
                     updated_lines.append(line)
@@ -2455,18 +2456,16 @@ def _openclaw_env_vars_logging(setup_path=None):
                     updated_lines.append('  echo "  - ROOT_DIR: ${ROOT_DIR:-}"\n')
                     updated_lines.append('  echo "  - COMPOSE_FILE: ${COMPOSE_FILE:-}"\n')
                     updated_lines.append('  echo "  - EXTRA_COMPOSE_FILE: ${EXTRA_COMPOSE_FILE:-}"\n')
+                    updated_lines.append('  local secret="stored in $file (not printed)"\n')
                     continue
                 elif stripped.startswith('mv "$tmp" "$file"'):
                     updated_lines.append(line)
                     inject_env_logging = False
                     continue
-                if stripped.startswith('if [[ "$key" == "$k" ]]; then'):
+                if stripped.startswith(env_key) or stripped.startswith(new_env_key):
                     updated_lines.append(line)
-                    updated_lines.append('          echo "  - $k: ${!k-}"\n')
-                    performed_injection = True
-                elif stripped.startswith('if [[ "$seen" != *" $k "* ]]; then'):
-                    updated_lines.append(line)
-                    updated_lines.append('      echo "  - $k: ${!k-}"\n')
+                    updated_lines.append(f'          {env_key_val}\n')
+                    updated_lines.append('          echo "  - $k: $v"\n')
                     performed_injection = True
                 else:
                     updated_lines.append(line)
