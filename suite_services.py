@@ -2604,11 +2604,16 @@ def prepare_opencode_config(env_vars):
     except Exception as e:
         log.error(f"Exception: Configuration - {llama} model: {e}")
 
-def clean_dir_path(dir_path, restore=True, quiet=False):
+def clean_dir_path(dir_path, quiet=False, restore=True):
     """delete and recreate directory path"""
     if os.path.exists(dir_path):
         if not quiet:
-            log.info(f"Cleaning directory: {dir_path}...")
+            message = (
+                f"Clean directory: {dir_path}..."
+                if restore
+                else f"Remove directory: {dir_path}..."
+            )
+            log.info(message)
         shutil.rmtree(dir_path)
         if restore:
             os.makedirs(dir_path, exist_ok=True)
@@ -2635,6 +2640,11 @@ def destroy_ai_suite(profile, install):
     if install:
         supabase_data = os.path.join("supabase", "docker", "volumes", "db", "data")
         clean_dir_path(supabase_data, restore=False)
+        home_str = str(pathlib.Path.home())
+        openclaw_config = os.path.join(home_str, ".openclaw")
+        clean_dir_path(openclaw_config)
+        openclaw_secrets = os.path.join(home_str, ".openclaw-auth-profile-secrets")
+        clean_dir_path(openclaw_secrets)
         cmd = ["docker", "volume", "prune", "--force"]
         run_command(cmd)
     log.info("="*60, extra=LSHF.style(logging.INFO, LSHF.BLUE))
