@@ -322,19 +322,47 @@ LSH.setLevel(logging.NOTSET)
 
 
 def run_command(cmd, cwd=None, re_raise=None):
-    """Run a shell command and print it."""
-    raw_msg = " ".join([log_run_cmd, " ".join(cmd)])
-    log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=" ".join(cmd)))
+    """Run a shell command, redact secrets and print it."""
+    redact_env_keys = {"OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_GATEWAY_PASSWORD"}
+    redact_prefixes = tuple(f"{key}=" for key in redact_env_keys)
+    redactions = {}
+    cmd_parts = list(cmd)
+    is_shell_command = (len(cmd_parts) > 1 and cmd_parts[-2] == "-c")
+    if is_shell_command:
+        try:
+            shell_cmd_parts = shlex.split(cmd_parts[-1])
+            cmd_parts = cmd_parts[:-1] + shell_cmd_parts
+        except Exception:
+            pass
+    needs_redaction = any(part.startswith(redact_prefixes) for part in cmd_parts)
+    if needs_redaction:
+        redact_msg = "stored in .env (not printed)"
+        for part in cmd_parts:
+            for prefix in redact_prefixes:
+                if part.startswith(prefix):
+                    value = part[len(prefix):]
+                    redactions[value] = redact_msg
+                    break
+        redacted_cmd = " ".join(cmd_parts)
+        for value, redaction in redactions.items():
+            redacted_cmd = redacted_cmd.replace(value, redaction)
+        raw_msg = " ".join([log_run_cmd, redacted_cmd])
+    else:
+        raw_msg = " ".join([log_run_cmd, " ".join(cmd_parts)])
+    log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=raw_msg))
     try:
         result = subprocess.run(
             cmd,
             cwd=cwd,
             check=True
         )
-        # if result.returncode != 0:
-            # log.error(f"Command return code: {result.returncode}")
+        return result
     except Exception as e:
-        log.error(f"Exception: {e}.")
+        error = str(e)
+        if needs_redaction:
+            for value, redaction in redactions.items():
+                error = error.replace(value, redaction)
+        log.error(f"Exception: {error}.")
         if re_raise:
             raise
 
@@ -1854,8 +1882,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     """
     # OpenClaw setup.sh changes (commits):
     # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
+    # 24/05/2026 - 908b894
     # 23/05/2026 - 5db773f
-    # 19/05/2026 - ff4bf0c
     # ...
     # 28/04/2026 - 66f4b52
     cwd = oc_cwd or "./openclaw"

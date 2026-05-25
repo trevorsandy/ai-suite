@@ -908,10 +908,10 @@ python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 
 `suite_services.py` `--operation` clawdock argument
 
-> [!NOTE]
-> Clawdoc commands that require an argument are executed in two parts. First,
-> the clawdock command: `suite_services.py --operation clawdock-approve`
-> will, second, generate an argument prompt: `Enter a device pairing: <id>`
+> [!IMPORTANT]
+> For Docker setup, the Gateway bearer token is no longer exposed in setup logs
+> or printed in follow-up commands output. The token is stored in `<project>/.env`
+> and `~/.openclaw/openclaw.json`. For AI-Suite, `<project>` is `./openclaw/`.
 
 - **Basic Operations**
 
@@ -964,6 +964,13 @@ python suite_services.py --profile n8n opencode llama.cpp --operation stop-llama
 | `clawdock-show-config` | Print config files with redacted values   |
 | `clawdock-workspace`   | Open the workspace directory              |
 | `clawdock-help`        | Show all available commands with examples |
+
+> [!NOTE]
+> Clawdoc commands that require an argument, for example `clawdock-approve <id>`,
+> are executed in two operations. First, enter only the clawdock command:
+> `suite_services.py --operation clawdock-approve`. Second AI-Suite will generate
+> a prompt for the argument or command: `Enter a device pairing: <id>` which you
+> will then enter.
 
 Example command:
 
