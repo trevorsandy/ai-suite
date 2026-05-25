@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update May, 23 2026
+# Last Update May, 25 2026
 # Copyright (C) 2026 by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-VERSION="0.4.0"
+VERSION="0.6.0"
 
 # If AC is unset we assume the script is being run manually
 # shellcheck disable=SC1091

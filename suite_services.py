@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 24, 2026
+Last Update May 25, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -89,7 +89,7 @@ import zipfile
 # ---- Info attributes ----
 INFO = {
     "name"       : "AI-Suite",
-    "version"    : (0, 5, 0),
+    "version"    : (0, 6, 0),
     "title"      : "AI-Suite installation and operation",
     "file"       : os.path.basename(__file__),
     "description": "A dockerized suite of AI agents in a no-code, workflow, LLM environment",
