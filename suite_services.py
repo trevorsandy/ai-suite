@@ -347,9 +347,11 @@ def run_command(cmd, cwd=None, re_raise=None):
         for value, redaction in redactions.items():
             redacted_cmd = redacted_cmd.replace(value, redaction)
         raw_msg = " ".join([log_run_cmd, redacted_cmd])
+        style_msg = redacted_cmd
     else:
         raw_msg = " ".join([log_run_cmd, " ".join(cmd_parts)])
-    log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=raw_msg))
+        style_msg = " ".join(cmd_parts)
+    log.info(raw_msg, extra=LSHF.style(header=log_run_cmd, msg=style_msg))
     try:
         result = subprocess.run(
             cmd,
