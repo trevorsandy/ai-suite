@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 25, 2026
+Last Update May 28, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1884,8 +1884,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     """
     # OpenClaw setup.sh changes (commits):
     # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
+    # 26/05/2026 - 35310dc
     # 24/05/2026 - 908b894
-    # 23/05/2026 - 5db773f
     # ...
     # 28/04/2026 - 66f4b52
     cwd = oc_cwd or "./openclaw"
@@ -2058,11 +2058,11 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         log.debug(f"{key}={value}", extra=debug_style)
     insert = 'Update' if dotenv_exists else 'Create'
     log.info(f"{insert} dotenv file at {output_path}", extra=log_bright)
-    if environment == "public":
-        _openclaw_compose_override()
     _openclaw_compose_updates()
     if log_level == logging.DEBUG:
-        _openclaw_env_vars_logging()
+        _openclaw_compose_logging()
+    if environment == "public":
+        _openclaw_compose_override()
     _openclaw_clawdoc_updates()
     return True
 
@@ -2234,60 +2234,108 @@ def _openclaw_compose_updates(setup_path=None):
     path = pathlib.Path(setup_path)
     if not path.exists():
         raise FileNotFoundError(f"{setup_path} not found")
+    compose_args_old = 'COMPOSE_ARGS=()'
+    compose_args_new = 'COMPOSE_ARGS=("-p" "ai-suite")'
+    compose_hint_old = 'COMPOSE_HINT="docker compose"'
+    compose_hint_new = 'COMPOSE_HINT="docker compose -p ai-suite"'
+    gateway_old = (
+        '  if ! docker compose "${COMPOSE_ARGS[@]}" run --rm '
+        '--entrypoint docker openclaw-gateway --version '
+        '>/dev/null 2>&1; then'
+    )
+
+    gateway_new = (
+        '  if ! docker compose "${COMPOSE_ARGS[@]}" '
+        'ps --status running | grep -q openclaw-gateway; then\n'
+        '    echo "WARNING: openclaw-gateway is not running. '
+        'Skipping sandbox setup." >&2\n'
+        '    SANDBOX_ENABLED=""\n'
+        '  elif ! docker compose "${COMPOSE_ARGS[@]}" '
+        'exec -T openclaw-gateway docker --version '
+        '>/dev/null 2>&1; then'
+    )
     try:
-        with open(path, "r", newline="\n", encoding="utf-8") as f:
-            lines = f.readlines()
-        updated_lines: list[str] = []
-        # Set compose project argument
-        compose_args = 'COMPOSE_ARGS=("-p" "ai-suite")'
-        compose_hint = 'COMPOSE_HINT="docker compose -p ai-suite"'
-        compose_project = False
-        for line in lines:
-            stripped = line.lstrip()
-            if stripped.startswith(compose_args):
-                updated_lines = lines
-                compose_project = True
-                break
-            if stripped.startswith('COMPOSE_ARGS=()'):
-                updated_lines.append(f'{compose_args}\n')
-                compose_project = True
-            elif stripped.startswith('COMPOSE_HINT="docker compose"'):
-                updated_lines.append(f'{compose_hint}\n')
+        text = path.read_text(encoding="utf-8")
+        original = text
+        if compose_args_new not in text:
+            if compose_args_old in text:
+                text = text.replace(compose_args_old, compose_args_new, 1)
+                log.info(f"Add compose project in {path}", extra=log_bright)
             else:
-                updated_lines.append(line)
-        if compose_project:
-            log.info(f"Add compose project in {path}", extra=log_bright)
-        else:
-            log.error(f"COMPOSE_ARGS=() not found in {path}", extra=log_bright)
-        # Update installed openclaw-gateway check
-        lines = updated_lines
-        updated_lines = []
-        gateway_check = False
-        gateway_version = 'if ! docker compose "${COMPOSE_ARGS[@]}" run --rm --entrypoint docker openclaw-gateway --version'
-        gateway_update = 'elif ! docker compose "${COMPOSE_ARGS[@]}" exec -T openclaw-gateway docker --version'
-        for line in lines:
-            stripped = line.lstrip()
-            if stripped.startswith(gateway_update):
-                updated_lines = lines
-                gateway_check = True
-                break
-            if stripped.startswith(gateway_version):
-                gateway_check = True
-                updated_lines.append('  if ! docker compose "${COMPOSE_ARGS[@]}" ps --status running | grep -q openclaw-gateway; then\n')
-                updated_lines.append('    echo "WARNING: openclaw-gateway is not running. Skipping sandbox setup." >&2\n')
-                updated_lines.append('    SANDBOX_ENABLED=""\n')
-                updated_lines.append(f'  {gateway_update} >/dev/null 2>&1; then\n')
+                log.error(f"{compose_args_old} not found in {path}", extra=log_bright)
+        if compose_hint_old in text:
+            text = text.replace(compose_hint_old, compose_hint_new, 1)
+        if gateway_new not in text:
+            if gateway_old in text:
+                text = text.replace(gateway_old, gateway_new, 1)
+                log.info(f"Update openclaw-gateway check in {path}", extra=log_bright)
             else:
-                updated_lines.append(line)
-        if gateway_check:
-            log.info(f"Update openclaw-gateway ckeck in {path}", extra=log_bright)
-        else:
-            log.error(f"Check openclaw-gateway not found in {path}")
-        with open(path, "w", newline="\n", encoding="utf-8") as f:
-            f.writelines(updated_lines)
-        log.info(f"Perform compose updates in {path}", extra=log_bright)
+                log.error(f"Check openclaw-gateway not found in {path}", extra=log_bright)
+        updated = text != original
+        if updated:
+            path.write_text(text, encoding="utf-8", newline="\n")
+            log.info(f"Perform compose updates in {path}", extra=log_bright)
     except Exception as e:
         log.error(f"Exception: OpenClaw compose updates: {e}")
+
+def _openclaw_compose_logging(setup_path=None):
+    """
+    Inject logging statements to display env vars.
+    """
+    if setup_path is None:
+        setup_path = "./openclaw/scripts/docker/setup.sh"
+    path = pathlib.Path(setup_path)
+    if not path.exists():
+        raise FileNotFoundError(f"{setup_path} not found")
+    inject_marker = "# Injected environment variable logging."
+    try:
+        text = path.read_text(encoding="utf-8")
+        original = text
+        if inject_marker in text:
+            log.info(f"OpenClaw env vars logging already present in {path}", extra=log_bright)
+            return
+        build_old = 'echo "==> Building Docker image: $IMAGE_NAME"'
+        build_new = ('echo "==> Building Docker image: $IMAGE_NAME, please wait..."')
+        pull_old = 'echo "==> Pulling Docker image: $IMAGE_NAME"'
+        pull_new = 'echo "==> Pulling Docker image: $IMAGE_NAME..."'
+        text = text.replace(build_old, build_new, 1)
+        text = text.replace(pull_old, pull_new, 1)
+        tmp_anchor = '  tmp="$(mktemp)"'
+        tmp_inject = (
+            '  tmp="$(mktemp)"\n'
+            '  # Injected environment variable logging.\n'
+            '  echo "==> OpenClaw setup environment variables:"\n'
+            '  echo "  - ROOT_DIR: ${ROOT_DIR:-}"\n'
+            '  echo "  - COMPOSE_FILE: ${COMPOSE_FILE:-}"\n'
+            '  echo "  - EXTRA_COMPOSE_FILE: ${EXTRA_COMPOSE_FILE:-}"\n'
+            '  local secret="stored in $file (not printed)"'
+        )
+        if tmp_anchor in text:
+            text = text.replace(tmp_anchor, tmp_inject, 1)
+        env_old = '        if [[ "$key" == "$k" ]]; then'
+        env_new = (
+            '        if [[ "$key" == "$k" ]]; then\n'
+            '          v=$([[ "$k" == *TOKEN* ]] '
+            '&& echo "$secret" || echo "${!k-}")\n'
+            '          echo "  - $k: $v"'
+        )
+        text = text.replace(env_old, env_new, 1)
+        seen_old = '    if [[ "$seen" != *" $k "* ]]; then'
+        seen_new = (
+            '    if [[ "$seen" != *" $k "* ]]; then\n'
+            '      v=$([[ "$k" == *TOKEN* ]] '
+            '&& echo "$secret" || echo "${!k-}")\n'
+            '      echo "  - $k: $v"'
+        )
+        text = text.replace(seen_old, seen_new, 1)
+        updated = text != original
+        if updated:
+            path.write_text(text, encoding="utf-8", newline="\n")
+            log.info(f"OpenClaw add env vars logging in {path}", extra=log_bright)
+        else:
+            log.warning("Function upsert_env not found - skip logging injection.")
+    except Exception as e:
+        log.error(f"Exception: OpenClaw env vars logging: {e}")
 
 def _openclaw_compose_override(setup_path=None):
     """
@@ -2298,42 +2346,44 @@ def _openclaw_compose_override(setup_path=None):
     path = pathlib.Path(setup_path)
     if not path.exists():
         raise FileNotFoundError(f"{setup_path} not found")
+    compose_public_found = 'AI_SUITE_DIR="$(cd "$ROOT_DIR/.." && pwd)"'
+    compose_public_start = ('EXTRA_COMPOSE_FILE="$ROOT_DIR/docker-compose.extra.yml"')
+    compose_public_file = 'COMPOSE_FILES=("$COMPOSE_FILE")'
     try:
-        with open(path, "r", newline="\n", encoding="utf-8") as f:
-            lines = f.readlines()
-        updated_lines: list[str] = []
-        compose_public = False
-        compose_public_add = False
-        compose_public_file = 'COMPOSE_FILES=("$COMPOSE_FILE")'
-        compose_public_found = 'AI_SUITE_DIR="$(cd "$ROOT_DIR/.." && pwd)"'
-        compose_public_start = 'EXTRA_COMPOSE_FILE="$ROOT_DIR/docker-compose.extra.yml"'
-        for line in lines:
-            stripped = line.lstrip()
-            if stripped.startswith(compose_public_found):
-                updated_lines = lines
-                compose_public = True
-                compose_public_add = True
-                break
-            if stripped.startswith(compose_public_start):
-                updated_lines.append(line)
-                updated_lines.append(f'{compose_public_found}\n')
-                updated_lines.append('PUBLIC_COMPOSE_FILE="$AI_SUITE_DIR/docker-compose.override.public.yml"\n')
-                updated_lines.append('ENVIRONMENT="${ENVIRONMENT:-public}"\n')
-                compose_public = True
-            elif stripped.startswith(compose_public_file):
-                updated_lines.append(line)
-                updated_lines.append('if [[ "$ENVIRONMENT" == "public" ]]; then\n')
-                updated_lines.append('  COMPOSE_FILES+=("$PUBLIC_COMPOSE_FILE")\nfi\n')
-                compose_public_add = True
+        text = path.read_text(encoding="utf-8")
+        original = text
+        if compose_public_found not in text:
+            if compose_public_start in text:
+                inject = (
+                    f'{compose_public_start}\n'
+                    f'{compose_public_found}\n'
+                    'PUBLIC_COMPOSE_FILE='
+                    '"$AI_SUITE_DIR/docker-compose.override.public.yml"\n'
+                    'ENVIRONMENT="${ENVIRONMENT:-public}"'
+                )
+                text = text.replace(compose_public_start, inject, 1)
             else:
-                updated_lines.append(line)
-        if not compose_public:
-            log.error(f"{compose_public_start} not found in {path}")
-        if not compose_public_add:
-            log.error(f"{compose_public_file} not found in {path}")
-        with open(path, "w", newline="\n") as f:
-            f.writelines(updated_lines)
-        log.info(f"Compose public override added in {path}", extra=log_bright)
+                log.error(f"{compose_public_start} not found in {path}", extra=log_bright)
+        public_add = (
+            'if [[ "$ENVIRONMENT" == "public" ]]; then\n'
+            '  COMPOSE_FILES+=("$PUBLIC_COMPOSE_FILE")\n'
+            'fi'
+        )
+        if public_add not in text:
+            if compose_public_file in text:
+                inject = (
+                    f'{compose_public_file}\n'
+                    'if [[ "$ENVIRONMENT" == "public" ]]; then\n'
+                    '  COMPOSE_FILES+=("$PUBLIC_COMPOSE_FILE")\n'
+                    'fi'
+                )
+                text = text.replace(compose_public_file, inject, 1)
+            else:
+                log.error(f"{compose_public_file} not found in {path}", extra=log_bright)
+        updated = text != original
+        if updated:
+            path.write_text(text, encoding="utf-8", newline="\n")
+            log.info(f"Compose public override added in {path}", extra=log_bright)
     except Exception as e:
         log.error(f"Exception: OpenClaw add public override: {e}")
 
@@ -2346,19 +2396,15 @@ def _openclaw_clawdoc_updates(clawdoc_path=None):
     path = pathlib.Path(clawdoc_path)
     if not path.exists():
         raise FileNotFoundError(f"{clawdoc_path} not found")
-    clawdock_update = False
-    clawdock_home = False
     clawdock_home_comment = '# Set home directory for .clawdock'
     clawdock_title_comment = '# ClawDock - Docker helpers for OpenClaw'
     clawdock_config = 'CLAWDOCK_CONFIG="${HOME}/.clawdock/config"'
     clawdock_paths = 'CLAWDOCK_COMMON_PATHS=('
-    clawdock_pull = 'git -C "${CLAWDOCK_DIR}" pull'
-    clawdock_pull_echo = 'echo "📥 Pulling latest source..."'
+    platform_home_dir = "${HOME}"
+    clawdock_home_dir = "${CLAWDOCK_HOME}"
     try:
-        # Resolve paths using native pathlib semantics
         home_dir = pathlib.Path.home()
         openclaw_dir = pathlib.Path("./openclaw").resolve()
-        # Set paths to string
         if is_wsl2():
             home_dir_str = to_wsl_path(home_dir)
             openclaw_dir_str = to_wsl_path(openclaw_dir)
@@ -2370,146 +2416,56 @@ def _openclaw_clawdoc_updates(clawdoc_path=None):
             relative_openclaw = openclaw_dir.relative_to(home_dir)
         except ValueError:
             pass
-        # Prefer CLAWDOCK_HOME-relative path when possible
         if relative_openclaw is not None:
             openclaw_dir_str = (f"${{CLAWDOCK_HOME}}/{relative_openclaw.as_posix()}")
-        # Read clawdock-helpers.sh
-        with open(path, "r", newline="\n", encoding="utf-8") as f:
-            lines = f.readlines()
-        updated_lines: list[str] = []
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            stripped = line.lstrip()
-            # Already patched
-            if stripped.startswith(clawdock_home_comment):
-                updated_lines = lines
-                clawdock_home = True
-                clawdock_update = True
-                break
-            # Update script title
-            if stripped.startswith(clawdock_title_comment):
-                updated_lines.append(f"# ClawDock (for {name}) - Docker helpers for OpenClaw\n")
-            # Insert CLAWDOCK_HOME
-            elif stripped.startswith(clawdock_config):
-                updated_lines.append("\n")
-                updated_lines.append(f"{clawdock_home_comment}\n")
-                updated_lines.append(f'CLAWDOCK_HOME="{home_dir_str}"\n')
-                updated_lines.append(line)
-                clawdock_home = True
-            # Comment pull section
-            elif stripped.startswith(clawdock_pull_echo):
-                if updated_lines:
-                    prev = updated_lines[-1]
-                    prev_stripped = prev.lstrip()
-                    if prev_stripped == 'echo ""\n':
-                        updated_lines[-1] = f' #{prev_stripped}'
-                updated_lines.append(f" #{stripped}")
-                clawdock_update = True
-            elif stripped.startswith(clawdock_pull):
-                updated_lines.append(f" #{stripped}")
-                clawdock_update = True
-            # Add OpenClaw path
-            elif stripped.startswith(clawdock_paths):
-                updated_lines.append(line)
-                updated_lines.append(f'  "{openclaw_dir_str}"\n')
+        text = path.read_text(encoding="utf-8")
+        original = text
+        if clawdock_home_comment not in text:
+            if clawdock_title_comment in text:
+                title_new = (f"# ClawDock (for {name}) - Docker helpers for OpenClaw")
+                text = text.replace(clawdock_title_comment, title_new, 1)
+            if clawdock_config in text:
+                config_new = (
+                    f"\n{clawdock_home_comment}\n"
+                    f'CLAWDOCK_HOME="{home_dir_str}"\n'
+                    f"{clawdock_config}"
+                )
+                text = text.replace(clawdock_config, config_new, 1)
+                log.info(f"Add ClawDock home in {path}", extra=log_bright)
             else:
-                updated_lines.append(line)
-            i += 1
-        with open(path, "w", newline="\n", encoding="utf-8") as f:
-            f.writelines(updated_lines)
-        # Replace home with clawdock_home
-        clawdock_replace_home = False
-        platform_home_dir = "${HOME}"
-        clawdock_home_dir = "${CLAWDOCK_HOME}"
-        with open(path, "r", newline="\n", encoding="utf-8") as f:
-            content = f.read()
-        if platform_home_dir in content:
-            updated_content = content.replace(platform_home_dir, clawdock_home_dir)
-            with open(path, "w", newline="\n", encoding="utf-8") as f:
-                f.write(updated_content)
-            clawdock_replace_home = True
-        # Logging
-        if clawdock_home:
-            log.info(f"Add ClawDock home in {path}", extra=log_bright)
-        else:
-            log.error(f"{clawdock_config} not found in {path}")
-        if clawdock_update:
+                log.error(f"{clawdock_config} not found in {path}", extra=log_bright)
+        if clawdock_paths in text:
+            paths_new = (
+                f"{clawdock_paths}\n"
+                f'  "{openclaw_dir_str}"'
+            )
+            text = text.replace(clawdock_paths, paths_new, 1)
+        pull_old = (
+            '  echo ""\n'
+            '  echo "📥 Pulling latest source..."\n'
+            '  git -C "${CLAWDOCK_DIR}" pull'
+        )
+        pull_new = (
+            '  # echo ""\n'
+            '  # echo "📥 Pulling latest source..."\n'
+            '  # git -C "${CLAWDOCK_DIR}" pull'
+        )
+        if pull_old in text:
+            text = text.replace(pull_old, pull_new, 1)
             log.info(f"Comment ClawDock latest release pull in {path}", extra=log_bright)
         else:
-            log.error(f"{clawdock_pull}... not found in {path}")
-        if clawdock_replace_home:
+            log.error(f"ClawDock latest release pull not found in {path}", extra=log_bright)
+        if platform_home_dir in text:
+            text = text.replace(platform_home_dir, clawdock_home_dir)
+        updated = text != original
+        if updated:
+            path.write_text(text, encoding="utf-8", newline="\n")
+        if clawdock_home_dir in text:
             log.info(f"Replace ${{HOME}} with ${{CLAWDOCK_HOME}} in {path}", extra=log_bright)
         else:
-            log.error(f"{clawdock_home_dir} not found in {path}")
+            log.error(f"{clawdock_home_dir} not found in {path}", extra=log_bright)
     except Exception as e:
         log.error(f"Exception: OpenClaw ClawDock updates: {e}")
-
-def _openclaw_env_vars_logging(setup_path=None):
-    """
-    Inject logging statements to display env vars.
-    """
-    if setup_path is None:
-        setup_path = "./openclaw/scripts/docker/setup.sh"
-    path = pathlib.Path(setup_path)
-    if not path.exists():
-        raise FileNotFoundError(f"{setup_path} not found")
-    try:
-        with open(path, "r", newline="\n") as f:
-            lines = f.readlines()
-        updated_lines: list[str] = []
-        inject_env_logging = False
-        performed_injection = False
-        env_key = 'if [[ "$key" == "$k" ]]; then'
-        new_env_key = 'if [[ "$seen" != *" $k "* ]]; then'
-        env_key_val = 'v=$([[ "$k" == *TOKEN* ]] && echo "$secret" || echo "${!k-}")'
-        for line in lines:
-            stripped = line.lstrip()
-            if stripped.startswith('# Injected environment variable logging.'):
-                updated_lines = lines
-                performed_injection = True
-                break
-            if stripped.startswith('upsert_env() {'):
-                inject_env_logging = True
-                updated_lines.append(line)
-                continue
-            elif stripped.startswith('echo "==> Building Docker image: $IMAGE_NAME"'):
-                updated_lines.append('  echo "==> Building Docker image: $IMAGE_NAME, please wait..."\n')
-                continue
-            elif stripped.startswith('echo "==> Pulling Docker image: $IMAGE_NAME"'):
-                updated_lines.append('  echo "==> Pulling Docker image: $IMAGE_NAME..."\n')
-                continue
-            if inject_env_logging:
-                if stripped.startswith('tmp="$(mktemp)"'):
-                    updated_lines.append(line)
-                    updated_lines.append("  # Injected environment variable logging.\n")
-                    updated_lines.append('  echo "==> OpenClaw setup environment variables:"\n')
-                    updated_lines.append('  echo "  - ROOT_DIR: ${ROOT_DIR:-}"\n')
-                    updated_lines.append('  echo "  - COMPOSE_FILE: ${COMPOSE_FILE:-}"\n')
-                    updated_lines.append('  echo "  - EXTRA_COMPOSE_FILE: ${EXTRA_COMPOSE_FILE:-}"\n')
-                    updated_lines.append('  local secret="stored in $file (not printed)"\n')
-                    continue
-                elif stripped.startswith('mv "$tmp" "$file"'):
-                    updated_lines.append(line)
-                    inject_env_logging = False
-                    continue
-                if stripped.startswith(env_key) or stripped.startswith(new_env_key):
-                    updated_lines.append(line)
-                    updated_lines.append(f'          {env_key_val}\n')
-                    updated_lines.append('          echo "  - $k: $v"\n')
-                    performed_injection = True
-                else:
-                    updated_lines.append(line)
-            else:
-                updated_lines.append(line)
-        with open(path, "w", newline="\n") as f:
-            f.writelines(updated_lines)
-        if performed_injection:
-            log.info(f"OpenClaw add env vars logging in {path}", extra=log_bright)
-        else:
-            log.warning(f"Function upsert_env not found - skip logging injection.")
-    except Exception as e:
-        log.error(f"Exception: OpenClaw env vars logging: {e}")
 
 def _openclaw_normalize(name: str):
     if not isinstance(name, str):
