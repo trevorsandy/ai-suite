@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update May 28, 2026
+Last Update June 05, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -4287,8 +4287,13 @@ def main():
             "OPENCLAW_DOCKER_LOCAL_IMAGE": "1",
             "OPENCLAW_KEEP_LOCAL_UPDATES": "0"
         }
+        preserve_empty = {"OPENCLAW_RELEASE"}
         for key, var in oc_env_vars.items():
-            if key not in env_vars or env_vars[key] in (None, ""):
+            if (
+                key not in env_vars
+                or env_vars[key] is None
+                or (env_vars[key] == "" and key not in preserve_empty)
+            ):
                 env_vars[key] = var
                 set_dotenv_var(env_file, key, var, None)
         oc_store = {
