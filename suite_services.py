@@ -2090,6 +2090,9 @@ def prepare_openclaw_config(oc_cwd, env_vars):
         return
 
     token = oc_env.get("OPENCLAW_GATEWAY_TOKEN")
+    if token is None:
+        log.error("The OpenClaw gateway token is empty!")
+        return
     log.info("Updating gateway token")
     config["gateway"]["auth"]["token"] = token
     openapi_key = oc_env.get("OPENAI_API_KEY")
