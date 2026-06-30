@@ -1173,20 +1173,20 @@ def _python_restart_script(venv_python):
     os.execv(venv_python, [venv_python, script_path] + sys.argv[1:])
 
 def docker_start():
-    """Install Docker and ensure it is running and usable."""
+    """Install Docker and ensure it is running and usable"""
     log.info("Starting Docker bootstrap...", extra=log_bright)
     # --- Version check ---
     if not _docker_valid_version():
         fail("Docker version invalid or too old")
     # --- Ensure running ---
-    if not _docker_is_running():
+    ready, _ = _docker_is_ready()
+    if not ready:
         log.info("Docker not ready → ensuring daemon is running...")
         if not _docker_start_daemon():
-            fail("Docker start failed")
+            fail("Docker daemon start failed")
         if not _docker_wait_ready():
-            fail("Docker not ready after startup")
-    elif _docker_is_ready():
-        log.info("Docker is running ✅", extra=LSHF.style(color=LSHF.GREEN))
+            fail("Docker daemon not ready after startup")
+    log.info("Docker daemon ready ✅", extra=LSHF.style(color=LSHF.GREEN))
     # --- Parallel tasks ---
     q = queue.Queue()
     ok, out = run_pkg_command(["docker", "compose", "version"])
@@ -1203,18 +1203,19 @@ def docker_start():
     return True
 
 def docker_get_version():
+    """Get version string"""
     ok, version = run_pkg_command(["docker", "--version"])
     if not ok:
         return None
     return _docker_parse_version(version)
 
 def _docker_parse_version(version):
-    """."""
+    """Parse version string"""
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
     return tuple(map(int, match.groups())) if match else (0, 0, 0)
 
 def _docker_valid_version():
-    """."""
+    """Compare version against minimum Docker version"""
     parsed_version = docker_get_version()
     if parsed_version:
         ok = parsed_version >= MIN_DOCKER_VERSION
@@ -1224,55 +1225,63 @@ def _docker_valid_version():
     return False
 
 def _docker_start_daemon():
-    """."""
+    """Launch Docker if needed"""
+    # Already usable
+    ready, _ = _docker_is_ready()
+    if ready:
+        log.info("Docker daemon already running", extra=log_bright)
+        return True
+
     if system == "Windows":
+        # Only works for default Docker Desktop installation.
         path = os.path.expandvars(r"%ProgramFiles%\Docker\Docker\Docker Desktop.exe")
         if not os.path.exists(path):
             fail("Docker Desktop not found")
         # Already running → do NOT restart
         if _docker_desktop_is_running():
-            log.info("Docker Desktop is running (or starting)", extra=log_bright)
+            log.info("Docker Desktop process already running", extra=log_bright)
             return True
         log.info("Starting Docker Desktop...", extra=log_bright)
+        # Use Windows-native launch (most reliable)
         try:
-            # Use Windows-native launch (most reliable)
             os.startfile(path)
-        except Exception as e:
+        except OSError as e:
             log.warning(f"os.startfile failed: {e}")
             try:
                 subprocess.Popen(
                     ["cmd", "/c", "start", "", path],
                     cwd=os.path.dirname(path),
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.DEVNULL,
                 )
-            except Exception as e2:
+            except OSError as e2:
                 log.error(f"Fallback launch failed: {e2}")
                 return False
         return True
     elif system == "Darwin":
-        log.info("Starting Docker Desktop (macOS)...", extra=log_bright)
+        log.info("Starting Docker Desktop...", extra=log_bright)
         subprocess.Popen(["open", "-a", "Docker"])
         return True
     elif system == "Linux":
-        log.info("Starting Docker daemon (systemd)...", extra=log_bright)
+        log.info("Starting Docker daemon...", extra=log_bright)
         return run_unix_command(["systemctl", "start", "docker"])[0]
     return False
 
 def _docker_wait_ready(timeout=300):
     """
-    Docker readiness:
+    Wait until the Docker daemon is ready.
     Windows:
-      1. Wait for process
-      2. Wait for pipe
-      3. Wait for docker API
+      1. Wait for Docker Desktop process to appear.
+      2. Poll Docker API until ready.
+    Linux/macOS:
+      Poll Docker API until ready.
     """
+    last_error = ""
     start = time.time()
+    delay = 2
     log.info("Waiting for Docker to become ready...")
-    # ---------------- WINDOWS ---------------- #
+    # ----- Windows: wait for Docker Desktop to launch -----
     if system == "Windows":
-        pipe = r"\\.\pipe\dockerDesktopLinuxEngine"
-        # --- Step 1: wait for process ---
         log.info("Waiting for Docker Desktop process...")
         while time.time() - start < timeout:
             if _docker_desktop_is_running():
@@ -1280,79 +1289,57 @@ def _docker_wait_ready(timeout=300):
                 break
             time.sleep(2)
         else:
-            log.error("Docker Desktop process did not appear")
+            log.error("Docker Desktop process never appeared")
             return False
-        # Give it time to avoid flash-exit race
-        time.sleep(8)
-        # --- Step 2: wait for pipe (WSL backend) ---
-        log.info("Waiting for Docker engine pipe...")
-        while time.time() - start < timeout:
-            if not _docker_desktop_is_running():
-                log.error("Docker Desktop exited during startup")
-                return False
-            if os.path.exists(pipe):
-                log.info("Docker engine pipe detected")
-                break
-            time.sleep(2)
-        else:
-            log.error("Docker pipe not created (backend failed?)")
+    # ----- All platforms: wait for Docker API -----
+    log.info("Waiting for Docker daemon API...")
+    while time.time() - start < timeout:
+        # The Docker API is the authoritative readiness check.
+        ready, err = _docker_is_ready()
+        if ready:
+            log.info("Docker daemon ready", extra=log_bright)
+            return True
+        last_error = err
+        # Windows-only: fail early if Docker Desktop exits unexpectedly.
+        if system == "Windows" and not _docker_desktop_is_running():
+            log.error("Docker Desktop exited during startup")
             return False
-        # --- Step 3: wait for API ---
-        log.info("Waiting for Docker API...")
-        delay = 2
-        while time.time() - start < timeout:
-            if not _docker_desktop_is_running():
-                log.error("Docker Desktop exited before API became ready")
-                return False
-            log.info("Requested Docker info (API Check)", extra=log_bright)
-            if  _docker_is_ready():
-                log.info("Docker is ready (API OK)", extra=log_bright)
-                return True
-            time.sleep(delay)
-            delay = min(delay + 1, 10)
-        log.error("Docker API did not respond in time")
-        return False
-    # ---------------- LINUX / MAC ---------------- #
-    else:
-        delay = 2
-        while time.time() - start < timeout:
-            log.info("Requested Docker info (API Check)", extra=log_bright)
-            if _docker_is_ready():
-                log.info("Docker ready (API OK)", extra=log_bright)
-                return True
-            time.sleep(delay)
-            delay = min(delay + 1, 10)
-        log.error("Docker did not become ready in time")
-        return False
+        time.sleep(delay)
+        delay = min(delay + 1, 10)
+    log.error(
+        f"Docker daemon did not become ready before timeout. "
+        f"Last error: {last_error}"
+    )
+    return False
 
 def _docker_is_ready():
-    """."""
-    ok, _ = run_pkg_command(["docker", "info"])
-    return ok
-
-def _docker_is_running():
-    """."""
-    ok = False
-    if system == "Windows":
-        ok = os.path.exists(r"\\.\pipe\dockerDesktopLinuxEngine")
-    else:
-        ok = os.path.exists("/var/run/docker.sock")
-    if not ok:
-        return False
-    ok, _ = run_pkg_command(["docker", "system", "info"])
-    return ok
+    """Return True if the Docker daemon is responding."""
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        return (
+            result.returncode == 0, result.stderr.strip()
+        )
+    except OSError as e:
+        return False, str(e)
 
 def _docker_desktop_is_running():
-    """Windows-only process check to avoid double-start."""
+    """Windows-only process check to avoid double-start"""
     result = subprocess.run(
         ["tasklist", "/FI", "IMAGENAME eq Docker Desktop.exe"],
         capture_output=True,
         text=True
     )
+    if result.returncode != 0:
+        return False
     return "Docker Desktop.exe" in result.stdout
 
 def _docker_test_container():
-    """."""
+    """Run hello-world test"""
     ok, out = run_pkg_command(["docker", "run", "--rm", "hello-world"])
     if ok and "Hello from Docker!" in out:
         log.info(out, extra=log_bright)
