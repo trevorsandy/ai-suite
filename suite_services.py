@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update June 05, 2026
+Last Update June 30, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1884,8 +1884,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     """
     # OpenClaw setup.sh changes (commits):
     # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
-    # 26/05/2026 - 35310dc
-    # 24/05/2026 - 908b894
+    # 20/06/2026 - 62b2e9e
+    # 17/06/2026 - 0e46fd1
     # ...
     # 28/04/2026 - 66f4b52
     cwd = oc_cwd or "./openclaw"
@@ -2241,22 +2241,6 @@ def _openclaw_compose_updates(setup_path=None):
     compose_args_new = 'COMPOSE_ARGS=("-p" "ai-suite")'
     compose_hint_old = 'COMPOSE_HINT="docker compose"'
     compose_hint_new = 'COMPOSE_HINT="docker compose -p ai-suite"'
-    gateway_old = (
-        '  if ! docker compose "${COMPOSE_ARGS[@]}" run --rm '
-        '--entrypoint docker openclaw-gateway --version '
-        '>/dev/null 2>&1; then'
-    )
-
-    gateway_new = (
-        '  if ! docker compose "${COMPOSE_ARGS[@]}" '
-        'ps --status running | grep -q openclaw-gateway; then\n'
-        '    echo "WARNING: openclaw-gateway is not running. '
-        'Skipping sandbox setup." >&2\n'
-        '    SANDBOX_ENABLED=""\n'
-        '  elif ! docker compose "${COMPOSE_ARGS[@]}" '
-        'exec -T openclaw-gateway docker --version '
-        '>/dev/null 2>&1; then'
-    )
     try:
         text = path.read_text(encoding="utf-8")
         original = text
@@ -2268,12 +2252,6 @@ def _openclaw_compose_updates(setup_path=None):
                 log.error(f"{compose_args_old} not found in {path}", extra=log_bright)
         if compose_hint_old in text:
             text = text.replace(compose_hint_old, compose_hint_new, 1)
-        if gateway_new not in text:
-            if gateway_old in text:
-                text = text.replace(gateway_old, gateway_new, 1)
-                log.info(f"Update openclaw-gateway check in {path}", extra=log_bright)
-            else:
-                log.error(f"Check openclaw-gateway not found in {path}", extra=log_bright)
         updated = text != original
         if updated:
             path.write_text(text, encoding="utf-8", newline="\n")
