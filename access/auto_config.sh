@@ -1,7 +1,7 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update May, 25 2026
-# Copyright (C) 2026 by Trevor SANDY
+# Last Update June, 29 2026
+# Copyright (c) 2025-Present by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
 # Authelia 2FA identity and access management using auto-generated credentials.
@@ -2381,17 +2381,17 @@ FORWARD_AUTH
 }
 
 # SearXNG
-    $(
-    if [[ $AC_SEARXNG == true ]]; then
-        cat <<'SEARXNG_ENABLED'
+$(
+if [[ $AC_SEARXNG == true ]]; then
+	cat <<'SEARXNG_ENABLED'
 {\$SEARXNG_HOSTNAME} {
 SEARXNG_ENABLED
-    else
-        cat <<'SEARXNG_DISABLED'
+else
+	cat <<'SEARXNG_DISABLED'
 {DISABLED_SEARXNG} {
 SEARXNG_DISABLED
-    fi
-    )
+fi
+)
     import configuration
     encode zstd gzip
 
@@ -2449,26 +2449,26 @@ SEARXNG_DISABLED
         header_up Connection "close"
     }
 }
-    $(
-    if [[ $AC_LLAMA == true ]]; then
-        if [[ $AC_LLAMACPP == false ]]; then
-            cat <<'OLLAMA_BLOCK'
+$(
+if [[ $AC_LLAMA == true ]]; then
+	if [[ $AC_LLAMACPP == false ]]; then
+		cat <<'OLLAMA_BLOCK'
 # Ollama API
 {\$OLLAMA_HOSTNAME} {
     reverse_proxy ollama:11434
 }
 OLLAMA_BLOCK
-        else
-            cat <<'LLAMACPP_BLOCK'
+	else
+		cat <<'LLAMACPP_BLOCK'
 # LLaMA.cpp API
 {\$LLAMACPP_HOSTNAME} {
     import configuration
     reverse_proxy llamacpp:8040
 }
 LLAMACPP_BLOCK
-        fi
-    fi
-    )
+	fi
+fi
+)
 EOF
 
 # WRITE LOCAL nginx.template
