@@ -1871,8 +1871,8 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     """
     # OpenClaw setup.sh changes (commits):
     # https://github.com/openclaw/openclaw/blob/main/scripts/docker/setup.sh
+    # 01/07/2026 - 9825463
     # 20/06/2026 - 62b2e9e
-    # 17/06/2026 - 0e46fd1
     # ...
     # 28/04/2026 - 66f4b52
     cwd = oc_cwd or "./openclaw"

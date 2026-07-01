@@ -1368,25 +1368,28 @@ The `~/.openclaw/.env` feeds the OpenClaw process inside the container.
 
 Optional _.env_ environment variables:
 
-| Variable                                   | Purpose                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------- |
-| `OPENCLAW_IMAGE`                           | Use a remote image instead of building locally                        |
-| `OPENCLAW_IMAGE_APT_PACKAGES`              | Install extra apt packages during build (space-separated)             |
-| `OPENCLAW_IMAGE_PIP_PACKAGES`              | Install extra Python packages during build (space-separated)          |
-| `OPENCLAW_EXTENSIONS`                      | Pre-install plugin dependencies at build time (space-separated names) |
-| `OPENCLAW_EXTRA_MOUNTS`                    | Extra host bind mounts (comma-separated `source:target[:opts]`)       |
-| `OPENCLAW_HOME_VOLUME`                     | Persist `/home/node` in a named Docker volume                         |
-| `OPENCLAW_SANDBOX`                         | Opt in to sandbox bootstrap (`1`, `true`, `yes`, `on`)                |
-| `OPENCLAW_SKIP_ONBOARDING`                 | Skip the interactive onboarding step (`1`, `true`, `yes`, `on`)       |
-| `OPENCLAW_DOCKER_SOCKET`                   | Override Docker socket path                                           |
-| `OPENCLAW_DISABLE_BONJOUR`                 | Disable Bonjour/mDNS advertising (defaults to `1` for Docker)         |
-| `OPENCLAW_DISABLE_BUNDLED_SOURCE_OVERLAYS` | Disable bundled plugin source bind-mount overlays                     |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`              | Shared OTLP/HTTP collector endpoint for OpenTelemetry export          |
-| `OTEL_EXPORTER_OTLP_*_ENDPOINT`            | Signal-specific OTLP endpoints for traces, metrics, or logs           |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`              | OTLP protocol override. Only `http/protobuf` is supported today       |
-| `OTEL_SERVICE_NAME`                        | Service name used for OpenTelemetry resources                         |
-| `OTEL_SEMCONV_STABILITY_OPT_IN`            | Opt in to latest experimental GenAI semantic attributes               |
-| `OPENCLAW_OTEL_PRELOADED`                  | Skip starting a second OpenTelemetry SDK when one is preloaded        |
+| Variable                                        | Purpose                                                               |
+| ----------------------------------------------- | --------------------------------------------------------------------- |
+| `OPENCLAW_IMAGE`                                | Use a remote image instead of building locally                        |
+| `OPENCLAW_IMAGE_APT_PACKAGES`                   | Install extra apt packages during build (space-separated)             |
+| `OPENCLAW_IMAGE_PIP_PACKAGES`                   | Install extra Python packages during build (space-separated)          |
+| `OPENCLAW_EXTENSIONS`                           | Pre-install plugin dependencies at build time (space-separated names) |
+| `OPENCLAW_DOCKER_BUILD_NODE_OPTIONS`            | Override the local source-build Node options                          |
+| `OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB` | Override the local source-build tsdown heap in MB                     |
+| `OPENCLAW_DOCKER_BUILD_SKIP_DTS`                | Skip declaration output during runtime-only local image builds        |
+| `OPENCLAW_EXTRA_MOUNTS`                         | Extra host bind mounts (comma-separated `source:target[:opts]`)       |
+| `OPENCLAW_HOME_VOLUME`                          | Persist `/home/node` in a named Docker volume                         |
+| `OPENCLAW_SANDBOX`                              | Opt in to sandbox bootstrap (`1`, `true`, `yes`, `on`)                |
+| `OPENCLAW_SKIP_ONBOARDING`                      | Skip the interactive onboarding step (`1`, `true`, `yes`, `on`)       |
+| `OPENCLAW_DOCKER_SOCKET`                        | Override Docker socket path                                           |
+| `OPENCLAW_DISABLE_BONJOUR`                      | Disable Bonjour/mDNS advertising (defaults to `1` for Docker)         |
+| `OPENCLAW_DISABLE_BUNDLED_SOURCE_OVERLAYS`      | Disable bundled plugin source bind-mount overlays                     |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`                   | Shared OTLP/HTTP collector endpoint for OpenTelemetry export          |
+| `OTEL_EXPORTER_OTLP_*_ENDPOINT`                 | Signal-specific OTLP endpoints for traces, metrics, or logs           |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`                   | OTLP protocol override. Only `http/protobuf` is supported today       |
+| `OTEL_SERVICE_NAME`                             | Service name used for OpenTelemetry resources                         |
+| `OTEL_SEMCONV_STABILITY_OPT_IN`                 | Opt in to latest experimental GenAI semantic attributes               |
+| `OPENCLAW_OTEL_PRELOADED`                       | Skip starting a second OpenTelemetry SDK when one is preloaded        |
 
 #### OpenClaw dependencies
 
