@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update July 16, 2026
+Last Update July 18, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1858,9 +1858,15 @@ def clone_open_webui_functions_repos():
     os.chdir("../../../../")
 
 def prepare_supabase_env(env_vars):
-    """Write env_vars to .env in supabase/docker. and copy Athelia db schema"""
+    """Write env_vars to .env in supabase/docker."""
     env_file = os.path.join("supabase", "docker", ".env")
-    built_env_vars = env_vars
+    built_env_vars = env_vars.copy()
+    if not built_env_vars.get("OPENAI_API_KEY"):
+        built_env_vars["OPENAI_API_KEY"] = (
+            "llamacpp-local"
+            if llama_cpp
+            else "ollama-local"
+        )
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
     write_dotenv_file(env_file, built_env_vars)
 
@@ -2619,11 +2625,15 @@ def operate_ai_suite(operation, profile, environment, env_vars):
         f.write(operation + ':' + llama.lower())
 
     supabase = False
+    logflare = False
     openclaw = False
     open_webui = False
     # WebUI built - nothing to pull, Supabase and OpenClaw pulled with suite via include.
     if operation != 'pull':
         supabase = any(p for p in profile if p in ['supabase', 'ai-all'])
+        logflare = (
+            env_vars.get("LOGFLARE_ENABLED", "false").strip().lower() == "true"
+        ) and supabase
         if operation != 'pause':
             openclaw = any(p for p in profile if p in ['openclaw', 'ai-all'])
         open_webui = any(p for p in profile if p in open_webui_all_profiles)
@@ -2633,7 +2643,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
     if operation == 'start' and environment:
         load_dotenv_vars(env_vars)
         if supabase:
-            start_supabase(environment, False)
+            start_supabase(logflare, environment, False)
             log.info("Waiting for Supabase to initialize...", extra=log_bright)
             wait_with_progress(5)
         if openclaw:
@@ -2646,7 +2656,7 @@ def operate_ai_suite(operation, profile, environment, env_vars):
                      extra=log_bright)
             wait_with_progress(2)
         start_ai_suite(profile, environment, False)
-        display_service_endpoints(profile, supabase, env_vars)
+        display_service_endpoints(profile, supabase, logflare, env_vars)
         return
 
     if operation == 'stop':
@@ -2731,9 +2741,11 @@ def operate_openclaw(operation, environment, oc_store, oc_cwd=None):
     oc_cmd = cmd + [cmd_str]
     run_command(oc_cmd, cwd=oc_cwd)
 
-def start_built_container(compose_file=None, environment=None, build=False):
+def start_built_container(compose_files=None, environment=None, build=False):
     """Start the locally built container services (using its compose file)."""
-    cmd = ["docker", "compose", "-p", "ai-suite", "-f", compose_file]
+    cmd = ["docker", "compose", "-p", "ai-suite"]
+    if compose_files:
+        cmd.extend(compose_files)
     if environment == "public":
         cmd.extend(["-f", "docker-compose.override.public.yml"])
     cmd.extend(["up", "-d"])
@@ -2741,17 +2753,19 @@ def start_built_container(compose_file=None, environment=None, build=False):
         cmd.extend(["--build", "--quiet-build", "--wait"])
     run_command(cmd)
 
-def start_supabase(environment=None, build=False):
+def start_supabase(logflare, environment=None, build=False):
     """Start the Supabase services (using its compose file)."""
     log.info("Starting Supabase services...")
-    compose_file = "supabase/docker/docker-compose.yml"
-    start_built_container(compose_file, environment, build)
+    compose_files=["-f", "supabase/docker/docker-compose.yml"]
+    if logflare:
+        compose_files.extend(["-f", "supabase/docker/docker-compose.logs.yml"])
+    start_built_container(compose_files, environment, build)
 
 def start_open_webui_tools_filesystem(environment=None, build=False):
     """Start the Open WebUI Tools Filesystem services (using its compose file)."""
     log.info("Starting Open WebUI Tools Filesystem services...")
-    compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
-    start_built_container(compose_file, environment, build)
+    compose_files=["-f", "open-webui/tools/servers/filesystem/compose.yaml"]
+    start_built_container(compose_files, environment, build)
 
 def start_openclaw(environment=None, build=False, oc_cwd=None):
     """Start the OpenClaw services."""
@@ -2999,12 +3013,13 @@ def convert_supabase_pooler_line_endings():
         log.info("Converting supavisor pooler line endings...")
         convert_line_endings(file_path)
 
-def docker_compose_include(supabase, openclaw, filesystem, verbose):
-    """Add or remove Supabase, OpenClaw and Filesystem include compose.yml in
-       docker-compose.yml
+def docker_compose_include(supabase, logflare, openclaw, filesystem, verbose):
+    """Add or remove Supabase, logflare, OpenClaw and Filesystem include compose.yml
+       in docker-compose.yml
     """
     compose_file = "docker-compose.yml"
     supabase_compose_file = "supabase/docker/docker-compose.yml"
+    logflare_compose_file = "supabase/docker/docker-compose.logs.yml"
     openclaw_compose_file = "openclaw/docker-compose.yml"
     filesystem_compose_file = "open-webui/tools/servers/filesystem/compose.yaml"
     if not os.path.exists(compose_file):
@@ -3014,6 +3029,10 @@ def docker_compose_include(supabase, openclaw, filesystem, verbose):
         if verbose:
             log.warning(f"Include file '{supabase_compose_file}' not found.")
         supabase = False
+    if logflare and not os.path.exists(logflare_compose_file):
+        if verbose:
+            log.warning(f"Include file '{logflare_compose_file}' not found.")
+        logflare = False
     if openclaw and not os.path.exists(openclaw_compose_file):
         if verbose:
             log.warning(f"Include file '{openclaw_compose_file}' not found.")
@@ -3024,16 +3043,19 @@ def docker_compose_include(supabase, openclaw, filesystem, verbose):
         filesystem = False
     if verbose:
         supabase_ins = "add" if supabase else "remove"
+        logflare_ins = "add" if logflare else "remove"
         openclaw_ins = "add" if openclaw else "remove"
         filesystem_ins = "add" if filesystem else "remove"
         log.info(
             f"Perform {supabase_ins} Supabase, "
+            f"Perform {logflare_ins} Logflare, "
             f"{openclaw_ins} OpenClaw, "
             f"and {filesystem_ins} Filesystem "
             f"'include:' in {compose_file}...")
     include = supabase or openclaw or filesystem
     compose_include = "include:\n"
     supabase_include = f"  - ./{supabase_compose_file}\n"
+    logflare_include = f"  - ./{logflare_compose_file}\n"
     openclaw_include = f"  - ./{openclaw_compose_file}\n"
     filesystem_include = f"  - ./{filesystem_compose_file}\n"
 
@@ -3069,6 +3091,15 @@ def docker_compose_include(supabase, openclaw, filesystem, verbose):
             if verbose:
                 log.info(f"Removing include file ./{openclaw_compose_file}...")
             content = content.replace(openclaw_include, "")
+
+        if logflare and logflare_include not in content:
+            if verbose:
+                log.info(f"Adding include file ./{logflare_compose_file}...")
+            content = logflare_include + content
+        elif not logflare and logflare_include in content:
+            if verbose:
+                log.info(f"Removing include file ./{logflare_compose_file}...")
+            content = content.replace(logflare_include, "")
 
         if supabase and supabase_include not in content:
             if verbose:
@@ -3439,7 +3470,7 @@ def docker_container_is_running(container):
         log.error(f"Exception: {e.stderr}.")
         return False
 
-def display_service_endpoints(profile, supabase, openclaw, env_vars=None):
+def display_service_endpoints(profile, supabase, logflare, openclaw, env_vars=None):
     """Display AI-Suite installation or operation status"""
     if not profile:
         log.error("Profile required to display service endpoints")
@@ -3583,6 +3614,11 @@ def display_service_endpoints(profile, supabase, openclaw, env_vars=None):
             if supabase and module_name == 'Postgres':
                 return True
             if not supabase and module_name in ('Supabase', 'Logflare'):
+                return True
+            if not logflare and module_name == 'Logflare':
+                return True
+        if module == 'supabase':
+            if not logflare and module_name in ('Logflare', 'Vector'):
                 return True
         if module in ('caddy', 'nginx') and module not in profile:
             return True
@@ -4241,6 +4277,10 @@ def main():
             clone_supabase_repo()
         copy_supabase_authelia_schema()
         convert_supabase_pooler_line_endings()
+    logflare = (
+        env_vars.get("LOGFLARE_ENABLED", "false").strip().lower()
+        in {"1", "true", "yes", "on"}
+    ) and supabase
 
     # Setup OpenClaw repository if using OpenClaw
     openclaw = \
@@ -4307,7 +4347,7 @@ def main():
                     accepted = True
                     response = None
                     ac_env_vars = setup_ai_suite_ac_auto_config(prompt_store, oc_store, env_vars)
-                    if ac_env_vars:
+                    if ac_env_vars: # ac_env_vars_display
                         display_ac_env_vars(ac_env_vars)
                     if prompt_store['p']:
                         msg = f"Are these auto-configure settings ok to continue? y/n: (y)"
@@ -4375,6 +4415,9 @@ def main():
                     ac_subdomains.append(profile)
         if ac_subdomains:
             ac_env_vars.append(f'AC_SUBDOMAINS="{" ".join(ac_subdomains)}"')
+        # Supabase Logflare analytics option
+        if supabase:
+            ac_env_vars.append(f'AC_LOGFLARE={str(logflare).lower()}')
         # OpenClaw sandbox and build local image
         if openclaw and (oc_store['sandbox'] or oc_store['local-image']):
             ac_env_vars.append(f'AC_OPENCLAW_LOCAL_IMAGE={str(True).lower()}')
@@ -4404,8 +4447,8 @@ def main():
             log.critical("No environment variables detected")
     # TEMP: End here if working on auto-config and no breakpoints set...
     # if ac_auto_config:
-        # log.debug("TEMP: Finished!")
-        # sys.exit(0)
+    #     log.debug("TEMP: Finished!")
+    #     sys.exit(0)
     # TEMP: block end
 
     # Process llama (Ollama/LLaMA.cpp) status checks
@@ -4568,7 +4611,7 @@ def main():
                 args.profile.extend([llama_arg])
             else:
                 log.info(f"""{insert} container images for {args.profile}...""")
-            docker_compose_include(supabase, openclaw, open_webui, False)
+            docker_compose_include(supabase, logflare, openclaw, open_webui, False)
             destroy_ai_suite(args.profile, install)
         operate_ai_suite(args.operation, args.profile, args.environment, env_vars)
         if build:
@@ -4622,7 +4665,7 @@ def main():
         prepare_opencode_config(env_vars)
 
     # Add or remove Supabase and Filesystem include compose.yml in docker-compose.yml
-    docker_compose_include(supabase, openclaw, open_webui, True)
+    docker_compose_include(supabase, logflare, openclaw, open_webui, True)
 
     # Stop and remove AI-Suite containers
     if not build:
@@ -4633,7 +4676,7 @@ def main():
 
     # Start Supabase first
     if supabase:
-        start_supabase(args.environment, build)
+        start_supabase(logflare, args.environment, build)
         # Give Supabase some time to initialize
         log.info("Waiting for Supabase to initialize...", extra=log_bright)
         wait_with_progress(5)
@@ -4691,7 +4734,7 @@ def main():
 
     # Then start the AI-Suite services
     start_ai_suite(args.profile, args.environment, build)
-    display_service_endpoints(args.profile, supabase, openclaw, env_vars)
+    display_service_endpoints(args.profile, supabase, logflare, openclaw, env_vars)
 
     os.makedirs('./state', exist_ok=True)
     with open('./state/.operation', 'w', newline='\n') as f:

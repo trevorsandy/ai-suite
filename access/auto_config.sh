@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update June, 29 2026
+# Last Update July 17, 2026
 # Copyright (c) 2025-Present by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -316,6 +316,7 @@ Environment:
   AC_LOG_PATH:str        Directory path where configuration runtime log is deposited
 
   AC_SEARXNG:false       Configure proxy for SearXNG domain name
+  AC_LOGFLARE:false      Use Supabase docker-compose.logs.yml override to enable Logflare Analytics
   AC_LLAMA:false         Configure proxy for LLAMA (LLaMA.cpp/Ollama) domain name
   AC_LLAMACPP:false      Using LLaMA.cpp LLM (instead of Ollama)
 
@@ -2365,9 +2366,12 @@ FORWARD_AUTH
         reverse_proxy kong:8000
     }
 
+    $([[ "$AC_LOGFLARE" == true ]] && cat <<'LOGFLARE_HANDLE'
     handle_path /logflare/* {
         reverse_proxy analytics:4000
     }
+LOGFLARE_HANDLE
+    )
 
     handle {
         reverse_proxy studio:3000
@@ -2383,11 +2387,11 @@ FORWARD_AUTH
 # SearXNG
 $(
 if [[ $AC_SEARXNG == true ]]; then
-	cat <<'SEARXNG_ENABLED'
+    cat <<'SEARXNG_ENABLED'
 {\$SEARXNG_HOSTNAME} {
 SEARXNG_ENABLED
 else
-	cat <<'SEARXNG_DISABLED'
+    cat <<'SEARXNG_DISABLED'
 {DISABLED_SEARXNG} {
 SEARXNG_DISABLED
 fi
@@ -2451,22 +2455,22 @@ fi
 }
 $(
 if [[ $AC_LLAMA == true ]]; then
-	if [[ $AC_LLAMACPP == false ]]; then
-		cat <<'OLLAMA_BLOCK'
+    if [[ $AC_LLAMACPP == false ]]; then
+        cat <<'OLLAMA_BLOCK'
 # Ollama API
 {\$OLLAMA_HOSTNAME} {
     reverse_proxy ollama:11434
 }
 OLLAMA_BLOCK
-	else
-		cat <<'LLAMACPP_BLOCK'
+    else
+        cat <<'LLAMACPP_BLOCK'
 # LLaMA.cpp API
 {\$LLAMACPP_HOSTNAME} {
     import configuration
     reverse_proxy llamacpp:8040
 }
 LLAMACPP_BLOCK
-	fi
+    fi
 fi
 )
 EOF
@@ -2512,10 +2516,13 @@ upstream kong_upstream {
     keepalive 2;
 }
 
+    $([[ "$AC_LOGFLARE" == true ]] && cat <<'LOGFLARE_UPSTREAM'
 upstream logflare_upstream {
     server analytics:4000;
     keepalive 2;
 }
+LOGFLARE_UPSTREAM
+    )
 
 upstream neo4j_upstream {
     server neo4j:7474;
@@ -2641,9 +2648,12 @@ LLAMACPP_LOCATION
         proxy_pass http://storage:5000/;
     }
 
+    $([[ "$AC_LOGFLARE" == true ]] && cat <<'LOGFLARE_LOCATION'
     location /supabase/logflare {
         proxy_pass http://logflare_upstream;
     }
+LOGFLARE_LOCATION
+    )
 
     location /supabase/goapi/ {
         proxy_pass http://kong_upstream/;

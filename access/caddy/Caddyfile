@@ -73,10 +73,6 @@ import /etc/caddy/addons/cors.conf
         reverse_proxy kong:8000
     }
 
-    handle_path /logflare/* {
-        reverse_proxy analytics:4000
-    }
-
     handle {
         reverse_proxy studio:3000
     }
