@@ -3153,6 +3153,7 @@ def get_dotenv_vars(env_file=None, force=False, auto_config=False, profile=None)
                     'JWT_KEYS=generate using gen_key:keys',
                     'JWT_JWKS=generate using gen_key:jwks',
                     'SECRET_KEY_BASE=generate using gen_token:48',
+                    'REALTIME_DB_ENC_KEY=generate using gen_hex:8',
                     'VAULT_ENC_KEY=generate using gen_hex:16',
                     'PG_META_CRYPTO_KEY=generate using gen_token:24',
                     'DASHBOARD_PASSWORD=generate using gen_hex:16',
