@@ -288,7 +288,7 @@ Developers may also consider the following optional software:
     # Pre-signed ES256 JWT "API key" for anon role.
     ANON_KEY_ASYMMETRIC=generate using gen_key:anon_asym
     # Pre-signed ES256 JWT "API key" for service role.
-    SERVICE_ROLE_ASYMMETRIC=generate using gen_key:service_role_asym
+    SERVICE_ROLE_KEY_ASYMMETRIC=generate using gen_key:service_role_asym
     # Opaque API key for client-side use (anon role).
     SUPABASE_PUBLISHABLE_KEY=generate using gen_key:client
     # Opaque API key for server-side use (service_role). Never expose in client code.

@@ -1860,14 +1860,25 @@ def clone_open_webui_functions_repos():
 def prepare_supabase_env(env_vars):
     """Write env_vars to .env in supabase/docker."""
     env_file = os.path.join("supabase", "docker", ".env")
-    built_env_vars = env_vars.copy()
-    if not built_env_vars.get("OPENAI_API_KEY"):
-        built_env_vars["OPENAI_API_KEY"] = (
-            "llamacpp-local"
-            if llama_cpp
-            else "ollama-local"
-        )
-    built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
+    env_example_file = os.path.join("supabase", "docker", ".env.example")
+    env_example_vars = (
+        dotenv.dotenv_values(env_example_file)
+        if os.path.exists(env_example_file)
+        else None
+    )
+    exclude_vars = { "COMPOSE_FILE" }
+    if env_example_vars is None:
+        built_env_vars = env_vars.copy()
+    else:
+        built_env_vars = {}
+        for key, example_value in env_example_vars.items():
+            if key not in env_vars and key not in exclude_vars:
+                log.warning(f"Variable {key} not set in {name} .env.")
+            value = env_vars.get(key)
+            built_env_vars[key] = (
+                value if value not in (None, "") else example_value
+            )
+    built_env_vars["COMPOSE_IGNORE_ORPHANS"] = "true"
     write_dotenv_file(env_file, built_env_vars)
 
 def prepare_openclaw_env(environment, oc_store, oc_cwd):
@@ -3259,10 +3270,10 @@ def write_dotenv_file(env_file, env_vars):
         return
     log.info(f"Writing .env file to {env_file}...")
     with open(env_file, 'w', newline='\n') as f:
-        now = " ".join(['on:', datetime.datetime.now().ctime()])
+        now = " ".join(['On:', datetime.datetime.now().ctime()])
         f.seek(0)
         f.truncate()
-        f.write(f"# {now} - Generated {name} working .env environment variables.")
+        f.write(f"# {now} - {name} generated .env environment variables.")
         f.write('\n')
         for env, var in env_vars.items():
             if not var:
