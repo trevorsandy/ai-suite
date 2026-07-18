@@ -2513,7 +2513,12 @@ def _openclaw_build_model_entry(model_id, name):
 def prepare_open_webui_tools_filesystem_env(env_vars):
     """Write env_vars to .env and compose.yaml to open-webui/tools/servers/filesystem."""
     env_file = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
-    built_env_vars = env_vars
+    include_vars = { "PROJECTS_PATH" }
+    built_env_vars = {
+        key: env_vars[key]
+        for key in include_vars
+        if key in env_vars
+    }
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
     write_dotenv_file(env_file, built_env_vars)
 
