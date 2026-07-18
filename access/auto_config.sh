@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update July 17, 2026
+# Last Update July 18, 2026
 # Copyright (c) 2025-Present by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -2263,6 +2263,9 @@ write_dot_env_vars "${dot_env_vars[@]}"
 # NOTE: LLAMA and SearXNG are disabled in proxy config by default.
 # Set AC_LLAMA and AC_SEARXNG to anything other than empty, to enable:
 
+append_caddy() { cat >>"$caddyfile_local"; }
+append_nginx() { cat >>"$nginx_local_template_file"; }
+
 # WRITE LOCAL Caddyfile
 if [[ "$proxy" == "caddy" ]]; then
     log_info "${HEADER}Write Caddyfile"
@@ -2272,50 +2275,63 @@ if [[ "$proxy" == "caddy" ]]; then
     mkdir -p "$caddy_local_volume"
 
     # https://stackoverflow.com/a/3953712/18954618
-    cat >"$caddyfile_local" <<EOF
+    cat >"$caddyfile_local" <<'EOF_CADDY'
 {
     # Global options - works for both environments
-    email {\$LETSENCRYPT_EMAIL}
+    email {$LETSENCRYPT_EMAIL}
 }
 
 import /etc/caddy/addons/cors.conf
 
 (configuration) {
-    $([[ "$CI" == true || "$AC_LOCAL" == true ]] && cat <<'TLS_INTERNAL'
-tls internal
-TLS_INTERNAL
-    )
+EOF_CADDY
 
-    $([[ "$with_authelia" == true ]] && cat <<'AUTHELIA_HANDLE'
-@authelia path /authenticate /authenticate/*
+    if [[ "$CI" == true || "$AC_LOCAL" == true ]]; then
+        append_caddy <<'EOF_TLS_INTERNAL'
+    tls internal
+EOF_TLS_INTERNAL
+    fi
+
+    append_caddy <<'EOF_CADDY'
+
+EOF_CADDY
+
+    if [[ "$with_authelia" == true ]]; then
+        append_caddy <<'EOF_AUTHELIA_HANDLE'
+    @authelia path /authenticate /authenticate/*
+
     handle @authelia {
         reverse_proxy authelia:9091
     }
-AUTHELIA_HANDLE
-    )
+EOF_AUTHELIA_HANDLE
+    fi
+
+    append_caddy <<'EOF_CADDY'
 
     handle {
-    $(
+EOF_CADDY
+
     if [[ "$with_authelia" == false ]]; then
-        cat <<'BASIC_AUTH'
+        append_caddy <<'EOF_BASIC_AUTH'
         basic_auth {
             {$PROXY_AUTH_USERNAME} {$PROXY_AUTH_PASSWORD}
         }
-BASIC_AUTH
+EOF_BASIC_AUTH
     else
-        cat <<'FORWARD_AUTH'
-    forward_auth authelia:9091 {
+        append_caddy <<'EOF_FORWARD_AUTH'
+        forward_auth authelia:9091 {
             uri /api/authz/forward-auth
             copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
         }
-FORWARD_AUTH
+EOF_FORWARD_AUTH
     fi
-    )
+
+    append_caddy <<'EOF_CADDY'
     }
 }
 
 # N8N
-{\$N8N_HOSTNAME} {
+{$N8N_HOSTNAME} {
     import configuration
     # For domains, Caddy will automatically use Let's Encrypt
     # For localhost/port addresses, HTTPS won't be enabled
@@ -2323,31 +2339,31 @@ FORWARD_AUTH
 }
 
 # OPENCLAW
-{\$OPENCLAW_HOSTNAME} {
+{$OPENCLAW_HOSTNAME} {
     import configuration
     reverse_proxy openclaw-gateway:18789
 }
 
 # Open WebUI
-{\$WEBUI_HOSTNAME} {
+{$WEBUI_HOSTNAME} {
     import configuration
     reverse_proxy open-webui:8080
 }
 
 # Flowise
-{\$FLOWISE_HOSTNAME} {
+{$FLOWISE_HOSTNAME} {
     import configuration
     reverse_proxy flowise:3001
 }
 
 # Langfuse
-{\$LANGFUSE_HOSTNAME} {
+{$LANGFUSE_HOSTNAME} {
     import configuration
     reverse_proxy langfuse-web:3000
 }
 
 # Supabase
-{\$SUPABASE_HOSTNAME} {
+{$SUPABASE_HOSTNAME} {
     import configuration
     @supa_api path /rest/v1/* /auth/v1/* /realtime/v1/* /functions/v1/* /mcp /api/mcp
 
@@ -2365,37 +2381,47 @@ FORWARD_AUTH
     handle_path /goapi/* {
         reverse_proxy kong:8000
     }
+EOF_CADDY
 
-    $([[ "$AC_LOGFLARE" == true ]] && cat <<'LOGFLARE_HANDLE'
+    if [[ "$AC_LOGFLARE" == true ]]; then
+        append_caddy <<'EOF_LOGFLARE_HANDLE'
+
     handle_path /logflare/* {
         reverse_proxy analytics:4000
     }
-LOGFLARE_HANDLE
-    )
+EOF_LOGFLARE_HANDLE
+    fi
+
+    append_caddy <<'EOF_CADDY'
 
     handle {
         reverse_proxy studio:3000
     }
 }
+EOF_CADDY
+
+append_caddy <<'EOF_CADDY'
 
 # Neo4j
-{\$NEO4J_HOSTNAME} {
+{$NEO4J_HOSTNAME} {
     import configuration
     reverse_proxy neo4j:7474
 }
 
 # SearXNG
-$(
-if [[ $AC_SEARXNG == true ]]; then
-    cat <<'SEARXNG_ENABLED'
-{\$SEARXNG_HOSTNAME} {
-SEARXNG_ENABLED
-else
-    cat <<'SEARXNG_DISABLED'
+EOF_CADDY
+
+    if [[ "$AC_SEARXNG" == true ]]; then
+        append_caddy <<'EOF_SEARXNG_ENABLED'
+{$SEARXNG_HOSTNAME} {
+EOF_SEARXNG_ENABLED
+    else
+        append_caddy <<'EOF_SEARXNG_DISABLED'
 {DISABLED_SEARXNG} {
-SEARXNG_DISABLED
-fi
-)
+EOF_SEARXNG_DISABLED
+    fi
+
+append_caddy <<'EOF_CADDY'
     import configuration
     encode zstd gzip
 
@@ -2453,29 +2479,28 @@ fi
         header_up Connection "close"
     }
 }
-$(
-if [[ $AC_LLAMA == true ]]; then
-    if [[ $AC_LLAMACPP == false ]]; then
-        cat <<'OLLAMA_BLOCK'
+EOF_CADDY
+
+    if [[ "$AC_LLAMA" == true ]]; then
+        if [[ "$AC_LLAMACPP" == false ]]; then
+            append_caddy <<'EOF_OLLAMA_API'
+
 # Ollama API
-{\$OLLAMA_HOSTNAME} {
+{$OLLAMA_HOSTNAME} {
     reverse_proxy ollama:11434
 }
-OLLAMA_BLOCK
-    else
-        cat <<'LLAMACPP_BLOCK'
+EOF_OLLAMA_API
+        else
+            append_caddy <<'EOF_LLAMACPP_API'
+
 # LLaMA.cpp API
-{\$LLAMACPP_HOSTNAME} {
+{$LLAMACPP_HOSTNAME} {
     import configuration
     reverse_proxy llamacpp:8040
 }
-LLAMACPP_BLOCK
+EOF_LLAMACPP_API
+        fi
     fi
-fi
-)
-EOF
-
-# WRITE LOCAL nginx.template
 else
     log_info "${HEADER}Write Nginx Template"
     #-------------------------------------------
@@ -2490,7 +2515,7 @@ else
     # https://github.com/JonasAlfredsson/docker-nginx-certbot/blob/master/docs/good_to_know.md#how-the-script-add-domain-names-to-certificate-requests
     cert_path="/etc/letsencrypt/live/automated-self-host"
 
-    cat >"$nginx_local_template_file" <<EOF
+    cat >"$nginx_local_template_file" <<'EOF_NGINX'
 upstream n8n_upstream {
     server n8n:5678;
     keepalive 2;
@@ -2515,14 +2540,19 @@ upstream kong_upstream {
     server kong:8000;
     keepalive 2;
 }
+EOF_NGINX
 
-    $([[ "$AC_LOGFLARE" == true ]] && cat <<'LOGFLARE_UPSTREAM'
+    if [[ "$AC_LOGFLARE" == true ]]; then
+        append_nginx <<'EOF_LOGFLARE_UPSTREAM'
+
 upstream logflare_upstream {
     server analytics:4000;
     keepalive 2;
 }
-LOGFLARE_UPSTREAM
-    )
+EOF_LOGFLARE_UPSTREAM
+    fi
+
+    append_nginx <<'EOF_NGINX'
 
 upstream neo4j_upstream {
     server neo4j:7474;
@@ -2533,32 +2563,39 @@ upstream langfuse_upstream {
     server langfuse-web:3000;
     keepalive 2;
 }
+EOF_NGINX
 
-    $([[ $AC_SEARXNG == true ]] && cat <<'SEARXNG_UPSTREAM'
+    if [[ "$AC_SEARXNG" == true ]]; then
+        append_nginx <<'EOF_SEARXNG_UPSTREAM'
+
 upstream searxng_upstream {
     server searxng:8081;
     keepalive 2;
 }
-SEARXNG_UPSTREAM
-    )
+EOF_SEARXNG_UPSTREAM
+    fi
 
-    $(if [[ $AC_LLAMA == true ]]; then
-        if [[ $AC_LLAMACPP == false ]]; then
-            cat <<'OLLAMA_UPSTREAM'
+    if [[ "$AC_LLAMA" == true ]]; then
+        if [[ "$AC_LLAMACPP" == false ]]; then
+            append_nginx <<'EOF_OLLAMA_UPSTREAM'
+
 upstream ollama_upstream {
     server ollama:11434;
     keepalive 2;
 }
-OLLAMA_UPSTREAM
+EOF_OLLAMA_UPSTREAM
         else
-            cat <<'LLAMACPP_UPSTREAM'
+            append_nginx <<'EOF_LLAMACPP_UPSTREAM'
+
 upstream llamacpp_upstream {
     server llamacpp:8040;
     keepalive 2;
 }
-LLAMACPP_UPSTREAM
+EOF_LLAMACPP_UPSTREAM
         fi
-    fi)
+    fi
+
+    append_nginx <<EOF_NGINX
 
 server {
     listen 443 ssl;
@@ -2605,32 +2642,39 @@ server {
     location /langfuse {
         proxy_pass http://langfuse_upstream;
     }
+EOF_NGINX
 
-    $([[ $AC_SEARXNG == true ]] && cat <<'SEARXNG_LOCATION'
+    if [[ "$AC_SEARXNG" == true ]]; then
+        append_nginx <<'EOF_SEARXNG_LOCATION'
+
     # SearXNG
     location /searxng {
         proxy_pass http://searxng_upstream;
     }
-SEARXNG_LOCATION
-    )
+EOF_SEARXNG_LOCATION
+    fi
 
-    $(if [[ $AC_LLAMA == true ]]; then
-        if [[ $AC_LLAMACPP == false ]]; then
-            cat <<'OLLAMA_LOCATION'
+    if [[ "$AC_LLAMA" == true ]]; then
+        if [[ "$AC_LLAMACPP" == false ]]; then
+            append_nginx <<'EOF_OLLAMA_LOCATION'
+
 # Ollama
     location / {
         proxy_pass http://ollama_upstream;
     }
-OLLAMA_LOCATION
+EOF_OLLAMA_LOCATION
         else
-            cat <<'LLAMACPP_LOCATION'
+            append_nginx <<'EOF_LLAMACPP_LOCATION'
+
 # LLaMA.cpp
     location /llamacpp {
         proxy_pass http://llamacpp_upstream;
     }
-LLAMACPP_LOCATION
+EOF_LLAMACPP_LOCATION
         fi
-    fi)
+    fi
+
+    append_nginx <<EOF_NGINX
 
     # Supabase
     location /supabase/realtime {
@@ -2647,13 +2691,18 @@ LLAMACPP_LOCATION
         client_max_body_size 0;
         proxy_pass http://storage:5000/;
     }
+EOF_NGINX
 
-    $([[ "$AC_LOGFLARE" == true ]] && cat <<'LOGFLARE_LOCATION'
+    if [[ "$AC_LOGFLARE" == true ]]; then
+        append_nginx <<'EOF_LOGFLARE_LOCATION'
+
     location /supabase/logflare {
         proxy_pass http://logflare_upstream;
     }
-LOGFLARE_LOCATION
-    )
+EOF_LOGFLARE_LOCATION
+    fi
+
+    append_nginx <<EOF_NGINX
 
     location /supabase/goapi/ {
         proxy_pass http://kong_upstream/;
@@ -2682,8 +2731,10 @@ LOGFLARE_LOCATION
     location /supabase {
         proxy_pass http://studio:3000;
     }
+EOF_NGINX
 
-    $([[ $with_authelia == true ]] && cat <<EOF_AUTHELIA
+    if [[ "$with_authelia" == true ]]; then
+        append_nginx <<EOF_AUTHELIA
 
     include $nginx_addons_path/authelia-location.conf;
 
@@ -2693,34 +2744,39 @@ LOGFLARE_LOCATION
         proxy_pass http://authelia:9091;
     }
 EOF_AUTHELIA
-    )
+    fi
+
+    append_nginx <<EOF_NGINX
 
     location / {
-    $(
-    if [[ $with_authelia == false ]]; then
-        cat <<EOF_BASIC
+EOF_NGINX
+
+    if [[ "$with_authelia" == false ]]; then
+        append_nginx <<EOF_BASIC_AUTH
     auth_basic "Admin";
         auth_basic_user_file $nginx_pass_file;
-EOF_BASIC
+EOF_BASIC_AUTH
     else
-        cat <<EOF_AUTH
+        append_nginx <<EOF_CONF_AUTH
     include $nginx_addons_path/proxy.conf;
         include $nginx_addons_path/authelia-authrequest.conf;
-EOF_AUTH
+EOF_CONF_AUTH
     fi
-    )
+
+    append_nginx <<'EOF_NGINX'
     }
 }
 
 server {
     listen 80;
     listen [::]:80;
-    server_name \${NGINX_SERVER_NAME};
-    return 301 https://\$server_name\$request_uri;
+    server_name ${NGINX_SERVER_NAME};
+    return 301 https://$server_name$request_uri;
 }
-EOF
+EOF_NGINX
 fi
 
+# Set proper ownership when using $SUDO_USER
 if [[ "$using_sudo_user" == true ]]; then
     log_info "${BODY}Setting $(basename "$(pwd)")/* ownership to $SUDO_USER..."
     #-------------------------------------------

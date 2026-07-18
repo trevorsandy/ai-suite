@@ -9,6 +9,7 @@ import /etc/caddy/addons/cors.conf
     tls internal
 
     @authelia path /authenticate /authenticate/*
+
     handle @authelia {
         reverse_proxy authelia:9091
     }
