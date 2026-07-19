@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trevor SANDY
-Last Update July 18, 2026
+Last Update July 19, 2026
 Copyright (c) 2025-Present by Trevor SANDY
 
 AI-Suite uses this script for the installation command that handles the AI-Suite
@@ -1859,7 +1859,9 @@ def clone_open_webui_functions_repos():
 
 def prepare_supabase_env(env_vars):
     """Write env_vars to .env in supabase/docker."""
+    which="Supabase"
     env_file = os.path.join("supabase", "docker", ".env")
+    log.info(f"Preparing to write {which} .env file to {env_file}...")
     env_example_file = os.path.join("supabase", "docker", ".env.example")
     env_example_vars = (
         dotenv.dotenv_values(env_example_file)
@@ -1879,7 +1881,7 @@ def prepare_supabase_env(env_vars):
                 value if value not in (None, "") else example_value
             )
     built_env_vars["COMPOSE_IGNORE_ORPHANS"] = "true"
-    write_dotenv_file(env_file, built_env_vars)
+    write_dotenv_file(env_file, built_env_vars, which)
 
 def prepare_openclaw_env(environment, oc_store, oc_cwd):
     """
@@ -1900,6 +1902,7 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
     config_file = config_dir / "openclaw.json"
     config_workspace_dir = config_dir / "workspace"
     config_secrets_dir = home_dir / ".openclaw-auth-profile-secrets"
+    log.info(f"Preparing to write OpenClaw .env file to {output_path}...")
     if is_wsl2():
         home_dir = to_wsl_path(home_dir)
         config_dir = to_wsl_path(config_dir)
@@ -1965,7 +1968,7 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         env_vars["OPENCLAW_GATEWAY_PASSWORD"] = None
     if template_env.get("OPENCLAW_GATEWAY_PASSWORD") not in (None, ""):
         env_vars["OPENCLAW_GATEWAY_TOKEN"] = None
-    log.info(f"Writing .env file to {output_path}...")
+    log.info(f"Writing OpenClaw .env file to {output_path}...")
     def render_var(key, value):
         return f"{key}={value}\n"
     def should_replace(key, existing):
@@ -2060,23 +2063,26 @@ def prepare_openclaw_env(environment, oc_store, oc_cwd):
         if "TOKEN" in key or "PASSWORD" in key:
             value = f"stored in {output_path} (not printed)"
         log.debug(f"{key}={value}", extra=debug_style)
-    insert = 'Update' if dotenv_exists else 'Create'
-    log.info(f"{insert} dotenv file at {output_path}", extra=log_bright)
     _openclaw_compose_updates()
     if log_level == logging.DEBUG:
         _openclaw_compose_logging()
     if environment == "public":
         _openclaw_compose_override()
     _openclaw_clawdoc_updates()
+    insert = 'Updated' if dotenv_exists else 'Wrote'
+    log.info(f"{insert} OpenClaw .env file at {output_path}")
     return True
 
 def prepare_openclaw_config(oc_cwd, env_vars):
-    log.info("Starting OpenClaw config preparation...")
+    """
+    Prepare OpenClaw openclaw.json configuration and workspace and secrets directories.
+    """
     config_dir = pathlib.Path.home() / ".openclaw"
     config_file = config_dir / "openclaw.json"
     config_workspace_dir = config_dir / "workspace"
     config_secrets_dir = pathlib.Path.home() / ".openclaw-auth-profile-secrets"
     config_src_file = pathlib.Path("./.openclaw.example.json")
+    log.info(f"Preparing to write OpenClaw .json file to {config_file}...")
     if not config_src_file.exists():
         log.error(f"Template not found: {config_src_file}")
         raise FileNotFoundError(config_src_file)
@@ -2512,7 +2518,9 @@ def _openclaw_build_model_entry(model_id, name):
 
 def prepare_open_webui_tools_filesystem_env(env_vars):
     """Write env_vars to .env and compose.yaml to open-webui/tools/servers/filesystem."""
+    which="OpenWebUI Filesystem"
     env_file = os.path.join("open-webui", "tools", "servers", "filesystem", ".env")
+    log.info(f"Preparing to write {which} .env file to {env_file}...")
     include_vars = { "PROJECTS_PATH" }
     built_env_vars = {
         key: env_vars[key]
@@ -2520,7 +2528,7 @@ def prepare_open_webui_tools_filesystem_env(env_vars):
         if key in env_vars
     }
     built_env_vars['COMPOSE_IGNORE_ORPHANS'] = 'true'
-    write_dotenv_file(env_file, built_env_vars)
+    write_dotenv_file(env_file, built_env_vars, which)
 
     docker_compose_path = os.path.join("open-webui", "tools", "servers", "filesystem", "compose.yaml")
     log.info(f"Writing {docker_compose_path}...")
@@ -2565,7 +2573,7 @@ def prepare_opencode_config(env_vars):
     if not os.path.exists(file_path):
         log.error(f"File {file_path} not found.")
         return
-    log.info(f"Setting OpenCode {llama} model in {file_path}...")
+    log.info(f"Preparing to update OpenCode .jsonc file at {file_path}...")
     llm = llama.strip().lower()
     ollama_model = env_vars.get('OLLAMA_DEFAULT_MODEL')
     llamacpp_model = env_vars.get('LLAMACPP_DEFAULT_MODEL')
@@ -2577,6 +2585,7 @@ def prepare_opencode_config(env_vars):
         modified_content = content.replace(old_model.encode(), new_model.encode())
         with open(file_path, 'wb') as f:
             f.write(modified_content)
+        log.info(f"OpenCode .jsonc configured with {llama} model in {file_path}")
     except Exception as e:
         log.error(f"Exception: Configuration - {llama} model: {e}")
 
@@ -3265,7 +3274,7 @@ def load_dotenv_vars(env_vars):
         log.info("Loading .env environment variables...")
         dotenv.load_dotenv(env_file)
 
-def write_dotenv_file(env_file, env_vars):
+def write_dotenv_file(env_file, env_vars, which="default"):
     """Copy .env to .env in target compose file destination."""
     if env_file is None:
         log.error("The .env file path to be written is not defined!")
@@ -3273,12 +3282,12 @@ def write_dotenv_file(env_file, env_vars):
     if env_vars is None:
         log.error("The env_vars dictionary to be written is empty!")
         return
-    log.info(f"Writing .env file to {env_file}...")
+    log.info(f"Writing {which} .env file to {env_file}...")
     with open(env_file, 'w', newline='\n') as f:
         now = " ".join(['On:', datetime.datetime.now().ctime()])
         f.seek(0)
         f.truncate()
-        f.write(f"# {now} - {name} generated .env environment variables.")
+        f.write(f"# {now} - {name} generated {which} .env environment variables.")
         f.write('\n')
         for env, var in env_vars.items():
             if not var:
