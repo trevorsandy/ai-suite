@@ -1,6 +1,6 @@
 #!/bin/bash
 # Trevor SANDY
-# Last Update July 18, 2026
+# Last Update July 19, 2026
 # Copyright (c) 2025-Present by Trevor SANDY
 #
 # Auto-configure, with user prompts, self-hosted AI-Suite with Caddy/Nginx proxy and
@@ -12,7 +12,12 @@
 # Portions of this code are derived from Inder Singh's setup.sh shell script.
 # Copyright 2026 Inder Singh. Licensed under Apache License 2.0.
 # Original source:
-#    https://github.com/singh-inder/supabase-automated-self-host/raw/main/setup.sh
+# https://github.com/singh-inder/supabase-automated-self-host/raw/main/setup.sh
+# Changes (Commits):
+# 14/07/2026 - 5f050b6
+# 14/07/2026 - cc703a1
+# ...
+# 04/04/2026 - 5cd4de2
 
 set -euo pipefail
 
